@@ -1,8 +1,15 @@
 package com.vi.agent.core.model.artifact;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
  * Artifact 引用信息。
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ArtifactRef {
 
     /** Artifact 唯一 ID。 */
@@ -13,37 +20,4 @@ public class ArtifactRef {
 
     /** Artifact 存储地址。 */
     private String uri;
-
-    public ArtifactRef() {
-    }
-
-    public ArtifactRef(String artifactId, String artifactType, String uri) {
-        this.artifactId = artifactId;
-        this.artifactType = artifactType;
-        this.uri = uri;
-    }
-
-    public String getArtifactId() {
-        return artifactId;
-    }
-
-    public void setArtifactId(String artifactId) {
-        this.artifactId = artifactId;
-    }
-
-    public String getArtifactType() {
-        return artifactType;
-    }
-
-    public void setArtifactType(String artifactType) {
-        this.artifactType = artifactType;
-    }
-
-    public String getUri() {
-        return uri;
-    }
-
-    public void setUri(String uri) {
-        this.uri = uri;
-    }
 }

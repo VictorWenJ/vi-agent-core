@@ -37,34 +37,22 @@ public class RuntimeOrchestrator {
     private static final String MDC_RUN_ID = "runId";
     private static final String MDC_SESSION_ID = "sessionId";
 
-    /**
-     * 上下文装配器。
-     */
+    /** 上下文装配器。 */
     private final ContextAssembler contextAssembler;
 
-    /**
-     * Agent Loop 引擎。
-     */
+    /** Agent Loop 引擎。 */
     private final AgentLoopEngine agentLoopEngine;
 
-    /**
-     * 工具网关。
-     */
+    /** 工具网关。 */
     private final ToolGateway toolGateway;
 
-    /**
-     * Transcript 存储接口。
-     */
+    /** Transcript 存储接口。 */
     private final TranscriptStore transcriptStore;
 
-    /**
-     * traceId 生成器。
-     */
+    /** traceId 生成器。 */
     private final TraceIdGenerator traceIdGenerator;
 
-    /**
-     * runId 生成器。
-     */
+    /** runId 生成器。 */
     private final RunIdGenerator runIdGenerator;
 
     /**
@@ -136,11 +124,13 @@ public class RuntimeOrchestrator {
             runContext.setRunState(RunState.COMPLETED);
             transcriptStore.save(transcript);
 
-            log.info("Runtime execute success traceId={} runId={} sessionId={} toolCalls={}",
+            log.info("Runtime execute success traceId={} runId={} sessionId={} messages={} toolCalls={} toolResults={}",
                 traceId,
                 runId,
                 sessionId,
-                assistantMessage.getToolCalls().size());
+                transcript.getMessages().size(),
+                transcript.getToolCalls().size(),
+                transcript.getToolResults().size());
 
             return new RuntimeExecutionResult(traceId, runId, sessionId, assistantMessage);
         } catch (AgentRuntimeException e) {

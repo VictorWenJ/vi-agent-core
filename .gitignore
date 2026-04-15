@@ -24,6 +24,7 @@ Thumbs.db
 *.tmp
 *.bak
 *~
+.tools/
 
 # Test reports
 **/surefire-reports/
