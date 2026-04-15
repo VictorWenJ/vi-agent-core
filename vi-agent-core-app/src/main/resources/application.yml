@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: vi-agent-core
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.vi.agent.core: INFO
+
+vi:
+  agent:
+    provider:
+      openai:
+        base-url: https://api.openai.com
+        api-key: ${OPENAI_API_KEY:}
+        model: gpt-4o-mini

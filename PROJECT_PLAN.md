@@ -46,7 +46,7 @@
 
 | 任务 | 产出 | 验收标准 |
 | :--- | :--- | :--- |
-| 1. 项目初始化 | `pom.xml`、基础包结构、治理文档 | 项目可正常编译，`mvn test` 通过 |
+| 1. 项目初始化 | Maven 父 `pom.xml` + 五模块骨架（`app/runtime/infra/model/common`）+ 基础包结构 + 治理文档 | 项目可正常编译，`mvn test` 通过 |
 | 2. 实现 `LlmProvider` 抽象 | `OpenAiProvider` 或 `DeepSeekProvider` | 可成功调用 API 并返回非流式响应 |
 | 3. 实现 `RuntimeOrchestrator` 基础循环 | 同步版 `execute(String userInput)` | 无工具调用时，可完成单轮问答 |
 | 4. 实现 `ToolGateway` 与工具注册 | 自定义 `@Tool` 注解，`ToolRegistry` | 能扫描并注册至少一个工具 |
@@ -107,6 +107,16 @@ public interface SkillRegistry {
 - 具备最小 Transcript（用户消息、助手回复、工具调用记录）和最小运行时标识体系（`conversationId`、`sessionId`、`turnId`、`messageId`、`runId`、`toolCallId`、`traceId`）。
 - 关键核心模块测试通过且覆盖率达标。
 - 未偷跑 Phase 2+ 的完整实现。
+
+### 3.7 Phase 1 初始化落地快照（2026-04-15）
+
+当前已完成的初始化产物（与仓库实际结构一致）：
+
+- Maven 多模块结构：`vi-agent-core-app`、`vi-agent-core-runtime`、`vi-agent-core-infra`、`vi-agent-core-model`、`vi-agent-core-common`
+- 主链路骨架：`RuntimeOrchestrator`（唯一编排中心）+ `AgentLoopEngine` + `ToolGateway` + `SimpleContextAssembler`
+- 基础设施骨架：`LlmProvider/OpenAiProvider`、`TranscriptRepository`、`TranscriptStoreService`、`TraceContext`、`RuntimeMetricsCollector`
+- WebFlux 入口骨架：`ChatController`、`StreamController`、`ChatService`、`StreamingChatService`、`GlobalExceptionHandler`
+- 测试骨架：`RuntimeOrchestratorTest`、`AgentLoopEngineTest`、`ToolGatewayTest`、`ChatControllerTest`
 
 ---
 

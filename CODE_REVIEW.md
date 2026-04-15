@@ -43,6 +43,7 @@
 | | Service 是否直接操作了 Repository？ | Service 应通过 Core 层或基础设施层接口访问数据。 |
 | | Core 层是否依赖了 Web 层对象？ | `core` 包不得导入 `HttpServletRequest`、`@RestController` 等。 |
 | | **Runtime 是否成为唯一主链路编排入口？** | 复杂流程不得分散到多个 Service 横向乱调。 |
+| | **Maven 模块依赖是否符合 `app → runtime/infra/model/common`、`infra → runtime/model/common`？** | 禁止 `runtime` 反向依赖 `app`，禁止 `common` 依赖 `model`。 |
 | **依赖注入** | **是否存在 `@Autowired` 字段注入？** | 一律使用**构造器注入**，字段注入直接拒绝。 |
 | | **是否通过 `SpringContextUtils.getBean(...)` 获取核心依赖？** | 必须通过正常依赖注入装配，绕容器调用直接拒绝。 |
 | **扩展机制** | 新增 Tool / Skill / Provider / Strategy 是否通过注册机制接入？ | 不允许在 Runtime 核心里不断追加 `if/else`。 |
@@ -96,6 +97,7 @@
 - [ ] 复杂逻辑是否落在中心编排器，而不是分散到多个工具类？
 - [ ] 新增扩展是否优先采用“注册表 + 接口”而不是“中心类膨胀”？
 - [ ] 关键路径是否具备运行时监控，而不是只依赖日志排查？
+- [ ] Maven 多模块边界是否清晰（`app` 负责装配与启动，`runtime` 保持独立）？
 
 ---
 
@@ -135,6 +137,10 @@
    - 把业务编排塞进 `Utils`
    - 在核心链路里直接 `new` 外部客户端
    - 用全局工具类替代网关/注册表
+10. **破坏既定模块方案**：
+   - 新增与本阶段无关的 `contract/api` 模块
+   - 将 `runtime` 与 `app` 形成反向依赖
+   - 让 `common` 依赖 `model`
 
 ---
 

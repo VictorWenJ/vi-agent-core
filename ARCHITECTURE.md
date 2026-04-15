@@ -34,6 +34,18 @@
 - 用 **Session / Transcript / Artifact / Observability** 承接状态、审计与回放基础；
 - 用 **逻辑服务边界** 为后续的物理分布式拆分预留演进路径。
 
+### 2.1 Maven 模块落地视图（Phase 1）
+
+当前代码已按 Maven 多模块落地：
+
+- `vi-agent-core-app`：应用入口与装配层（唯一运行模块）
+- `vi-agent-core-runtime`：核心运行时与主链路编排
+- `vi-agent-core-infra`：基础设施实现层
+- `vi-agent-core-model`：内部运行时模型层
+- `vi-agent-core-common`：轻量公共能力层
+
+其中，LangChain4j 在当前阶段仅放置于 `infra` 侧作为基础设施依赖，不主导 `runtime` 的核心抽象设计。
+
 ---
 
 ## 3. 总体分层（逻辑视图）
@@ -90,8 +102,16 @@
 
 `controller` → `service` → `core/runtime` → `core/context` / `core/tool` / `core/memory` / `infrastructure/provider` / `infrastructure/persistence` → `model`
 
+**模块级依赖（已落地）：**
+
+`vi-agent-core-app` → `vi-agent-core-runtime` + `vi-agent-core-infra` + `vi-agent-core-model` + `vi-agent-core-common`  
+`vi-agent-core-infra` → `vi-agent-core-runtime` + `vi-agent-core-model` + `vi-agent-core-common`  
+`vi-agent-core-runtime` → `vi-agent-core-model` + `vi-agent-core-common`  
+`vi-agent-core-model` → `vi-agent-core-common`
+
 **关键约束：**
 - `core` 层不依赖 `controller` 或 `service`。
+- `app` 是唯一启动与装配入口，`runtime` 不反向依赖 `app`。
 - `infrastructure` 层只向外暴露接口，不反向依赖业务层。
 - `tool` 模块必须通过 `ToolGateway` 访问，不允许跨层直接调用 `ToolExecutor`。
 - `runtime` 是唯一核心编排入口；`context`、`tool`、`memory`、`skill`、`delegation` 不得互相形成无边界横向调用。

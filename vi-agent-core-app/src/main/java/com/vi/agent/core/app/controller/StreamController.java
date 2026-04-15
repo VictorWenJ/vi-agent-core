@@ -1,0 +1,33 @@
+package com.vi.agent.core.app.controller;
+
+import com.vi.agent.core.app.controller.dto.ChatRequest;
+import com.vi.agent.core.app.controller.dto.ChatResponseChunk;
+import com.vi.agent.core.app.service.StreamingChatService;
+import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+
+/**
+ * 流式聊天接入控制器。
+ */
+@RestController
+@RequestMapping(path = "/api/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+public class StreamController {
+
+    /** 流式聊天 Facade 服务。 */
+    private final StreamingChatService streamingChatService;
+
+    public StreamController(StreamingChatService streamingChatService) {
+        this.streamingChatService = streamingChatService;
+    }
+
+    @PostMapping
+    public Flux<ServerSentEvent<ChatResponseChunk>> stream(@Valid @RequestBody ChatRequest request) {
+        return streamingChatService.stream(request);
+    }
+}

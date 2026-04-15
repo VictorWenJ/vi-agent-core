@@ -1,103 +1,30 @@
-# ===========================================
-# 编译输出目录
-# ===========================================
-target/
-build/
-out/
-!.mvn/wrapper/maven-wrapper.jar
+# Maven
+**/target/
 
-# ===========================================
-# 依赖与包管理
-# ===========================================
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-
-# ===========================================
-# IDE 配置文件
-# ===========================================
-# IntelliJ IDEA
+# IDE
 .idea/
-*.iws
 *.iml
 *.ipr
-
-# Eclipse
-.classpath
-.project
-.settings/
-.metadata/
-bin/
-
-# VSCode
+*.iws
 .vscode/
-*.code-workspace
 
-# NetBeans
-nbproject/private/
-nbbuild/
-dist/
-nbdist/
-.nb-gradle/
-
-# ===========================================
-# 日志文件
-# ===========================================
+# Logs
 *.log
 logs/
-spring.log
 
-# ===========================================
-# 本地配置文件（敏感信息）
-# ===========================================
+# Environment
+.env
+.env.*
 application-local.yml
 application-local.properties
-application-dev.yml
-application-dev.properties
-.env
-.env.local
-.env.*.local
 
-# ===========================================
-# 操作系统杂项
-# ===========================================
+# OS / temp
 .DS_Store
 Thumbs.db
-*.swp
-*.swo
-*~
-~$*
-
-# ===========================================
-# 临时文件与测试输出
-# ===========================================
 *.tmp
 *.bak
-*.cache
-test-output/
-.surefire-reports/
-.failsafe-reports/
+*~
 
-# ===========================================
-# 数据库文件
-# ===========================================
-*.db
-*.sqlite
-*.sqlite3
-
-# ===========================================
-# Docker 相关（根据需要调整）
-# ===========================================
-# docker-compose.override.yml (如果有自定义覆盖)
-
-# ===========================================
-# AI 辅助工具（可选）
-# ===========================================
-.codex/
-.cursor/
-.github/copilot-instructions.md
+# Test reports
+**/surefire-reports/
+**/failsafe-reports/

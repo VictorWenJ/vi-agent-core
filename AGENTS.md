@@ -54,6 +54,24 @@
 - 以逻辑分布式边界设计、单体先行落地的 Java 平台型工程；
 - 以后可装配为企业级 AI 工作台、顾问工作台等产品形态的核心后端。
 
+### 2.1 当前落地模块结构（Phase 1 初始化）
+
+当前仓库已按 Maven 多模块方式落地为以下 5 个模块：
+
+- `vi-agent-core-app`：顶层 Spring Boot 装配与 WebFlux 入口，**唯一可运行模块**
+- `vi-agent-core-runtime`：Runtime 核心编排（含 `RuntimeOrchestrator`、Agent Loop、ToolGateway、ContextAssembler 等骨架）
+- `vi-agent-core-infra`：provider / persistence / observability / integration 基础设施骨架
+- `vi-agent-core-model`：内部运行时模型（message / tool / transcript / runtime / artifact）
+- `vi-agent-core-common`：公共异常、ID 生成器、少量无状态工具
+
+当前强制依赖方向（已落地）：
+
+- `common`：尽量零依赖
+- `model` → `common`
+- `runtime` → `model` + `common`
+- `infra` → `runtime` + `model` + `common`
+- `app` → `runtime` + `infra` + `model` + `common`
+
 ---
 
 ## 3. 技术栈与开发约束速查表
@@ -67,6 +85,7 @@
 - **构建工具**：Maven
 - **数据库**：MySQL / H2 (开发期)
 - **容器**：Docker Compose
+- **构建形态**：Maven 多模块（`app / runtime / infra / model / common`）
 
 ### 3.2 开发约束
 - **命名规范**：类名 `PascalCase`，方法/变量 `camelCase`，常量 `UPPER_SNAKE_CASE`。
@@ -129,6 +148,7 @@
 
 - **Controller** 只做接入、校验、转发，不承载业务逻辑。
 - **Service** 作为 Facade，不包含核心 Agent Loop 编排。
+- **App 模块** 是唯一运行入口，负责装配 runtime + infra，不反向侵入 runtime 核心边界。
 - **Core** 包（`runtime`、`tool`、`context`）是系统核心，不依赖 Web 层。
 - **Provider** 层负责屏蔽模型厂商差异，不反向依赖业务层。
 - **Runtime Core** 是唯一主链路编排中心，`interaction`、`context`、`tool`、`memory`、`provider` 等均围绕它协作。
