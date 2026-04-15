@@ -3,6 +3,9 @@ package com.vi.agent.core.model.transcript;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolResult;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,6 +15,9 @@ import java.util.List;
 /**
  * 会话 Transcript，保存完整会话历史与工具执行记录。
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ConversationTranscript {
 
     /** 会话 ID。 */
@@ -37,46 +43,6 @@ public class ConversationTranscript {
 
     public ConversationTranscript(String sessionId) {
         this.sessionId = sessionId;
-    }
-
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-
-    public String getTraceId() {
-        return traceId;
-    }
-
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
-    }
-
-    public String getRunId() {
-        return runId;
-    }
-
-    public void setRunId(String runId) {
-        this.runId = runId;
-    }
-
-    public List<Message> getMessages() {
-        return Collections.unmodifiableList(messages);
-    }
-
-    public List<ToolCall> getToolCalls() {
-        return Collections.unmodifiableList(toolCalls);
-    }
-
-    public List<ToolResult> getToolResults() {
-        return Collections.unmodifiableList(toolResults);
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
     }
 
     public void appendMessage(Message message) {

@@ -20,9 +20,8 @@ public class TranscriptStoreService implements TranscriptStore {
 
     @Override
     public Optional<ConversationTranscript> load(String sessionId) {
-        log.debug("TranscriptStore load sessionId={}", sessionId);
-        return transcriptRepository.findBySessionId(sessionId)
-            .map(this::toModel);
+        log.info("TranscriptStoreService load sessionId:{}", sessionId);
+        return transcriptRepository.findBySessionId(sessionId).map(this::toModel);
     }
 
     @Override
