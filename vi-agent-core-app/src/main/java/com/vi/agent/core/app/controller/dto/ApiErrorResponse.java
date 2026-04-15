@@ -1,8 +1,15 @@
 package com.vi.agent.core.app.controller.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
  * 错误响应 DTO。
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ApiErrorResponse {
 
     /** 错误码。 */
@@ -11,27 +18,4 @@ public class ApiErrorResponse {
     /** 错误信息。 */
     private String errorMessage;
 
-    public ApiErrorResponse() {
-    }
-
-    public ApiErrorResponse(String errorCode, String errorMessage) {
-        this.errorCode = errorCode;
-        this.errorMessage = errorMessage;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public void setErrorCode(String errorCode) {
-        this.errorCode = errorCode;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
 }

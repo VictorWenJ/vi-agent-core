@@ -17,8 +17,11 @@ import static org.mockito.BDDMockito.given;
 @WebFluxTest(controllers = ChatController.class)
 class ChatControllerTest {
 
-    @Autowired
-    private WebTestClient webTestClient;
+    private final WebTestClient webTestClient;
+
+    ChatControllerTest(@Autowired WebTestClient webTestClient) {
+        this.webTestClient = webTestClient;
+    }
 
     @MockBean
     private ChatService chatService;

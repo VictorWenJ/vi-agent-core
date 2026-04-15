@@ -4,6 +4,7 @@ import com.vi.agent.core.app.controller.dto.ChatRequest;
 import com.vi.agent.core.app.controller.dto.ChatResponseChunk;
 import com.vi.agent.core.app.service.StreamingChatService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,14 +18,11 @@ import reactor.core.publisher.Flux;
  */
 @RestController
 @RequestMapping(path = "/api/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+@RequiredArgsConstructor
 public class StreamController {
 
     /** 流式聊天 Facade 服务。 */
     private final StreamingChatService streamingChatService;
-
-    public StreamController(StreamingChatService streamingChatService) {
-        this.streamingChatService = streamingChatService;
-    }
 
     @PostMapping
     public Flux<ServerSentEvent<ChatResponseChunk>> stream(@Valid @RequestBody ChatRequest request) {

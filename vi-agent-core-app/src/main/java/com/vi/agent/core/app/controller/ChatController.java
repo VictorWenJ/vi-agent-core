@@ -4,6 +4,7 @@ import com.vi.agent.core.app.controller.dto.ChatRequest;
 import com.vi.agent.core.app.controller.dto.ChatResponse;
 import com.vi.agent.core.app.service.ChatService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,14 +17,11 @@ import reactor.core.publisher.Mono;
  */
 @RestController
 @RequestMapping(path = "/api/chat", produces = MediaType.APPLICATION_JSON_VALUE)
+@RequiredArgsConstructor
 public class ChatController {
 
     /** 聊天 Facade 服务。 */
     private final ChatService chatService;
-
-    public ChatController(ChatService chatService) {
-        this.chatService = chatService;
-    }
 
     @PostMapping
     public Mono<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {

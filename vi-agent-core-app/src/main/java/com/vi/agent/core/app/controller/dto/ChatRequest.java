@@ -1,10 +1,14 @@
 package com.vi.agent.core.app.controller.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * 聊天请求 DTO。
  */
+@Getter
+@Setter
 public class ChatRequest {
 
     /** 会话 ID。 */
@@ -15,19 +19,4 @@ public class ChatRequest {
     @NotBlank
     private String message;
 
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
 }

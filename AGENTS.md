@@ -85,13 +85,16 @@
 - **构建工具**：Maven
 - **数据库**：MySQL / H2 (开发期)
 - **容器**：Docker Compose
+- **日志实现**：SLF4J 门面 + Log4j2（统一使用 `log4j2-spring.xml` 维护日志策略）
+- **代码简化**：Lombok（按场景使用 `@Slf4j`、`@Getter`、`@Setter`、`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@RequiredArgsConstructor` 等注解）
 - **构建形态**：Maven 多模块（`app / runtime / infra / model / common`）
 
 ### 3.2 开发约束
 - **命名规范**：类名 `PascalCase`，方法/变量 `camelCase`，常量 `UPPER_SNAKE_CASE`。
 - **包结构**：基础包 `com.vi.agent.core`，子包按职责划分（`runtime`、`context`、`tool`、`memory`、`provider` 等）。
 - **依赖注入**：一律使用**构造器注入**，禁止 `@Autowired` 字段注入。
-- **日志**：统一使用 Slf4j，关键路径必须记录结构化日志（携带 `traceId`、`runId`、`sessionId`）。
+- **日志**：统一通过 SLF4J 输出，并由 Log4j2 配置文件 `vi-agent-core-app/src/main/resources/log4j2-spring.xml` 统一维护日志级别、Appender、格式与落盘策略；关键路径必须记录结构化日志（携带 `traceId`、`runId`、`sessionId`）。
+- **Lombok**：允许并鼓励在合适场景使用 Lombok 简化样板代码；日志类优先使用 `@Slf4j`，依赖注入类优先使用 `@RequiredArgsConstructor`；DTO / VO / 简单状态对象可根据语义使用 `@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor` 等注解，但涉及领域语义或需精细控制方法语义的对象应谨慎使用 `@Data`。
 - **异常处理**：业务异常统一继承 `AgentRuntimeException`，不允许吞没 `Exception`。
 - **公共接口类型签名**：所有 public API 必须使用明确、稳定的类型签名；禁止在公共接口层使用语义不清的 `Object`、原始 `Map`、原始 `List` 作为逃逸类型。
 - **注释**：所有 `record` 组件、DTO 字段、Entity 字段必须有中文注释，说明含义与约束。
@@ -113,6 +116,13 @@
 - **禁止把业务编排写进 Utils**：工具类只能放无状态通用逻辑，不能承载核心业务流程。
 - **禁止直接在 Runtime 中 new 具体外部依赖**：所有模型、工具、存储、远程调用必须通过网关或适配层进入。
 - **禁止用“手工日志调试”替代测试**：关键链路新增或修改后必须补测试。
+
+### 3.5 公共工具类与日志规则
+- **公共逻辑优先沉淀为工具类**：当某段逻辑具备跨模块复用价值，且本质属于无状态、通用、非业务编排能力时，应优先沉淀到 `vi-agent-core-common` 的 `util/` 包中统一复用，而不是在多个模块重复实现。
+- **`JsonUtils` 作为现阶段公共工具基线**：当前仓库已落地 `JsonUtils`，用于统一 `toJson`、`jsonToBean` 等通用 JSON 转换逻辑；后续代码开发中，如存在同类 JSON 序列化/反序列化需求，应优先复用该工具，而不是各处重复创建 `ObjectMapper` 或手写转换逻辑。
+- **工具类必须保持边界清晰**：公共工具类只能承载无状态通用逻辑，不得引入业务编排、运行时调度、外部依赖装配或容器生命周期控制。
+- **日志规则统一**：业务类、网关类、基础设施实现类在需要日志时，优先使用 Lombok `@Slf4j` 简化日志器声明；日志内容仍须满足结构化字段要求，不能因为使用 Lombok 而降低日志规范。
+- **日志配置文件统一管理**：日志格式、级别、Appender、滚动策略统一通过 `vi-agent-core-app/src/main/resources/log4j2-spring.xml` 维护；禁止在业务代码中分散定义日志实现策略。
 
 ---
 

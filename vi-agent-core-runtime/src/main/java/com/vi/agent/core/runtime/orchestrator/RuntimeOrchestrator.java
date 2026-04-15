@@ -6,6 +6,7 @@ import com.vi.agent.core.common.id.RunIdGenerator;
 import com.vi.agent.core.common.id.TraceIdGenerator;
 import com.vi.agent.core.common.util.ValidationUtils;
 import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.runtime.AgentRunContext;
@@ -17,8 +18,9 @@ import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
 import com.vi.agent.core.runtime.port.TranscriptStore;
 import com.vi.agent.core.runtime.tool.ToolGateway;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,9 +28,13 @@ import java.util.List;
 /**
  * Runtime 核心编排入口（唯一主链路编排中心）。
  */
+@Slf4j
+@RequiredArgsConstructor
 public class RuntimeOrchestrator {
 
-    private static final Logger log = LoggerFactory.getLogger(RuntimeOrchestrator.class);
+    private static final String MDC_TRACE_ID = "traceId";
+    private static final String MDC_RUN_ID = "runId";
+    private static final String MDC_SESSION_ID = "sessionId";
 
     /** 上下文装配器。 */
     private final ContextAssembler contextAssembler;
@@ -48,22 +54,6 @@ public class RuntimeOrchestrator {
     /** runId 生成器。 */
     private final RunIdGenerator runIdGenerator;
 
-    public RuntimeOrchestrator(
-        ContextAssembler contextAssembler,
-        AgentLoopEngine agentLoopEngine,
-        ToolGateway toolGateway,
-        TranscriptStore transcriptStore,
-        TraceIdGenerator traceIdGenerator,
-        RunIdGenerator runIdGenerator
-    ) {
-        this.contextAssembler = contextAssembler;
-        this.agentLoopEngine = agentLoopEngine;
-        this.toolGateway = toolGateway;
-        this.transcriptStore = transcriptStore;
-        this.traceIdGenerator = traceIdGenerator;
-        this.runIdGenerator = runIdGenerator;
-    }
-
     /**
      * 执行一次同步会话。
      *
@@ -77,15 +67,23 @@ public class RuntimeOrchestrator {
 
         String traceId = traceIdGenerator.nextId();
         String runId = runIdGenerator.nextId();
+        String previousTraceId = MDC.get(MDC_TRACE_ID);
+        String previousRunId = MDC.get(MDC_RUN_ID);
+        String previousSessionId = MDC.get(MDC_SESSION_ID);
+
+        MDC.put(MDC_TRACE_ID, traceId);
+        MDC.put(MDC_RUN_ID, runId);
+        MDC.put(MDC_SESSION_ID, sessionId);
 
         try {
+            log.info("Runtime execute start");
             ConversationTranscript transcript = transcriptStore.load(sessionId)
                 .orElseGet(() -> new ConversationTranscript(sessionId));
             transcript.setTraceId(traceId);
             transcript.setRunId(runId);
 
             UserMessage userMessage = new UserMessage(userInput);
-            List<com.vi.agent.core.model.message.Message> workingMessages =
+            List<Message> workingMessages =
                 contextAssembler.assemble(transcript, userMessage);
 
             AgentRunContext runContext = new AgentRunContext(
@@ -133,7 +131,19 @@ public class RuntimeOrchestrator {
         } catch (Exception e) {
             log.error("Runtime execute failed traceId={} runId={} sessionId={}", traceId, runId, sessionId, e);
             throw new AgentRuntimeException(ErrorCode.RUNTIME_EXECUTION_FAILED, "运行时执行失败", e);
+        } finally {
+            restoreMdcValue(MDC_TRACE_ID, previousTraceId);
+            restoreMdcValue(MDC_RUN_ID, previousRunId);
+            restoreMdcValue(MDC_SESSION_ID, previousSessionId);
         }
+    }
+
+    private void restoreMdcValue(String key, String value) {
+        if (value == null) {
+            MDC.remove(key);
+            return;
+        }
+        MDC.put(key, value);
     }
 
     private List<ToolResult> executeToolCalls(List<ToolCall> toolCalls) {

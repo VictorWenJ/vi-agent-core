@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="60">
+    <Properties>
+        <Property name="APP_NAME">${spring:spring.application.name:-vi-agent-core}</Property>
+        <Property name="APP_LOG_PATH">${sys:LOG_PATH:-logs}</Property>
+        <Property name="APP_LOG_FILE_NAME">${sys:LOG_FILE_NAME:-${APP_NAME}}</Property>
+        <Property name="APP_LOG_MAX_SIZE">${sys:LOG_MAX_SIZE:-20 MB}</Property>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p [%t] %c{1.} - %m [traceId=%X{traceId:-NA}, runId=%X{runId:-NA}, sessionId=%X{sessionId:-NA}]%n%throwable</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+
+        <RollingFile name="RollingFile"
+                     fileName="${APP_LOG_PATH}/${APP_LOG_FILE_NAME}.log"
+                     filePattern="${APP_LOG_PATH}/archive/${APP_LOG_FILE_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="${APP_LOG_MAX_SIZE}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="com.vi.agent.core" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Logger>
+
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Root>
+    </Loggers>
+</Configuration>

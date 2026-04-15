@@ -7,8 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Type;
 import java.util.Objects;
@@ -16,9 +15,8 @@ import java.util.Objects;
 /**
  * Json 工具。
  */
+@Slf4j
 public final class JsonUtils {
-
-    private static final Logger log = LoggerFactory.getLogger(JsonUtils.class);
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 

@@ -46,6 +46,8 @@
 
 其中，LangChain4j 在当前阶段仅放置于 `infra` 侧作为基础设施依赖，不主导 `runtime` 的核心抽象设计。
 
+当前公共能力层已落地 `JsonUtils`、`ValidationUtils`、ID 生成器与公共异常等基础能力；后续新增可复用公共逻辑时，应继续沿用“统一沉淀到 `common` 模块、由上层复用”的方式演进。
+
 ---
 
 ## 3. 总体分层（逻辑视图）
@@ -84,7 +86,7 @@
 ### 3.4 基础设施层（`infrastructure/`）
 - **`provider/`**：LLM、Embedding、Rerank 等模型能力统一抽象。
 - **`persistence/`**：数据库、Redis、Transcript、Artifact 等存储访问。
-- **`observability/`**：日志、Trace、Metrics 收口（Phase 4 重点）。
+- **`observability/`**：日志、Trace、Metrics 收口（Phase 4 重点）。当前日志输出统一通过 SLF4J 门面，日志实现与格式策略统一由 `vi-agent-core-app/src/main/resources/log4j2-spring.xml` 管理。
 - **`integration/`**：未来外部系统、MCP、第三方服务适配点。
 
 这一层承接旧项目中“远端调用/配置/队列/监控视为架构组成部分”的经验，但在新项目中必须通过标准接口和适配层接入，而不是静态工具类分散调用。
@@ -93,6 +95,12 @@
 - **职责**：定义跨层共享的 POJO/Record 契约（如 `Message`、`ToolCall`、`AgentRun`、`ConversationTranscript`）。
 - **约束**：协议模型、运行时模型、持久化模型应语义分层，不得混用。
 - **借鉴来源**：旧项目中 request / response / info / entity / enum 的领域建模习惯，但在新项目中需要更明确地区分协议对象、运行态对象和持久化对象。
+
+### 3.6 公共能力层（`common/`）
+- **职责**：承载轻量、无状态、可跨模块复用的基础能力，如公共异常、ID 生成器、校验工具、JSON 工具等。
+- **当前落地内容**：`AgentRuntimeException`、`ErrorCode`、`IdGenerator`、`TraceIdGenerator`、`RunIdGenerator`、`JsonUtils`、`ValidationUtils`。
+- **边界约束**：`common` 只能提供通用能力，不得承载业务编排、Runtime 调度、外部依赖装配或容器生命周期逻辑。
+- **工具类规则**：类似 `JsonUtils` 这类可复用公共逻辑，应统一沉淀在 `common/util` 中供各模块复用，避免在 `runtime`、`infra`、`app` 内重复实现同类逻辑。
 
 ---
 

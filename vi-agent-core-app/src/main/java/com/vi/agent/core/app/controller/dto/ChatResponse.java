@@ -1,8 +1,15 @@
 package com.vi.agent.core.app.controller.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
  * 聊天响应 DTO。
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ChatResponse {
 
     /** 链路追踪 ID。 */
@@ -14,36 +21,4 @@ public class ChatResponse {
     /** 助手输出内容。 */
     private String content;
 
-    public ChatResponse() {
-    }
-
-    public ChatResponse(String traceId, String runId, String content) {
-        this.traceId = traceId;
-        this.runId = runId;
-        this.content = content;
-    }
-
-    public String getTraceId() {
-        return traceId;
-    }
-
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
-    }
-
-    public String getRunId() {
-        return runId;
-    }
-
-    public void setRunId(String runId) {
-        this.runId = runId;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    public void setContent(String content) {
-        this.content = content;
-    }
 }
