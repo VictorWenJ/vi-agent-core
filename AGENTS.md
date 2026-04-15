@@ -83,7 +83,8 @@
 - **框架**：Spring Boot 3.x, Spring WebFlux
 - **AI 集成**：LangChain4j（仅作为模型调用与工具集成基础设施，不主导 Runtime Core 的分层和抽象设计）
 - **构建工具**：Maven
-- **数据库**：MySQL / H2 (开发期)
+- **数据库**：MySQL
+- **缓存数据库**：Redis
 - **容器**：Docker Compose
 - **日志实现**：SLF4J 门面 + Log4j2（统一使用 `log4j2-spring.xml` 维护日志策略）
 - **代码简化**：Lombok（按场景使用 `@Slf4j`、`@Getter`、`@Setter`、`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@RequiredArgsConstructor` 等注解）

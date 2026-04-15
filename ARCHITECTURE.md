@@ -21,7 +21,8 @@
 
 ## 2. 架构定位
 
-`vi-agent-core` 旨在构建一个**逻辑分布式、职责可分**的 Agent Runtime Framework。当前阶段（Phase 1）为单体应用，但内部严格按逻辑服务边界设计，为未来物理拆分预留接缝。
+`vi-agent-core` 旨在构建一个**逻辑分布式、职责可分**的 Agent Runtime Framework。
+当前阶段（Phase 1）为单体应用，但内部严格按逻辑服务边界设计，为未来物理拆分预留接缝。
 
 核心借鉴思想：
 - **Claude Code / Agent SDK**：Agent Loop、Tool Use、Skills、Subagents、Runtime Kernel。
