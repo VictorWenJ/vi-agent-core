@@ -47,7 +47,7 @@ class DeepSeekProviderTest {
     void generateShouldThrowWhenProviderFailed() {
         DeepSeekProvider provider = new DeepSeekProvider(
             buildProperties(),
-            new DeepSeekProvider.DeepSeekHttpExecutor() {
+            new DeepSeekHttpExecutor() {
                 @Override
                 public String post(String url, String apiKey, String body, int timeoutMs) {
                     throw new RuntimeException("network down");
@@ -99,7 +99,7 @@ class DeepSeekProviderTest {
         );
     }
 
-    private static class FakeExecutor implements DeepSeekProvider.DeepSeekHttpExecutor {
+    private static class FakeExecutor implements DeepSeekHttpExecutor {
 
         private final String responseBody;
 

@@ -2,6 +2,7 @@ package com.vi.agent.core.app.service;
 
 import com.vi.agent.core.app.controller.dto.ChatRequest;
 import com.vi.agent.core.app.controller.dto.ChatResponse;
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.runtime.orchestrator.RuntimeExecutionResult;
 import com.vi.agent.core.runtime.orchestrator.RuntimeOrchestrator;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,8 @@ public class ChatService {
     public Mono<ChatResponse> chat(ChatRequest request) {
         return Mono.fromSupplier(() -> {
             RuntimeExecutionResult result = runtimeOrchestrator.execute(request.getSessionId(), request.getMessage());
-            log.info("ChatService runtime done sessionId={} runId={}", request.getSessionId(), result.getRunId());
+            log.info("ChatService chat result={}", JsonUtils.toJson(result));
+
             return ChatResponse.builder()
                 .traceId(result.getTraceId())
                 .runId(result.getRunId())

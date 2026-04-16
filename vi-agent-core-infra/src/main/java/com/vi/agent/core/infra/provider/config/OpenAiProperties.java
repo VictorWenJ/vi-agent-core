@@ -4,26 +4,26 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * DeepSeek 配置。
+ * OpenAI Provider 配置。
  */
 @Getter
 @Setter
-public class DeepSeekProperties {
+public class OpenAiProperties {
 
     /**
      * API Key。
      */
-    private String apiKey = "sk-8f20b04bdf1849bb96c78c38948bf8b4";
+    private String apiKey;
 
     /**
      * 模型名称。
      */
-    private String model = "deepseek-chat";
+    private String model;
 
     /**
      * Base URL。
      */
-    private String baseUrl = "https://api.deepseek.com";
+    private String baseUrl = "https://api.openai.com/v1";
 
     /**
      * Chat API 路径。

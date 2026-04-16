@@ -3,6 +3,7 @@ package com.vi.agent.core.app.controller;
 import com.vi.agent.core.app.controller.dto.ChatRequest;
 import com.vi.agent.core.app.controller.dto.ChatResponseChunk;
 import com.vi.agent.core.app.service.StreamingChatService;
+import com.vi.agent.core.common.util.JsonUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +29,7 @@ public class StreamController {
 
     @PostMapping
     public Flux<ServerSentEvent<ChatResponseChunk>> stream(@Valid @RequestBody ChatRequest request) {
-        log.info("StreamController stream received sessionId={}", request.getSessionId());
+        log.info("StreamController stream received request={}", JsonUtils.toJson(request));
         return streamingChatService.stream(request);
     }
 }

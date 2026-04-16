@@ -1,11 +1,14 @@
 package com.vi.agent.core.model.message;
 
+import lombok.Getter;
+
 import java.time.Instant;
 import java.util.UUID;
 
 /**
  * 消息基础实现。
  */
+@Getter
 public abstract class BaseMessage implements Message {
 
     /** 消息 ID。 */
@@ -29,25 +32,5 @@ public abstract class BaseMessage implements Message {
         this.role = role;
         this.content = content;
         this.createdAt = createdAt == null ? Instant.now() : createdAt;
-    }
-
-    @Override
-    public String getMessageId() {
-        return messageId;
-    }
-
-    @Override
-    public String getRole() {
-        return role;
-    }
-
-    @Override
-    public String getContent() {
-        return content;
-    }
-
-    @Override
-    public Instant getCreatedAt() {
-        return createdAt;
     }
 }

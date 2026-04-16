@@ -20,13 +20,13 @@ public class DefaultAgentLoopEngine implements AgentLoopEngine {
 
     @Override
     public AssistantMessage run(AgentRunContext runContext) {
-        log.info("AgentLoopEngine run iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
+        log.info("DefaultAgentLoopEngine run iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
         return llmGateway.generate(runContext);
     }
 
     @Override
     public AssistantMessage runStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
-        log.info("AgentLoopEngine stream iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
+        log.info("DefaultAgentLoopEngine runStreaming iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
         return llmGateway.generateStreaming(runContext, chunkConsumer);
     }
 }

@@ -1,10 +1,10 @@
-package com.vi.agent.core.infra.provider;
+package com.vi.agent.core.infra.provider.vo;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
-import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
+import com.vi.agent.core.infra.provider.LlmProvider;
 import com.vi.agent.core.infra.provider.model.*;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
@@ -22,20 +22,18 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * DeepSeek Provider 实现。
+ * OpenAI 协议兼容 Provider 的公共基类。
  */
 @Slf4j
-public class DeepSeekProvider implements LlmProvider {
+public abstract class AbstractOpenAiCompatibleProvider implements LlmProvider {
 
-    private final DeepSeekProperties properties;
-    private final DeepSeekHttpExecutor httpExecutor;
+    protected final LlmHttpExecutor httpExecutor;
 
-    public DeepSeekProvider(DeepSeekProperties properties) {
-        this(properties, new JdkDeepSeekHttpExecutor(properties));
+    protected AbstractOpenAiCompatibleProvider() {
+        this(new JdkLlmHttpExecutor());
     }
 
-    DeepSeekProvider(DeepSeekProperties properties, DeepSeekHttpExecutor httpExecutor) {
-        this.properties = properties;
+    protected AbstractOpenAiCompatibleProvider(LlmHttpExecutor httpExecutor) {
         this.httpExecutor = httpExecutor;
     }
 
@@ -45,21 +43,33 @@ public class DeepSeekProvider implements LlmProvider {
 
         ApiChatRequest request = buildRequest(runContext, false);
         String payload = JsonUtils.toJson(request);
-        log.info("DeepSeekProvider generate payload={}",payload);
 
         try {
-            String responseBody = httpExecutor.post(endpoint(), properties.getApiKey(), payload, properties.getReadTimeoutMs());
+            log.info("{} sync request start runId={} sessionId={} iteration={}",
+                providerName(), runContext.getRunId(), runContext.getSessionId(), runContext.getIteration());
+
+            String responseBody = httpExecutor.post(
+                endpoint(),
+                defaultHeaders(),
+                payload,
+                requestOptions()
+            );
             return parseAssistantMessage(responseBody, runContext.getTurnId());
         } catch (AgentRuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "DeepSeek 同步调用失败", e);
+            throw new AgentRuntimeException(
+                ErrorCode.PROVIDER_CALL_FAILED,
+                providerName() + " 同步调用失败",
+                e
+            );
         }
     }
 
     @Override
     public AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
         assertConfigured();
+
         ApiChatRequest request = buildRequest(runContext, true);
         String payload = JsonUtils.toJson(request);
 
@@ -67,45 +77,70 @@ public class DeepSeekProvider implements LlmProvider {
         Map<String, ToolCall> toolCallMap = new LinkedHashMap<>();
 
         try {
-            log.info("DeepSeek stream start runId={} sessionId={} iteration={}",
-                runContext.getRunId(), runContext.getSessionId(), runContext.getIteration());
-            httpExecutor.postStream(endpoint(), properties.getApiKey(), payload, properties.getReadTimeoutMs(), line -> {
-                if (line == null || line.isBlank() || !line.startsWith("data:")) {
-                    return;
-                }
-                String data = line.substring("data:".length()).trim();
-                if ("[DONE]".equals(data)) {
-                    return;
-                }
-                ApiStreamResponse streamResponse = JsonUtils.jsonToBean(data, ApiStreamResponse.class);
-                if (streamResponse == null || streamResponse.getChoices() == null) {
-                    return;
-                }
-                for (ApiStreamChoice choice : streamResponse.getChoices()) {
-                    ApiDelta delta = choice.getDelta();
-                    if (delta == null) {
-                        continue;
-                    }
-                    if (delta.getContent() != null && !delta.getContent().isBlank()) {
-                        fullContent.append(delta.getContent());
-                        if (chunkConsumer != null) {
-                            chunkConsumer.accept(delta.getContent());
-                        }
-                    }
-                    collectToolCalls(toolCallMap, delta.getToolCalls(), runContext.getTurnId());
-                }
-            });
+            log.info("{} stream request start runId={} sessionId={} iteration={}",
+                providerName(), runContext.getRunId(), runContext.getSessionId(), runContext.getIteration());
+
+            httpExecutor.postStream(
+                endpoint(),
+                defaultHeaders(),
+                payload,
+                requestOptions(),
+                line -> handleStreamLine(line, runContext.getTurnId(), fullContent, toolCallMap, chunkConsumer)
+            );
+
             return new AssistantMessage(fullContent.toString(), new ArrayList<>(toolCallMap.values()));
         } catch (AgentRuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "DeepSeek 流式调用失败", e);
+            throw new AgentRuntimeException(
+                ErrorCode.PROVIDER_CALL_FAILED,
+                providerName() + " 流式调用失败",
+                e
+            );
         }
     }
 
-    private ApiChatRequest buildRequest(AgentRunContext runContext, boolean stream) {
+    protected void handleStreamLine(
+        String line,
+        String defaultTurnId,
+        StringBuilder fullContent,
+        Map<String, ToolCall> toolCallMap,
+        Consumer<String> chunkConsumer
+    ) {
+        if (line == null || line.isBlank() || !line.startsWith("data:")) {
+            return;
+        }
+
+        String data = line.substring("data:".length()).trim();
+        if ("[DONE]".equals(data)) {
+            return;
+        }
+
+        ApiStreamResponse streamResponse = JsonUtils.jsonToBean(data, ApiStreamResponse.class);
+        if (streamResponse == null || streamResponse.getChoices() == null) {
+            return;
+        }
+
+        for (ApiStreamChoice choice : streamResponse.getChoices()) {
+            ApiDelta delta = choice.getDelta();
+            if (delta == null) {
+                continue;
+            }
+
+            if (delta.getContent() != null && !delta.getContent().isBlank()) {
+                fullContent.append(delta.getContent());
+                if (chunkConsumer != null) {
+                    chunkConsumer.accept(delta.getContent());
+                }
+            }
+
+            collectToolCalls(toolCallMap, delta.getToolCalls(), defaultTurnId);
+        }
+    }
+
+    protected ApiChatRequest buildRequest(AgentRunContext runContext, boolean stream) {
         ApiChatRequest request = new ApiChatRequest();
-        request.setModel(properties.getModel());
+        request.setModel(model());
         request.setStream(stream);
 
         List<ApiMessage> apiMessages = new ArrayList<>();
@@ -131,13 +166,15 @@ public class DeepSeekProvider implements LlmProvider {
                 request.setToolChoice("auto");
             }
         }
+
         return request;
     }
 
-    private ApiMessage toApiMessage(Message message) {
+    protected ApiMessage toApiMessage(Message message) {
         if (message == null) {
             return null;
         }
+
         ApiMessage apiMessage = new ApiMessage();
         apiMessage.setRole(message.getRole());
         apiMessage.setContent(message.getContent());
@@ -149,18 +186,21 @@ public class DeepSeekProvider implements LlmProvider {
             }
             apiMessage.setToolCalls(apiToolCalls);
         }
+
         if (message instanceof ToolExecutionMessage toolExecutionMessage) {
             apiMessage.setToolCallId(toolExecutionMessage.getToolCallId());
             apiMessage.setName(toolExecutionMessage.getToolName());
             apiMessage.setContent(toolExecutionMessage.getToolOutput());
         }
+
         return apiMessage;
     }
 
-    private ApiToolDefinition toApiToolDefinition(ToolDefinition definition) {
+    protected ApiToolDefinition toApiToolDefinition(ToolDefinition definition) {
         if (definition == null || definition.getName() == null || definition.getName().isBlank()) {
             return null;
         }
+
         ApiToolDefinition apiToolDefinition = new ApiToolDefinition();
         apiToolDefinition.setType("function");
 
@@ -178,78 +218,119 @@ public class DeepSeekProvider implements LlmProvider {
         return apiToolDefinition;
     }
 
-    private ApiToolCall toApiToolCall(ToolCall toolCall) {
+    protected ApiToolCall toApiToolCall(ToolCall toolCall) {
         ApiToolCall apiToolCall = new ApiToolCall();
         apiToolCall.setId(toolCall.getToolCallId());
         apiToolCall.setType("function");
+
         ApiFunction function = new ApiFunction();
         function.setName(toolCall.getToolName());
         function.setArguments(Optional.ofNullable(toolCall.getArgumentsJson()).orElse("{}"));
         apiToolCall.setFunction(function);
+
         return apiToolCall;
     }
 
-    private AssistantMessage parseAssistantMessage(String body, String defaultTurnId) {
+    protected AssistantMessage parseAssistantMessage(String body, String defaultTurnId) {
         ApiChatResponse response = JsonUtils.jsonToBean(body, ApiChatResponse.class);
         if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "DeepSeek 返回为空");
+            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " 返回为空");
         }
 
         ApiMessage message = response.getChoices().get(0).getMessage();
         if (message == null) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "DeepSeek 返回缺少 message");
+            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " 返回缺少 message");
         }
 
-        List<ToolCall> toolCalls = new ArrayList<>();
         Map<String, ToolCall> toolCallMap = new LinkedHashMap<>();
         collectToolCalls(toolCallMap, message.getToolCalls(), defaultTurnId);
-        toolCalls.addAll(toolCallMap.values());
 
-        return new AssistantMessage(Optional.ofNullable(message.getContent()).orElse(""), toolCalls);
+        return new AssistantMessage(
+            Optional.ofNullable(message.getContent()).orElse(""),
+            new ArrayList<>(toolCallMap.values())
+        );
     }
 
-    private void collectToolCalls(Map<String, ToolCall> toolCallMap, List<ApiToolCall> apiToolCalls, String defaultTurnId) {
+    protected void collectToolCalls(
+        Map<String, ToolCall> toolCallMap,
+        List<ApiToolCall> apiToolCalls,
+        String defaultTurnId
+    ) {
         if (apiToolCalls == null || apiToolCalls.isEmpty()) {
             return;
         }
+
         for (ApiToolCall apiToolCall : apiToolCalls) {
             if (apiToolCall == null || apiToolCall.getFunction() == null) {
                 continue;
             }
+
             String toolName = apiToolCall.getFunction().getName();
             if (toolName == null || toolName.isBlank()) {
                 continue;
             }
+
             String toolCallId = apiToolCall.getId();
             if (toolCallId == null || toolCallId.isBlank()) {
-                toolCallId = "tc-ds-" + toolCallMap.size();
+                toolCallId = "tc-" + providerName().toLowerCase() + "-" + toolCallMap.size();
             }
+
             ToolCall toolCall = ToolCall.builder()
                 .toolCallId(toolCallId)
                 .toolName(toolName)
                 .argumentsJson(Optional.ofNullable(apiToolCall.getFunction().getArguments()).orElse("{}"))
                 .turnId(defaultTurnId)
                 .build();
+
             toolCallMap.put(toolCallId, toolCall);
         }
     }
 
-    private String endpoint() {
-        String base = Optional.ofNullable(properties.getBaseUrl()).orElse("").trim();
-        String path = Optional.ofNullable(properties.getChatPath()).orElse("/chat/completions").trim();
+    protected String endpoint() {
+        String base = Optional.ofNullable(baseUrl()).orElse("").trim();
+        String path = Optional.ofNullable(chatPath()).orElse("/api/v3/chat/completions").trim();
+
         if (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
         if (!path.startsWith("/")) {
             path = "/" + path;
         }
+
         return base + path;
     }
 
-    private void assertConfigured() {
-        ValidationUtils.requireNonBlank(properties.getBaseUrl(), "deepseek.baseUrl");
-        ValidationUtils.requireNonBlank(properties.getApiKey(), "deepseek.apiKey");
-        ValidationUtils.requireNonBlank(properties.getModel(), "deepseek.model");
+    protected Map<String, String> defaultHeaders() {
+        return Map.of(
+            "Content-Type", "application/json",
+            "Authorization", "Bearer " + apiKey()
+        );
     }
 
+    protected HttpRequestOptions requestOptions() {
+        return HttpRequestOptions.builder()
+            .connectTimeoutMs(connectTimeoutMs())
+            .readTimeoutMs(readTimeoutMs())
+            .build();
+    }
+
+    protected void assertConfigured() {
+        ValidationUtils.requireNonBlank(baseUrl(), providerName() + ".baseUrl");
+        ValidationUtils.requireNonBlank(apiKey(), providerName() + ".apiKey");
+        ValidationUtils.requireNonBlank(model(), providerName() + ".model");
+    }
+
+    protected abstract String providerName();
+
+    protected abstract String baseUrl();
+
+    protected abstract String chatPath();
+
+    protected abstract String apiKey();
+
+    protected abstract String model();
+
+    protected abstract int connectTimeoutMs();
+
+    protected abstract int readTimeoutMs();
 }

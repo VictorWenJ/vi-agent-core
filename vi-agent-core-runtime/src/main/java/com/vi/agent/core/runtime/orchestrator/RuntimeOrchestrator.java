@@ -8,8 +8,9 @@ import com.vi.agent.core.common.id.RunIdGenerator;
 import com.vi.agent.core.common.id.ToolCallIdGenerator;
 import com.vi.agent.core.common.id.TraceIdGenerator;
 import com.vi.agent.core.common.id.TurnIdGenerator;
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
-import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.*;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.runtime.AgentRunContext;
@@ -151,20 +152,11 @@ public class RuntimeOrchestrator {
      * @param eventConsumer 事件消费器
      * @return 执行结果
      */
-    public RuntimeExecutionResult executeStreaming(
-        String sessionId,
-        String userInput,
-        Consumer<RuntimeStreamEvent> eventConsumer
-    ) {
+    public RuntimeExecutionResult executeStreaming(String sessionId, String userInput, Consumer<RuntimeStreamEvent> eventConsumer) {
         return executeInternal(sessionId, userInput, eventConsumer, true);
     }
 
-    private RuntimeExecutionResult executeInternal(
-        String sessionId,
-        String userInput,
-        Consumer<RuntimeStreamEvent> eventConsumer,
-        boolean streaming
-    ) {
+    private RuntimeExecutionResult executeInternal(String sessionId, String userInput, Consumer<RuntimeStreamEvent> eventConsumer, boolean streaming) {
         ValidationUtils.requireNonBlank(sessionId, "sessionId");
         ValidationUtils.requireNonBlank(userInput, "userInput");
 
@@ -172,11 +164,14 @@ public class RuntimeOrchestrator {
         String runId = runIdGenerator.nextId();
         String turnId = turnIdGenerator.nextId();
 
+        // 1.获取上下文，没有就构建
         ConversationTranscript transcript = transcriptStore.load(sessionId)
             .orElseGet(() -> new ConversationTranscript(sessionId, conversationIdGenerator.nextId()));
+        log.info("RuntimeOrchestrator executeInternal transcript={}", JsonUtils.toJson(transcript));
         if (transcript.getConversationId() == null || transcript.getConversationId().isBlank()) {
             transcript.setConversationId(conversationIdGenerator.nextId());
         }
+
         String conversationId = transcript.getConversationId();
 
         String previousTraceId = MDC.get(MDC_TRACE_ID);
@@ -194,7 +189,7 @@ public class RuntimeOrchestrator {
 
         AgentRunContext runContext = null;
         try {
-            log.info("Runtime run start traceId={} runId={} sessionId={} conversationId={} turnId={}",
+            log.info("executeInternal executeInternal runtime run start traceId={} runId={} sessionId={} conversationId={} turnId={}",
                 traceId, runId, sessionId, conversationId, turnId);
 
             transcript.setTraceId(traceId);
@@ -202,9 +197,14 @@ public class RuntimeOrchestrator {
 
             UserMessage userMessage = new UserMessage(messageIdGenerator.nextId(), userInput);
             MDC.put(MDC_MESSAGE_ID, userMessage.getMessageId());
-            List<com.vi.agent.core.model.message.Message> workingMessages = contextAssembler.assemble(transcript, userMessage);
+
+            // 2.萃集历史上下文
+            List<Message> workingMessages = contextAssembler.assemble(transcript, userMessage);
+            log.info("RuntimeOrchestrator executeInternal workingMessages={}", JsonUtils.toJson(workingMessages));
+
             transcript.appendMessage(userMessage);
 
+            // 3.本次运行上下文
             runContext = new AgentRunContext(
                 traceId,
                 runId,
@@ -217,7 +217,9 @@ public class RuntimeOrchestrator {
                 transcript,
                 RunState.STARTED
             );
+            log.info("RuntimeOrchestrator executeInternal runContext={}", JsonUtils.toJson(runContext));
 
+            // 4.流式事件构建
             safeEmit(eventConsumer, RuntimeStreamEvent.builder()
                 .type(RuntimeStreamEventType.START)
                 .traceId(traceId)
@@ -230,9 +232,12 @@ public class RuntimeOrchestrator {
                 .build());
 
             AssistantMessage finalAssistant = null;
+            // 5.循环执行
             for (int iteration = 1; iteration <= maxIterations; iteration++) {
+                //设置循环执行轮次
                 runContext.setIteration(iteration);
-                log.info("Runtime loop iteration={} traceId={} runId={} turnId={}", iteration, traceId, runId, turnId);
+                log.info("RuntimeOrchestrator executeInternal runtime loop iteration={} traceId={} runId={} turnId={}", iteration, traceId, runId, turnId);
+
                 safeEmit(eventConsumer, RuntimeStreamEvent.builder()
                     .type(RuntimeStreamEventType.ITERATION)
                     .traceId(traceId)
@@ -244,6 +249,7 @@ public class RuntimeOrchestrator {
                     .done(false)
                     .build());
 
+                // 6.流式输出：runStreaming；同步输出：run
                 AssistantMessage assistantMessage = streaming
                     ? agentLoopEngine.runStreaming(runContext, chunk -> safeEmit(eventConsumer, RuntimeStreamEvent.builder()
                         .type(RuntimeStreamEventType.TOKEN)
@@ -256,6 +262,7 @@ public class RuntimeOrchestrator {
                         .done(false)
                         .build()))
                     : agentLoopEngine.run(runContext);
+                log.info("RuntimeOrchestrator executeInternal assistantMessage={}", JsonUtils.toJson(assistantMessage));
 
                 AssistantMessage normalizedAssistant = normalizeAssistantMessage(assistantMessage);
                 MDC.put(MDC_MESSAGE_ID, normalizedAssistant.getMessageId());

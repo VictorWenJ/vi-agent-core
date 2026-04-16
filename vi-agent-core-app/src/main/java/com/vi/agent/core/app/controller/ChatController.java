@@ -3,6 +3,7 @@ package com.vi.agent.core.app.controller;
 import com.vi.agent.core.app.controller.dto.ChatRequest;
 import com.vi.agent.core.app.controller.dto.ChatResponse;
 import com.vi.agent.core.app.service.ChatService;
+import com.vi.agent.core.common.util.JsonUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class ChatController {
 
     @PostMapping
     public Mono<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
-        log.info("ChatController chat received sessionId={}", request.getSessionId());
+        log.info("ChatController chat received request={}", JsonUtils.toJson(request));
         return chatService.chat(request);
     }
 }
