@@ -1,4 +1,4 @@
-package com.vi.agent.core.app.api.config;
+package com.vi.agent.core.app.config;
 
 import com.vi.agent.core.common.id.*;
 import org.springframework.context.annotation.Bean;

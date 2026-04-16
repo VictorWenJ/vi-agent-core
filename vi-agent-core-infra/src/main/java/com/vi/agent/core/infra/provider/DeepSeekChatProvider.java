@@ -1,7 +1,7 @@
 package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
-import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
+import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
 
 /**

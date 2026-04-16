@@ -18,7 +18,7 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     @Override
     public AssistantMessage run(AgentRunContext runContext) {
-        log.info("DefaultAgentLoopEngine run iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
+        log.info("SimpleAgentLoopEngine run iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
         return llmGateway.generate(runContext);
     }
 }

@@ -1,4 +1,4 @@
-package com.vi.agent.core.app.api.application;
+package com.vi.agent.core.app.application;
 
 import com.vi.agent.core.app.api.dto.request.ChatRequest;
 import com.vi.agent.core.app.api.dto.response.ChatResponse;

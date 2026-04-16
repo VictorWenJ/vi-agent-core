@@ -1,10 +1,6 @@
 package com.vi.agent.core.infra.persistence.entity;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.Instant;
 
@@ -18,27 +14,43 @@ import java.time.Instant;
 @AllArgsConstructor
 public class RedisTranscriptEntity {
 
-    /** 会话 ID。 */
+    /**
+     * 会话 ID。
+     */
     private String sessionId;
 
-    /** 会话链路 ID。 */
+    /**
+     * 会话链路 ID。
+     */
     private String conversationId;
 
-    /** 链路追踪 ID。 */
+    /**
+     * 链路追踪 ID。
+     */
     private String traceId;
 
-    /** 运行 ID。 */
+    /**
+     * 运行 ID。
+     */
     private String runId;
 
-    /** 消息列表 JSON。 */
+    /**
+     * 消息列表 JSON。
+     */
     private String messagesJson;
 
-    /** 工具调用列表 JSON。 */
+    /**
+     * 工具调用列表 JSON。
+     */
     private String toolCallsJson;
 
-    /** 工具结果列表 JSON。 */
+    /**
+     * 工具结果列表 JSON。
+     */
     private String toolResultsJson;
 
-    /** 更新时间。 */
+    /**
+     * 更新时间。
+     */
     private Instant updatedAt;
 }

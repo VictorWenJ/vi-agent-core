@@ -274,7 +274,7 @@ public class RuntimeOrchestrator {
                     .done(false)
                     .build());
 
-                // 6.流式输出：streamAgentLoopEngine；同步输出：agentLoopEngine
+                // 6.同步输出：agentLoopEngine
                 AssistantMessage assistantMessage;
                 assistantMessage = agentLoopEngine.run(runContext);
                 log.info("RuntimeOrchestrator executeInternal assistantMessage={}", JsonUtils.toJson(assistantMessage));

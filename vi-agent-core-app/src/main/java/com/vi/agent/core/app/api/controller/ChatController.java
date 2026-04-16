@@ -2,7 +2,7 @@ package com.vi.agent.core.app.api.controller;
 
 import com.vi.agent.core.app.api.dto.request.ChatRequest;
 import com.vi.agent.core.app.api.dto.response.ChatResponse;
-import com.vi.agent.core.app.api.application.ChatApplicationService;
+import com.vi.agent.core.app.application.ChatApplicationService;
 import com.vi.agent.core.common.util.JsonUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

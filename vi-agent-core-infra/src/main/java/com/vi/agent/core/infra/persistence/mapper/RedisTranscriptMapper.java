@@ -2,7 +2,7 @@ package com.vi.agent.core.infra.persistence.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.vi.agent.core.common.util.JsonUtils;
-import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
+import com.vi.agent.core.infra.persistence.entity.RedisTranscriptEntity;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
@@ -32,12 +32,12 @@ public class RedisTranscriptMapper {
      * @param transcript Transcript 模型
      * @return 持久化实体
      */
-    public RedisTranscriptProperties.ConversationTranscriptEntity toEntity(ConversationTranscript transcript) {
+    public RedisTranscriptEntity toEntity(ConversationTranscript transcript) {
         List<PersistedMessage> persistedMessages = new ArrayList<>();
         for (Message message : transcript.getMessages()) {
             persistedMessages.add(toPersistedMessage(message));
         }
-        return RedisTranscriptProperties.ConversationTranscriptEntity.builder()
+        return RedisTranscriptEntity.builder()
             .sessionId(transcript.getSessionId())
             .conversationId(transcript.getConversationId())
             .traceId(transcript.getTraceId())
@@ -55,7 +55,7 @@ public class RedisTranscriptMapper {
      * @param entity 持久化实体
      * @return Transcript 模型
      */
-    public ConversationTranscript toModel(RedisTranscriptProperties.ConversationTranscriptEntity entity) {
+    public ConversationTranscript toModel(RedisTranscriptEntity entity) {
         ConversationTranscript transcript = new ConversationTranscript(entity.getSessionId(), entity.getConversationId());
         transcript.setTraceId(entity.getTraceId());
         transcript.setRunId(entity.getRunId());

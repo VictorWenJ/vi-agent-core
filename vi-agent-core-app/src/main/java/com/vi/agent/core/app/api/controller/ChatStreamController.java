@@ -2,7 +2,7 @@ package com.vi.agent.core.app.api.controller;
 
 import com.vi.agent.core.app.api.dto.request.ChatRequest;
 import com.vi.agent.core.app.api.dto.response.ChatStreamEvent;
-import com.vi.agent.core.app.api.application.ChatStreamApplicationService;
+import com.vi.agent.core.app.application.ChatStreamApplicationService;
 import com.vi.agent.core.common.util.JsonUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ public class ChatStreamController {
 
     @PostMapping
     public Flux<ServerSentEvent<ChatStreamEvent>> stream(@Valid @RequestBody ChatRequest request) {
-        log.info("StreamController stream received request={}", JsonUtils.toJson(request));
+        log.info("ChatStreamController stream received request={}", JsonUtils.toJson(request));
         return chatStreamApplicationService.stream(request);
     }
 }

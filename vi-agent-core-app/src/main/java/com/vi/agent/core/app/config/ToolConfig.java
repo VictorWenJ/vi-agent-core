@@ -1,4 +1,4 @@
-package com.vi.agent.core.app.api.config;
+package com.vi.agent.core.app.config;
 
 import com.vi.agent.core.infra.integration.mock.MockReadOnlyTools;
 import com.vi.agent.core.runtime.tool.DefaultToolGateway;

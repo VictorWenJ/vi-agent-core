@@ -1,4 +1,4 @@
-package com.vi.agent.core.app.api.config.properties;
+package com.vi.agent.core.app.config.properties;
 
 import lombok.Getter;
 import lombok.Setter;

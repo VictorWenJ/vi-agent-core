@@ -4,6 +4,7 @@ import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.ValidationUtils;
 import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
+import com.vi.agent.core.infra.persistence.entity.RedisTranscriptEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -35,7 +36,7 @@ public class RedisTranscriptRepository implements TranscriptRepository {
     private final RedisTranscriptProperties properties;
 
     @Override
-    public Optional<RedisTranscriptProperties.ConversationTranscriptEntity> findBySessionId(String sessionId) {
+    public Optional<RedisTranscriptEntity> findBySessionId(String sessionId) {
         ValidationUtils.requireNonBlank(sessionId, "sessionId");
         try {
             String key = redisKey(sessionId);
@@ -43,7 +44,7 @@ public class RedisTranscriptRepository implements TranscriptRepository {
             if (map == null || map.isEmpty()) {
                 return Optional.empty();
             }
-            RedisTranscriptProperties.ConversationTranscriptEntity entity = RedisTranscriptProperties.ConversationTranscriptEntity.builder()
+            RedisTranscriptEntity entity = RedisTranscriptEntity.builder()
                 .sessionId(sessionId)
                 .conversationId(asString(map.get(FIELD_CONVERSATION_ID)))
                 .traceId(asString(map.get(FIELD_TRACE_ID)))
@@ -61,7 +62,7 @@ public class RedisTranscriptRepository implements TranscriptRepository {
     }
 
     @Override
-    public void save(RedisTranscriptProperties.ConversationTranscriptEntity entity) {
+    public void save(RedisTranscriptEntity entity) {
         ValidationUtils.requireNonBlank(entity.getSessionId(), "sessionId");
         try {
             String key = redisKey(entity.getSessionId());

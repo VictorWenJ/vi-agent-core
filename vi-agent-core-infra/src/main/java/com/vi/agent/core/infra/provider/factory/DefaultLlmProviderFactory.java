@@ -6,10 +6,10 @@ import com.vi.agent.core.infra.provider.DeepSeekChatProvider;
 import com.vi.agent.core.infra.provider.DoubaoChatProvider;
 import com.vi.agent.core.infra.provider.LlmProvider;
 import com.vi.agent.core.infra.provider.OpenAIChatProvider;
-import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
+import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
 import com.vi.agent.core.infra.provider.config.DoubaoProperties;
-import com.vi.agent.core.infra.provider.config.OpenAiProperties;
+import com.vi.agent.core.infra.provider.config.OpenAIProperties;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -20,13 +20,13 @@ public class DefaultLlmProviderFactory {
 
     private final DeepSeekProperties deepSeekProperties;
     private final DoubaoProperties doubaoProperties;
-    private final OpenAiProperties openAiProperties;
+    private final OpenAIProperties openAIProperties;
     private final LlmHttpExecutor httpExecutor;
 
-    public DefaultLlmProviderFactory(DeepSeekProperties deepSeekProperties, DoubaoProperties doubaoProperties, OpenAiProperties openAiProperties, LlmHttpExecutor httpExecutor) {
+    public DefaultLlmProviderFactory(DeepSeekProperties deepSeekProperties, DoubaoProperties doubaoProperties, OpenAIProperties openAIProperties, LlmHttpExecutor httpExecutor) {
         this.deepSeekProperties = deepSeekProperties;
         this.doubaoProperties = doubaoProperties;
-        this.openAiProperties = openAiProperties;
+        this.openAIProperties = openAIProperties;
         this.httpExecutor = httpExecutor;
     }
 
@@ -44,7 +44,7 @@ public class DefaultLlmProviderFactory {
             }
             case "openai" -> {
                 log.info("Create LlmProvider: openai");
-                yield new OpenAIChatProvider(openAiProperties, httpExecutor);
+                yield new OpenAIChatProvider(openAIProperties, httpExecutor);
             }
             default -> throw new AgentRuntimeException(
                 ErrorCode.PROVIDER_CONFIG_INVALID_FAILED,

@@ -1,4 +1,4 @@
-package com.vi.agent.core.infra.provider.common;
+package com.vi.agent.core.infra.provider.http;
 
 import lombok.Builder;
 import lombok.Getter;

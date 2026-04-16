@@ -1,8 +1,6 @@
 spring:
   application:
     name: vi-agent-core
-  profiles:
-    active: dev
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -27,7 +25,7 @@ vi:
         default-provider: deepseek
 
       deepseek:
-        api-key: ${DEEPSEEK_API_KEY:}
+        api-key: ${DEEPSEEK_API_KEY:sk-8f20b04bdf1849bb96c78c38948bf8b4}
         model: ${DEEPSEEK_MODEL:deepseek-chat}
         base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
         chat-path: /chat/completions
@@ -35,7 +33,7 @@ vi:
         read-timeout-ms: 60000
 
       doubao:
-        api-key: ${DOUBAO_API_KEY:}
+        api-key: ${DOUBAO_API_KEY:45fcac73-1c33-4ba7-b0e1-4bfd96f40271}
         model: ${DOUBAO_MODEL:doubao-seed-1-6-250615}
         base-url: ${DOUBAO_BASE_URL:https://ark.cn-beijing.volces.com}
         chat-path: /api/v3/chat/completions

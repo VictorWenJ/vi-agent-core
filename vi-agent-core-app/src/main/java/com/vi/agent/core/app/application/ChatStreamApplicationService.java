@@ -1,4 +1,4 @@
-package com.vi.agent.core.app.api.application;
+package com.vi.agent.core.app.application;
 
 import com.vi.agent.core.app.api.dto.request.ChatRequest;
 import com.vi.agent.core.app.api.dto.response.ChatStreamEvent;
@@ -43,7 +43,7 @@ public class ChatStreamApplicationService {
                 });
                 sink.complete();
             } catch (Exception e) {
-                log.error("StreamingChatService stream failed sessionId={}", request.getSessionId(), e);
+                log.error("ChatStreamApplicationService stream failed sessionId={}", request.getSessionId(), e);
                 sink.error(e);
             }
         }));

@@ -1,17 +1,17 @@
 package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
-import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
-import com.vi.agent.core.infra.provider.config.OpenAiProperties;
+import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
+import com.vi.agent.core.infra.provider.config.OpenAIProperties;
 
 /**
  * OpenAI Provider 实现。
  */
 public class OpenAIChatProvider extends OpenAICompatibleChatProvider {
 
-    private final OpenAiProperties properties;
+    private final OpenAIProperties properties;
 
-    public OpenAIChatProvider(OpenAiProperties properties, LlmHttpExecutor httpExecutor) {
+    public OpenAIChatProvider(OpenAIProperties properties, LlmHttpExecutor httpExecutor) {
         super(httpExecutor);
         this.properties = properties;
     }

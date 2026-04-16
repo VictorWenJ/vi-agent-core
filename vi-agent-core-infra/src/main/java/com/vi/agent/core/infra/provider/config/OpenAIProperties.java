@@ -8,7 +8,7 @@ import lombok.Setter;
  */
 @Getter
 @Setter
-public class OpenAiProperties {
+public class OpenAIProperties {
 
     /**
      * API Key。

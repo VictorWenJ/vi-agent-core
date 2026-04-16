@@ -4,7 +4,7 @@ import com.vi.agent.core.app.api.advice.GlobalExceptionHandler;
 import com.vi.agent.core.app.api.controller.ChatController;
 import com.vi.agent.core.app.api.dto.request.ChatRequest;
 import com.vi.agent.core.app.api.dto.response.ChatResponse;
-import com.vi.agent.core.app.api.application.ChatApplicationService;
+import com.vi.agent.core.app.application.ChatApplicationService;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import org.junit.jupiter.api.Test;

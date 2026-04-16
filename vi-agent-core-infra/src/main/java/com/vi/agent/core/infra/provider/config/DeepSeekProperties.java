@@ -13,7 +13,7 @@ public class DeepSeekProperties {
     /**
      * API Key。
      */
-    private String apiKey = "sk-8f20b04bdf1849bb96c78c38948bf8b4";
+    private String apiKey = "";
 
     /**
      * 模型名称。

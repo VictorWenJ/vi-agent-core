@@ -1,4 +1,4 @@
-package com.vi.agent.core.app.api.config;
+package com.vi.agent.core.app.config;
 
 import com.vi.agent.core.infra.observability.NoopRuntimeMetricsCollector;
 import com.vi.agent.core.infra.observability.RuntimeMetricsCollector;

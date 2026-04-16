@@ -4,7 +4,7 @@ import com.vi.agent.core.app.api.advice.GlobalExceptionHandler;
 import com.vi.agent.core.app.api.controller.ChatStreamController;
 import com.vi.agent.core.app.api.dto.request.ChatRequest;
 import com.vi.agent.core.app.api.dto.response.ChatStreamEvent;
-import com.vi.agent.core.app.api.application.ChatStreamApplicationService;
+import com.vi.agent.core.app.application.ChatStreamApplicationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;

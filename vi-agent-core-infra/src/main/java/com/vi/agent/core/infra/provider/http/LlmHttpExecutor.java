@@ -1,4 +1,4 @@
-package com.vi.agent.core.infra.provider.common;
+package com.vi.agent.core.infra.provider.http;
 
 import java.util.Map;
 import java.util.function.Consumer;

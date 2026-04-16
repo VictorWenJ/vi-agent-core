@@ -1,13 +1,13 @@
-package com.vi.agent.core.app.api.config;
+package com.vi.agent.core.app.config;
 
 import com.vi.agent.core.infra.provider.LlmProvider;
 import com.vi.agent.core.infra.provider.factory.DefaultLlmProviderFactory;
-import com.vi.agent.core.infra.provider.common.JdkLlmHttpExecutor;
-import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
+import com.vi.agent.core.infra.provider.http.JdkLlmHttpExecutor;
+import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
 import com.vi.agent.core.infra.provider.config.DoubaoProperties;
-import com.vi.agent.core.infra.provider.config.OpenAiProperties;
-import com.vi.agent.core.app.api.config.properties.ProviderRoutingProperties;
+import com.vi.agent.core.infra.provider.config.OpenAIProperties;
+import com.vi.agent.core.app.config.properties.ProviderRoutingProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,8 +29,8 @@ public class ProviderConfig {
 
     @Bean
     @ConfigurationProperties(prefix = "vi.agent.provider.openai")
-    public OpenAiProperties openAiProperties() {
-        return new OpenAiProperties();
+    public OpenAIProperties openAIProperties() {
+        return new OpenAIProperties();
     }
 
     @Bean
@@ -48,13 +48,13 @@ public class ProviderConfig {
     public DefaultLlmProviderFactory llmProviderFactory(
         DeepSeekProperties deepSeekProperties,
         DoubaoProperties doubaoProperties,
-        OpenAiProperties openAiProperties,
+        OpenAIProperties openAIProperties,
         LlmHttpExecutor llmHttpExecutor
     ) {
         return new DefaultLlmProviderFactory(
             deepSeekProperties,
             doubaoProperties,
-            openAiProperties,
+            openAIProperties,
             llmHttpExecutor
         );
     }

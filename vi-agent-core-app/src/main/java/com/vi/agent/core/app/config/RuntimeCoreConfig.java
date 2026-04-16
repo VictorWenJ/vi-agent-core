@@ -1,6 +1,6 @@
-package com.vi.agent.core.app.api.config;
+package com.vi.agent.core.app.config;
 
-import com.vi.agent.core.app.api.config.properties.RuntimeProperties;
+import com.vi.agent.core.app.config.properties.RuntimeProperties;
 import com.vi.agent.core.common.id.ConversationIdGenerator;
 import com.vi.agent.core.common.id.MessageIdGenerator;
 import com.vi.agent.core.common.id.RunIdGenerator;
