@@ -1,18 +1,19 @@
 package com.vi.agent.core.infra.provider.model;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.Data;
 
 import java.util.List;
 
-@Getter
-@Setter
-@NoArgsConstructor
+/**
+ * 流式块响应。
+ */
+@Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiStreamResponse {
 
     /**
-     * 候选列表。
+     * 流式 choice 列表。
      */
     private List<ApiStreamChoice> choices;
 }

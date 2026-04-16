@@ -16,11 +16,16 @@ import com.vi.agent.core.infra.persistence.TranscriptStoreService;
 import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
 import com.vi.agent.core.infra.provider.DeepSeekProvider;
 import com.vi.agent.core.infra.provider.LlmProvider;
+import com.vi.agent.core.infra.provider.common.JdkLlmHttpExecutor;
+import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
+import com.vi.agent.core.infra.provider.config.DoubaoProperties;
+import com.vi.agent.core.infra.provider.config.OpenAiProperties;
 import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.context.SimpleContextAssembler;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
 import com.vi.agent.core.runtime.engine.DefaultAgentLoopEngine;
+import com.vi.agent.core.runtime.engine.StreamAgentLoopEngine;
 import com.vi.agent.core.runtime.orchestrator.RuntimeOrchestrator;
 import com.vi.agent.core.runtime.port.TranscriptStore;
 import com.vi.agent.core.runtime.tool.DefaultToolGateway;
@@ -77,6 +82,18 @@ public class RuntimeBeanConfig {
     }
 
     @Bean
+    @ConfigurationProperties(prefix = "vi.agent.provider.doubao")
+    public DoubaoProperties doubaoProperties() {
+        return new DoubaoProperties();
+    }
+
+    @Bean
+    @ConfigurationProperties(prefix = "vi.agent.provider.openai")
+    public OpenAiProperties openAiProperties() {
+        return new OpenAiProperties();
+    }
+
+    @Bean
     @ConfigurationProperties(prefix = "vi.agent.transcript.redis")
     public RedisTranscriptProperties redisTranscriptProperties() {
         return new RedisTranscriptProperties();
@@ -86,6 +103,26 @@ public class RuntimeBeanConfig {
     @ConfigurationProperties(prefix = "vi.agent.runtime")
     public RuntimeProperties runtimeProperties() {
         return new RuntimeProperties();
+    }
+
+    @Bean
+    public LlmHttpExecutor llmHttpExecutor() {
+        return new JdkLlmHttpExecutor();
+    }
+
+    @Bean
+    public LlmProviderFactory llmProviderFactory(
+        DeepSeekProperties deepSeekProperties,
+        DoubaoProperties doubaoProperties,
+        OpenAiProperties openAiProperties,
+        LlmHttpExecutor llmHttpExecutor
+    ) {
+        return new LlmProviderFactory(
+            deepSeekProperties,
+            doubaoProperties,
+            openAiProperties,
+            llmHttpExecutor
+        );
     }
 
     @Bean
@@ -111,8 +148,11 @@ public class RuntimeBeanConfig {
     }
 
     @Bean
-    public LlmProvider llmProvider(DeepSeekProperties deepSeekProperties) {
-        return new DeepSeekProvider(deepSeekProperties);
+    public LlmProvider llmProvider(
+        LlmProviderFactory llmProviderFactory,
+        ProviderRoutingProperties providerRoutingProperties
+    ) {
+        return llmProviderFactory.create(providerRoutingProperties.getDefaultProvider());
     }
 
     @Bean

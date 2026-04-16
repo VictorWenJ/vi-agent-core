@@ -17,15 +17,4 @@ public interface AgentLoopEngine {
      * @return 助手消息
      */
     AssistantMessage run(AgentRunContext runContext);
-
-    /**
-     * 执行单次 Agent Loop 流式推理。
-     *
-     * @param runContext 运行上下文
-     * @param chunkConsumer 分片消费器
-     * @return 助手消息
-     */
-    default AssistantMessage runStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
-        return run(runContext);
-    }
 }

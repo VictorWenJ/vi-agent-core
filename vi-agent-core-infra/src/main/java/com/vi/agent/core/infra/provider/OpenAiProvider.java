@@ -1,40 +1,58 @@
 package com.vi.agent.core.infra.provider;
 
-import com.vi.agent.core.model.message.AssistantMessage;
-import com.vi.agent.core.model.runtime.AgentRunContext;
-import com.vi.agent.core.model.tool.ToolCall;
-import lombok.extern.slf4j.Slf4j;
-
-import java.util.List;
-import java.util.function.Consumer;
+import com.vi.agent.core.infra.provider.common.AbstractOpenAiCompatibleProvider;
+import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
+import com.vi.agent.core.infra.provider.config.OpenAiProperties;
 
 /**
- * OpenAI Provider 占位实现（保留扩展位）。
+ * OpenAI Provider 实现。
  */
-@Slf4j
-public class OpenAiProvider implements LlmProvider {
+public class OpenAiProvider extends AbstractOpenAiCompatibleProvider {
 
-    @Override
-    public AssistantMessage generate(AgentRunContext runContext) {
-        log.info("OpenAiProvider placeholder generate, sessionId={}", runContext.getSessionId());
-        if (runContext.getUserInput().toLowerCase().contains("time")) {
-            ToolCall toolCall = ToolCall.builder()
-                .toolCallId("tc-openai-placeholder")
-                .toolName("get_time")
-                .argumentsJson("{}")
-                .turnId(runContext.getTurnId())
-                .build();
-            return new AssistantMessage("检测到时间查询，准备调用工具。", List.of(toolCall));
-        }
-        return new AssistantMessage("OpenAI 占位回复: " + runContext.getUserInput());
+    private final OpenAiProperties properties;
+
+    public OpenAiProvider(OpenAiProperties properties, LlmHttpExecutor httpExecutor) {
+        super(httpExecutor);
+        this.properties = properties;
     }
 
     @Override
-    public AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
-        AssistantMessage result = generate(runContext);
-        if (chunkConsumer != null) {
-            chunkConsumer.accept(result.getContent());
-        }
-        return result;
+    protected String providerName() {
+        return "OpenAi";
+    }
+
+    @Override
+    protected String providerKey() {
+        return "";
+    }
+
+    @Override
+    protected String baseUrl() {
+        return properties.getBaseUrl();
+    }
+
+    @Override
+    protected String chatPath() {
+        return properties.getChatPath();
+    }
+
+    @Override
+    protected String apiKey() {
+        return properties.getApiKey();
+    }
+
+    @Override
+    protected String model() {
+        return properties.getModel();
+    }
+
+    @Override
+    protected int connectTimeoutMs() {
+        return properties.getConnectTimeoutMs();
+    }
+
+    @Override
+    protected int readTimeoutMs() {
+        return properties.getReadTimeoutMs();
     }
 }

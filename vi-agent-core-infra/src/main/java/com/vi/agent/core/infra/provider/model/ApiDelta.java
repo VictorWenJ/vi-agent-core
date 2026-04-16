@@ -1,15 +1,16 @@
 package com.vi.agent.core.infra.provider.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
 
 import java.util.List;
 
-@Getter
-@Setter
-@NoArgsConstructor
+/**
+ * 流式 delta。
+ */
+@Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiDelta {
 
     /**
@@ -18,7 +19,13 @@ public class ApiDelta {
     private String content;
 
     /**
-     * 增量工具调用。
+     * 推理内容。
+     */
+    @JsonProperty("reasoning_content")
+    private String reasoningContent;
+
+    /**
+     * 工具调用增量。
      */
     @JsonProperty("tool_calls")
     private List<ApiToolCall> toolCalls;

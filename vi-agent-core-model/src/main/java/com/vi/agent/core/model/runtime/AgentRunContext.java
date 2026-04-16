@@ -3,6 +3,9 @@ package com.vi.agent.core.model.runtime;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import com.vi.agent.core.model.transcript.ConversationTranscript;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,6 +14,8 @@ import java.util.List;
 /**
  * Agent 一次运行的上下文。
  */
+@Setter
+@Getter
 public class AgentRunContext {
 
     /** 链路追踪 ID。 */
@@ -70,61 +75,9 @@ public class AgentRunContext {
         this.runState = runState;
     }
 
-    public String getTraceId() {
-        return traceId;
-    }
-
-    public String getRunId() {
-        return runId;
-    }
-
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public String getConversationId() {
-        return conversationId;
-    }
-
-    public String getTurnId() {
-        return turnId;
-    }
-
-    public String getUserInput() {
-        return userInput;
-    }
-
-    public List<Message> getWorkingMessages() {
-        return Collections.unmodifiableList(workingMessages);
-    }
-
     public void appendWorkingMessage(Message message) {
         if (message != null) {
             this.workingMessages.add(message);
         }
-    }
-
-    public List<ToolDefinition> getAvailableTools() {
-        return Collections.unmodifiableList(availableTools);
-    }
-
-    public ConversationTranscript getTranscript() {
-        return transcript;
-    }
-
-    public RunState getRunState() {
-        return runState;
-    }
-
-    public void setRunState(RunState runState) {
-        this.runState = runState;
-    }
-
-    public int getIteration() {
-        return iteration;
-    }
-
-    public void setIteration(int iteration) {
-        this.iteration = iteration;
     }
 }

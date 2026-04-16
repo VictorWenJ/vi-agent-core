@@ -1,22 +1,28 @@
 package com.vi.agent.core.infra.provider.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter
-@Setter
-@NoArgsConstructor
+/**
+ * 流式 choice。
+ */
+@Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiStreamChoice {
 
     /**
-     * 增量消息。
+     * 索引。
+     */
+    private Integer index;
+
+    /**
+     * 增量内容。
      */
     private ApiDelta delta;
 
     /**
-     * 结束原因。
+     * 完成原因。
      */
     @JsonProperty("finish_reason")
     private String finishReason;

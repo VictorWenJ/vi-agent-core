@@ -1,12 +1,13 @@
 package com.vi.agent.core.infra.provider.model;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
 
-@Getter
-@Setter
-@NoArgsConstructor
+/**
+ * Function 定义或调用信息。
+ */
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiFunction {
 
     /**
@@ -20,12 +21,12 @@ public class ApiFunction {
     private String description;
 
     /**
-     * 参数 schema。
+     * 函数参数 schema。
      */
     private Object parameters;
 
     /**
-     * 参数 JSON 字符串。
+     * 函数参数 JSON 字符串。
      */
     private String arguments;
 }

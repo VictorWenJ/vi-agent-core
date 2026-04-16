@@ -1,4 +1,4 @@
-package com.vi.agent.core.infra.provider.vo;
+package com.vi.agent.core.infra.provider.common;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
@@ -18,63 +18,44 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
- * 基于 JDK HttpClient 的公共执行器。
+ * 基于 JDK HttpClient 的公共 HTTP 执行器。
  */
 @Slf4j
 public class JdkLlmHttpExecutor implements LlmHttpExecutor {
 
     /**
-     * 按 connectTimeout 复用 HttpClient，避免每次 new。
+     * 按连接超时复用 HttpClient，避免每次请求重复创建。
      */
     private final ConcurrentHashMap<Integer, HttpClient> clientCache = new ConcurrentHashMap<>();
 
     @Override
     public String post(String url, Map<String, String> headers, String body, HttpRequestOptions options) throws Exception {
         HttpClient httpClient = getOrCreateClient(options);
-
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(Duration.ofMillis(Math.max(1000, options.getReadTimeoutMs())))
-            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body, StandardCharsets.UTF_8));
-
-        applyHeaders(builder, headers);
-
-        HttpRequest request = builder.build();
+        HttpRequest request = buildPostRequest(url, headers, body, options, false);
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new AgentRuntimeException(
-                ErrorCode.PROVIDER_CALL_FAILED,
-                "HTTP status=" + response.statusCode() + ", body=" + response.body()
-            );
-        }
-
+        assertSuccess(url, response.statusCode(), response.body());
         return response.body();
     }
 
     @Override
-    public void postStream(String url, Map<String, String> headers, String body, HttpRequestOptions options, Consumer<String> lineConsumer) throws Exception {
+    public void postStream(
+        String url,
+        Map<String, String> headers,
+        String body,
+        HttpRequestOptions options,
+        Consumer<String> lineConsumer
+    ) throws Exception {
         HttpClient httpClient = getOrCreateClient(options);
-
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(Duration.ofMillis(Math.max(1000, options.getReadTimeoutMs())))
-            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body, StandardCharsets.UTF_8));
-
-        applyHeaders(builder, headers);
-
-        HttpRequest request = builder.build();
-        HttpResponse<InputStream> response = httpClient.send(
-            request,
-            HttpResponse.BodyHandlers.ofInputStream()
-        );
+        HttpRequest request = buildPostRequest(url, headers, body, options, true);
+        HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String bodyText;
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
-                bodyText = reader.lines().reduce("", (a, b) -> a + b);
+                bodyText = reader.lines().reduce("", (left, right) -> left + right);
             }
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "HTTP stream status=" + response.statusCode() + ", body=" + bodyText);
+            assertSuccess(url, response.statusCode(), bodyText);
+            return;
         }
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
@@ -89,11 +70,31 @@ public class JdkLlmHttpExecutor implements LlmHttpExecutor {
 
     private HttpClient getOrCreateClient(HttpRequestOptions options) {
         int connectTimeoutMs = Math.max(1000, options.getConnectTimeoutMs());
-        return clientCache.computeIfAbsent(connectTimeoutMs, timeout ->
-            HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(timeout))
+        return clientCache.computeIfAbsent(
+            connectTimeoutMs,
+            timeoutMs -> HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(timeoutMs))
                 .build()
         );
+    }
+
+    private HttpRequest buildPostRequest(
+        String url,
+        Map<String, String> headers,
+        String body,
+        HttpRequestOptions options,
+        boolean stream
+    ) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofMillis(Math.max(1000, options.getReadTimeoutMs())))
+            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body, StandardCharsets.UTF_8));
+
+        if (stream) {
+            builder.header("Accept", "text/event-stream");
+        }
+        applyHeaders(builder, headers);
+        return builder.build();
     }
 
     private void applyHeaders(HttpRequest.Builder builder, Map<String, String> headers) {
@@ -105,5 +106,16 @@ public class JdkLlmHttpExecutor implements LlmHttpExecutor {
                 builder.header(entry.getKey(), entry.getValue());
             }
         }
+    }
+
+    private void assertSuccess(String url, int statusCode, String body) {
+        if (statusCode >= 200 && statusCode < 300) {
+            return;
+        }
+        log.error("LlmHttpExecutor request failed, url={}, statusCode={}, body={}", url, statusCode, body);
+        throw new AgentRuntimeException(
+            ErrorCode.PROVIDER_CALL_FAILED,
+            "HTTP request failed, statusCode=" + statusCode + ", body=" + body
+        );
     }
 }

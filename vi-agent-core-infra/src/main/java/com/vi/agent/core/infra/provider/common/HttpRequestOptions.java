@@ -1,4 +1,4 @@
-package com.vi.agent.core.infra.provider.vo;
+package com.vi.agent.core.infra.provider.common;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -11,12 +11,12 @@ import lombok.Getter;
 public class HttpRequestOptions {
 
     /**
-     * 连接超时时间，单位毫秒。
+     * 连接超时，单位毫秒。
      */
     private final int connectTimeoutMs;
 
     /**
-     * 读取超时时间，单位毫秒。
+     * 读取超时，单位毫秒。
      */
     private final int readTimeoutMs;
 }

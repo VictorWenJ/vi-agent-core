@@ -1,12 +1,15 @@
 package com.vi.agent.core.infra.provider.model;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
 
-@Getter
-@Setter
-@NoArgsConstructor
+/**
+ * 工具调用对象。
+ */
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiToolCall {
 
     /**
@@ -15,7 +18,12 @@ public class ApiToolCall {
     private String id;
 
     /**
-     * 调用类型。
+     * 流式工具调用序号。
+     */
+    private Integer index;
+
+    /**
+     * 工具类型。
      */
     private String type;
 

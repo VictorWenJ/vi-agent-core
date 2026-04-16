@@ -20,6 +20,7 @@ import com.vi.agent.core.model.tool.ToolResult;
 import com.vi.agent.core.model.transcript.ConversationTranscript;
 import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
+import com.vi.agent.core.runtime.engine.StreamAgentLoopEngine;
 import com.vi.agent.core.runtime.port.TranscriptStore;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import lombok.extern.slf4j.Slf4j;
@@ -47,42 +48,70 @@ public class RuntimeOrchestrator {
     private static final String MDC_MESSAGE_ID = "messageId";
     private static final String MDC_TOOL_CALL_ID = "toolCallId";
 
-    /** 上下文装配器。 */
+    /**
+     * 上下文装配器。
+     */
     private final ContextAssembler contextAssembler;
 
-    /** Agent Loop 引擎。 */
+    /**
+     * Agent Loop 引擎。
+     */
     private final AgentLoopEngine agentLoopEngine;
 
-    /** 工具网关。 */
+    /**
+     * Agent Loop 引擎。
+     */
+    private final StreamAgentLoopEngine streamAgentLoopEngine;
+
+    /**
+     * 工具网关。
+     */
     private final ToolGateway toolGateway;
 
-    /** Transcript 存储接口。 */
+    /**
+     * Transcript 存储接口。
+     */
     private final TranscriptStore transcriptStore;
 
-    /** traceId 生成器。 */
+    /**
+     * traceId 生成器。
+     */
     private final TraceIdGenerator traceIdGenerator;
 
-    /** runId 生成器。 */
+    /**
+     * runId 生成器。
+     */
     private final RunIdGenerator runIdGenerator;
 
-    /** conversationId 生成器。 */
+    /**
+     * conversationId 生成器。
+     */
     private final ConversationIdGenerator conversationIdGenerator;
 
-    /** turnId 生成器。 */
+    /**
+     * turnId 生成器。
+     */
     private final TurnIdGenerator turnIdGenerator;
 
-    /** messageId 生成器。 */
+    /**
+     * messageId 生成器。
+     */
     private final MessageIdGenerator messageIdGenerator;
 
-    /** toolCallId 生成器。 */
+    /**
+     * toolCallId 生成器。
+     */
     private final ToolCallIdGenerator toolCallIdGenerator;
 
-    /** 最大循环次数。 */
+    /**
+     * 最大循环次数。
+     */
     private final int maxIterations;
 
     public RuntimeOrchestrator(
         ContextAssembler contextAssembler,
         AgentLoopEngine agentLoopEngine,
+        StreamAgentLoopEngine streamAgentLoopEngine,
         ToolGateway toolGateway,
         TranscriptStore transcriptStore,
         TraceIdGenerator traceIdGenerator,
@@ -94,7 +123,7 @@ public class RuntimeOrchestrator {
     ) {
         this(
             contextAssembler,
-            agentLoopEngine,
+            agentLoopEngine, streamAgentLoopEngine,
             toolGateway,
             transcriptStore,
             traceIdGenerator,
@@ -109,7 +138,7 @@ public class RuntimeOrchestrator {
 
     public RuntimeOrchestrator(
         ContextAssembler contextAssembler,
-        AgentLoopEngine agentLoopEngine,
+        AgentLoopEngine agentLoopEngine, StreamAgentLoopEngine streamAgentLoopEngine,
         ToolGateway toolGateway,
         TranscriptStore transcriptStore,
         TraceIdGenerator traceIdGenerator,
@@ -122,6 +151,7 @@ public class RuntimeOrchestrator {
     ) {
         this.contextAssembler = contextAssembler;
         this.agentLoopEngine = agentLoopEngine;
+        this.streamAgentLoopEngine = streamAgentLoopEngine;
         this.toolGateway = toolGateway;
         this.transcriptStore = transcriptStore;
         this.traceIdGenerator = traceIdGenerator;
@@ -147,8 +177,8 @@ public class RuntimeOrchestrator {
     /**
      * 执行一次流式会话。
      *
-     * @param sessionId 会话 ID
-     * @param userInput 用户输入
+     * @param sessionId     会话 ID
+     * @param userInput     用户输入
      * @param eventConsumer 事件消费器
      * @return 执行结果
      */
@@ -249,9 +279,10 @@ public class RuntimeOrchestrator {
                     .done(false)
                     .build());
 
-                // 6.流式输出：runStreaming；同步输出：run
-                AssistantMessage assistantMessage = streaming
-                    ? agentLoopEngine.runStreaming(runContext, chunk -> safeEmit(eventConsumer, RuntimeStreamEvent.builder()
+                // 6.流式输出：streamAgentLoopEngine；同步输出：agentLoopEngine
+                AssistantMessage assistantMessage;
+                if (streaming) {
+                    assistantMessage = streamAgentLoopEngine.run(runContext, chunk -> safeEmit(eventConsumer, RuntimeStreamEvent.builder()
                         .type(RuntimeStreamEventType.TOKEN)
                         .traceId(traceId)
                         .runId(runId)
@@ -260,8 +291,10 @@ public class RuntimeOrchestrator {
                         .turnId(turnId)
                         .content(chunk)
                         .done(false)
-                        .build()))
-                    : agentLoopEngine.run(runContext);
+                        .build()));
+                } else {
+                    assistantMessage = agentLoopEngine.run(runContext);
+                }
                 log.info("RuntimeOrchestrator executeInternal assistantMessage={}", JsonUtils.toJson(assistantMessage));
 
                 AssistantMessage normalizedAssistant = normalizeAssistantMessage(assistantMessage);

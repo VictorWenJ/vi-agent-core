@@ -1,12 +1,13 @@
 package com.vi.agent.core.infra.provider.model;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
 
-@Getter
-@Setter
-@NoArgsConstructor
+/**
+ * 工具定义。
+ */
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiToolDefinition {
 
     /**

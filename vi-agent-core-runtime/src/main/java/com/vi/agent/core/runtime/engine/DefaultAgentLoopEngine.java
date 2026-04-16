@@ -13,7 +13,7 @@ import java.util.function.Consumer;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class DefaultAgentLoopEngine implements AgentLoopEngine {
+public class DefaultAgentLoopEngine implements AgentLoopEngine, StreamAgentLoopEngine {
 
     /** 模型调用网关。 */
     private final LlmGateway llmGateway;
@@ -25,8 +25,8 @@ public class DefaultAgentLoopEngine implements AgentLoopEngine {
     }
 
     @Override
-    public AssistantMessage runStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
-        log.info("DefaultAgentLoopEngine runStreaming iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
+    public AssistantMessage run(AgentRunContext runContext, Consumer<String> chunkConsumer) {
+        log.info("DefaultAgentLoopEngine run Streaming iteration={} turnId={}", runContext.getIteration(), runContext.getTurnId());
         return llmGateway.generateStreaming(runContext, chunkConsumer);
     }
 }

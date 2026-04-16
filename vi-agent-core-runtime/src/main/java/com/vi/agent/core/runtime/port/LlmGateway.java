@@ -25,7 +25,5 @@ public interface LlmGateway {
      * @param chunkConsumer 分片消费器
      * @return 助手消息
      */
-    default AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
-        return generate(runContext);
-    }
+    AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer);
 }

@@ -1,20 +1,15 @@
 package com.vi.agent.core.infra.provider;
 
+import com.vi.agent.core.infra.provider.common.AbstractOpenAiCompatibleProvider;
+import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DoubaoProperties;
-import com.vi.agent.core.infra.provider.vo.AbstractOpenAiCompatibleProvider;
-import com.vi.agent.core.infra.provider.vo.LlmHttpExecutor;
 
 /**
- * Doubao Provider 实现。
+ * 豆包 Provider 实现。
  */
 public class DoubaoProvider extends AbstractOpenAiCompatibleProvider {
 
     private final DoubaoProperties properties;
-
-    public DoubaoProvider(DoubaoProperties properties) {
-        super();
-        this.properties = properties;
-    }
 
     public DoubaoProvider(DoubaoProperties properties, LlmHttpExecutor httpExecutor) {
         super(httpExecutor);
@@ -24,6 +19,11 @@ public class DoubaoProvider extends AbstractOpenAiCompatibleProvider {
     @Override
     protected String providerName() {
         return "Doubao";
+    }
+
+    @Override
+    protected String providerKey() {
+        return "";
     }
 
     @Override
