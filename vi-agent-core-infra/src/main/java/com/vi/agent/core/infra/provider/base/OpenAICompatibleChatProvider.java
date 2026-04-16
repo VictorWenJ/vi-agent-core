@@ -17,11 +17,7 @@ import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Consumer;
 
 /**
@@ -50,9 +46,9 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
         String payload = JsonUtils.toJson(request);
 
         try {
-            log.info("{} sync request start runId={} sessionId={} iteration={}",
-                providerName(), runContext.getRunId(), runContext.getSessionId(), runContext.getIteration());
+            log.info("OpenAICompatibleChatProvider generate payload={}", payload);
             String responseBody = httpExecutor.post(endpoint(), defaultHeaders(), payload, requestOptions());
+            log.info("OpenAICompatibleChatProvider generate responseBody={}", responseBody);
             return parseAssistantMessage(responseBody, runContext.getTurnId());
         } catch (AgentRuntimeException e) {
             throw e;
@@ -71,8 +67,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
         Map<String, StreamingToolCallAccumulator> toolCallStateMap = new LinkedHashMap<>();
 
         try {
-            log.info("{} stream request start runId={} sessionId={} iteration={}",
-                providerName(), runContext.getRunId(), runContext.getSessionId(), runContext.getIteration());
+            log.info("OpenAICompatibleChatProvider generateStreaming payload={}", payload);
             httpExecutor.postStream(
                 endpoint(),
                 defaultHeaders(),

@@ -1,11 +1,13 @@
 package com.vi.agent.core.app.config;
 
-import com.vi.agent.core.infra.persistence.repository.RedisTranscriptRepository;
-import com.vi.agent.core.infra.persistence.mapper.RedisTranscriptMapper;
-import com.vi.agent.core.infra.persistence.repository.TranscriptRepository;
 import com.vi.agent.core.infra.persistence.adapter.TranscriptStoreAdapter;
 import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
+import com.vi.agent.core.infra.persistence.mapper.RedisTranscriptMapper;
+import com.vi.agent.core.infra.persistence.repository.InMemoryTranscriptRepository;
+import com.vi.agent.core.infra.persistence.repository.RedisTranscriptRepository;
+import com.vi.agent.core.infra.persistence.repository.TranscriptRepository;
 import com.vi.agent.core.runtime.port.TranscriptStore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,7 +23,26 @@ public class PersistenceConfig {
     }
 
     @Bean
-    public TranscriptRepository transcriptRepository(StringRedisTemplate stringRedisTemplate, RedisTranscriptProperties redisTranscriptProperties) {
+    @ConditionalOnProperty(
+        prefix = "vi.agent.transcript",
+        name = "store-type",
+        havingValue = "memory"
+    )
+    public TranscriptRepository inMemoryTranscriptRepository() {
+        return new InMemoryTranscriptRepository();
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+        prefix = "vi.agent.transcript",
+        name = "store-type",
+        havingValue = "redis",
+        matchIfMissing = true
+    )
+    public TranscriptRepository redisTranscriptRepository(
+        StringRedisTemplate stringRedisTemplate,
+        RedisTranscriptProperties redisTranscriptProperties
+    ) {
         return new RedisTranscriptRepository(stringRedisTemplate, redisTranscriptProperties);
     }
 

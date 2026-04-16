@@ -2,11 +2,13 @@ package com.vi.agent.core.infra.persistence.repository;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
 import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
-import com.vi.agent.core.infra.persistence.entity.RedisTranscriptEntity;
+import com.vi.agent.core.infra.persistence.entity.TranscriptEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Instant;
@@ -36,15 +38,17 @@ public class RedisTranscriptRepository implements TranscriptRepository {
     private final RedisTranscriptProperties properties;
 
     @Override
-    public Optional<RedisTranscriptEntity> findBySessionId(String sessionId) {
+    public Optional<TranscriptEntity> findBySessionId(String sessionId) {
         ValidationUtils.requireNonBlank(sessionId, "sessionId");
         try {
             String key = redisKey(sessionId);
+
             Map<Object, Object> map = redisTemplate.opsForHash().entries(key);
-            if (map == null || map.isEmpty()) {
+            if (MapUtils.isEmpty(map)) {
                 return Optional.empty();
             }
-            RedisTranscriptEntity entity = RedisTranscriptEntity.builder()
+
+            TranscriptEntity entity = TranscriptEntity.builder()
                 .sessionId(sessionId)
                 .conversationId(asString(map.get(FIELD_CONVERSATION_ID)))
                 .traceId(asString(map.get(FIELD_TRACE_ID)))
@@ -54,7 +58,8 @@ public class RedisTranscriptRepository implements TranscriptRepository {
                 .toolResultsJson(asString(map.get(FIELD_TOOL_RESULTS)))
                 .updatedAt(parseInstant(asString(map.get(FIELD_UPDATED_AT))))
                 .build();
-            log.info("RedisTranscriptRepository load success sessionId={} key={}", sessionId, key);
+
+            log.info("RedisTranscriptRepository findBySessionId finished sessionId={} key={} entity={}", sessionId, key, JsonUtils.toJson(entity));
             return Optional.of(entity);
         } catch (Exception e) {
             throw new AgentRuntimeException(ErrorCode.TRANSCRIPT_STORE_FAILED, "Redis 读取 transcript 失败", e);
@@ -62,10 +67,13 @@ public class RedisTranscriptRepository implements TranscriptRepository {
     }
 
     @Override
-    public void save(RedisTranscriptEntity entity) {
+    public void save(TranscriptEntity entity) {
         ValidationUtils.requireNonBlank(entity.getSessionId(), "sessionId");
         try {
-            String key = redisKey(entity.getSessionId());
+            String sessionId = entity.getSessionId();
+
+            String key = redisKey(sessionId);
+
             Map<String, String> hash = new HashMap<>();
             hash.put(FIELD_CONVERSATION_ID, safe(entity.getConversationId()));
             hash.put(FIELD_TRACE_ID, safe(entity.getTraceId()));
@@ -76,7 +84,8 @@ public class RedisTranscriptRepository implements TranscriptRepository {
             hash.put(FIELD_UPDATED_AT, String.valueOf(entity.getUpdatedAt() == null ? Instant.now() : entity.getUpdatedAt()));
 
             redisTemplate.opsForHash().putAll(key, hash);
-            log.info("RedisTranscriptRepository save success sessionId={} key={}", entity.getSessionId(), key);
+
+            log.info("RedisTranscriptRepository save finished sessionId={} key={} entity={}", sessionId, key, JsonUtils.toJson(entity));
         } catch (Exception e) {
             throw new AgentRuntimeException(ErrorCode.TRANSCRIPT_STORE_FAILED, "Redis 保存 transcript 失败", e);
         }

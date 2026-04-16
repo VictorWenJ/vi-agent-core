@@ -28,7 +28,6 @@ public class ChatController {
 
     @PostMapping
     public Mono<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
-        log.info("ChatController chat received request={}", JsonUtils.toJson(request));
         return chatApplicationService.chat(request);
     }
 }

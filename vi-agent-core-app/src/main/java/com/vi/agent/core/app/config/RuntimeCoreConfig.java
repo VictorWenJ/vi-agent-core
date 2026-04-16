@@ -1,12 +1,7 @@
 package com.vi.agent.core.app.config;
 
 import com.vi.agent.core.app.config.properties.RuntimeProperties;
-import com.vi.agent.core.common.id.ConversationIdGenerator;
-import com.vi.agent.core.common.id.MessageIdGenerator;
-import com.vi.agent.core.common.id.RunIdGenerator;
-import com.vi.agent.core.common.id.ToolCallIdGenerator;
-import com.vi.agent.core.common.id.TraceIdGenerator;
-import com.vi.agent.core.common.id.TurnIdGenerator;
+import com.vi.agent.core.common.id.*;
 import com.vi.agent.core.infra.provider.LlmProvider;
 import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.context.SimpleContextAssembler;
@@ -15,10 +10,12 @@ import com.vi.agent.core.runtime.engine.SimpleAgentLoopEngine;
 import com.vi.agent.core.runtime.orchestrator.RuntimeOrchestrator;
 import com.vi.agent.core.runtime.port.TranscriptStore;
 import com.vi.agent.core.runtime.tool.ToolGateway;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+@Slf4j
 @Configuration(proxyBeanMethods = false)
 public class RuntimeCoreConfig {
 

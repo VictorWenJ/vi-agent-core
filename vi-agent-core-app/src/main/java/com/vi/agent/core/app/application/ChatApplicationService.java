@@ -24,8 +24,6 @@ public class ChatApplicationService {
     public Mono<ChatResponse> chat(ChatRequest request) {
         return Mono.fromSupplier(() -> {
             AgentExecutionResult result = runtimeOrchestrator.execute(request.getSessionId(), request.getMessage());
-            log.info("ChatService chat result={}", JsonUtils.toJson(result));
-
             return ChatResponse.builder()
                 .traceId(result.getTraceId())
                 .runId(result.getRunId())

@@ -3,13 +3,18 @@ spring:
     name: vi-agent-core
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
       database: ${REDIS_DB:0}
       timeout: 3s
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
+
+management:
+  health:
+    redis:
+      enabled: true
 
 logging:
   level:
@@ -20,9 +25,10 @@ vi:
   agent:
     runtime:
       max-iterations: 6
+
     provider:
       routing:
-        default-provider: deepseek
+        default-provider: ${DEFAULT_LLM_PROVIDER:deepseek}
 
       deepseek:
         api-key: ${DEEPSEEK_API_KEY:sk-8f20b04bdf1849bb96c78c38948bf8b4}
@@ -34,7 +40,7 @@ vi:
 
       doubao:
         api-key: ${DOUBAO_API_KEY:45fcac73-1c33-4ba7-b0e1-4bfd96f40271}
-        model: ${DOUBAO_MODEL:doubao-seed-1-6-250615}
+        model: ${DOUBAO_MODEL:doubao-seed-2-0-pro-260215}
         base-url: ${DOUBAO_BASE_URL:https://ark.cn-beijing.volces.com}
         chat-path: /api/v3/chat/completions
         connect-timeout-ms: 3000
@@ -47,6 +53,8 @@ vi:
         chat-path: /v1/chat/completions
         connect-timeout-ms: 3000
         read-timeout-ms: 60000
+
     transcript:
+      store-type: redis
       redis:
-        key-prefix: 'transcript:'
+        key-prefix: "transcript:"

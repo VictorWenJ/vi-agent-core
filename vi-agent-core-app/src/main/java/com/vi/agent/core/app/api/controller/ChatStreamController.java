@@ -29,7 +29,6 @@ public class ChatStreamController {
 
     @PostMapping
     public Flux<ServerSentEvent<ChatStreamEvent>> stream(@Valid @RequestBody ChatRequest request) {
-        log.info("ChatStreamController stream received request={}", JsonUtils.toJson(request));
         return chatStreamApplicationService.stream(request);
     }
 }

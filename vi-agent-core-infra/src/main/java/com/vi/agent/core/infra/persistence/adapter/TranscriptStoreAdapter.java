@@ -18,16 +18,19 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class TranscriptStoreAdapter implements TranscriptStore {
 
-    /** Transcript 仓储接口。 */
+    /**
+     * Transcript 仓储接口。
+     */
     private final TranscriptRepository transcriptRepository;
 
-    /** Transcript 映射器。 */
+    /**
+     * Transcript 映射器。
+     */
     private final RedisTranscriptMapper redisTranscriptMapper;
 
     @Override
     public Optional<ConversationTranscript> load(String sessionId) {
         try {
-            log.info("TranscriptStore load sessionId={}", sessionId);
             return transcriptRepository.findBySessionId(sessionId).map(redisTranscriptMapper::toModel);
         } catch (Exception e) {
             throw new AgentRuntimeException(ErrorCode.TRANSCRIPT_STORE_FAILED, "加载 transcript 失败", e);
@@ -37,12 +40,6 @@ public class TranscriptStoreAdapter implements TranscriptStore {
     @Override
     public void save(ConversationTranscript transcript) {
         try {
-            log.info("TranscriptStore save sessionId={} conversationId={} messages={} toolCalls={} toolResults={}",
-                transcript.getSessionId(),
-                transcript.getConversationId(),
-                transcript.getMessages().size(),
-                transcript.getToolCalls().size(),
-                transcript.getToolResults().size());
             transcriptRepository.save(redisTranscriptMapper.toEntity(transcript));
         } catch (Exception e) {
             throw new AgentRuntimeException(ErrorCode.TRANSCRIPT_STORE_FAILED, "保存 transcript 失败", e);

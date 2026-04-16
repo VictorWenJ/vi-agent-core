@@ -1,6 +1,6 @@
 package com.vi.agent.core.infra.persistence.repository;
 
-import com.vi.agent.core.infra.persistence.entity.RedisTranscriptEntity;
+import com.vi.agent.core.infra.persistence.entity.TranscriptEntity;
 
 import java.util.Optional;
 
@@ -15,12 +15,12 @@ public interface TranscriptRepository {
      * @param sessionId 会话 ID
      * @return 持久化实体
      */
-    Optional<RedisTranscriptEntity> findBySessionId(String sessionId);
+    Optional<TranscriptEntity> findBySessionId(String sessionId);
 
     /**
      * 保存会话 Transcript。
      *
      * @param entity 持久化实体
      */
-    void save(RedisTranscriptEntity entity);
+    void save(TranscriptEntity entity);
 }

@@ -5,7 +5,10 @@
         <Property name="APP_LOG_PATH">${sys:LOG_PATH:-logs}</Property>
         <Property name="APP_LOG_FILE_NAME">${sys:LOG_FILE_NAME:-${APP_NAME}}</Property>
         <Property name="APP_LOG_MAX_SIZE">${sys:LOG_MAX_SIZE:-20 MB}</Property>
-        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p [%t] %c{1.} - %m [traceId=%X{traceId:-NA}, runId=%X{runId:-NA}, sessionId=%X{sessionId:-NA}, conversationId=%X{conversationId:-NA}, turnId=%X{turnId:-NA}, messageId=%X{messageId:-NA}, toolCallId=%X{toolCallId:-NA}]%n%throwable</Property>
+        <Property name="LOG_PATTERN">
+            %d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%t] (%c{1}#%M:%L)
+            message=%m
+            traceMsg={"traceId":"%X{traceId}","runId":"%X{runId}","sessionId":"%X{sessionId}","conversationId":"%X{conversationId}","turnId":"%X{turnId}","messageId":"%X{messageId}","toolCallId":"%X{toolCallId}"}%n</Property>
     </Properties>
 
     <Appenders>

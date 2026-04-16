@@ -12,7 +12,7 @@ import java.time.Instant;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RedisTranscriptEntity {
+public class TranscriptEntity {
 
     /**
      * 会话 ID。

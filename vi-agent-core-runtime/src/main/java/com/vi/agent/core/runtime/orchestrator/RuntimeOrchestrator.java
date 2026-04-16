@@ -2,15 +2,11 @@ package com.vi.agent.core.runtime.orchestrator;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
-import com.vi.agent.core.common.id.ConversationIdGenerator;
-import com.vi.agent.core.common.id.MessageIdGenerator;
-import com.vi.agent.core.common.id.RunIdGenerator;
-import com.vi.agent.core.common.id.ToolCallIdGenerator;
-import com.vi.agent.core.common.id.TraceIdGenerator;
-import com.vi.agent.core.common.id.TurnIdGenerator;
+import com.vi.agent.core.common.id.*;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
-import com.vi.agent.core.model.message.*;
+import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.runtime.AgentRunContext;
@@ -115,33 +111,6 @@ public class RuntimeOrchestrator {
         ConversationIdGenerator conversationIdGenerator,
         TurnIdGenerator turnIdGenerator,
         MessageIdGenerator messageIdGenerator,
-        ToolCallIdGenerator toolCallIdGenerator
-    ) {
-        this(
-            contextAssembler,
-            agentLoopEngine,
-            toolGateway,
-            transcriptStore,
-            traceIdGenerator,
-            runIdGenerator,
-            conversationIdGenerator,
-            turnIdGenerator,
-            messageIdGenerator,
-            toolCallIdGenerator,
-            DEFAULT_MAX_ITERATIONS
-        );
-    }
-
-    public RuntimeOrchestrator(
-        ContextAssembler contextAssembler,
-        AgentLoopEngine agentLoopEngine,
-        ToolGateway toolGateway,
-        TranscriptStore transcriptStore,
-        TraceIdGenerator traceIdGenerator,
-        RunIdGenerator runIdGenerator,
-        ConversationIdGenerator conversationIdGenerator,
-        TurnIdGenerator turnIdGenerator,
-        MessageIdGenerator messageIdGenerator,
         ToolCallIdGenerator toolCallIdGenerator,
         int maxIterations
     ) {
@@ -185,17 +154,26 @@ public class RuntimeOrchestrator {
         ValidationUtils.requireNonBlank(sessionId, "sessionId");
         ValidationUtils.requireNonBlank(userInput, "userInput");
 
-        String traceId = traceIdGenerator.nextId();
+        log.info("RuntimeOrchestrator executeInternal runtime run start");
+
         String runId = runIdGenerator.nextId();
+        String traceId = traceIdGenerator.nextId();
         String turnId = turnIdGenerator.nextId();
+
+        MDC.put(MDC_RUN_ID, runId);
+        MDC.put(MDC_TURN_ID, turnId);
+        MDC.put(MDC_TRACE_ID, traceId);
+        MDC.put(MDC_SESSION_ID, sessionId);
+
+        log.info("RuntimeOrchestrator executeInternal userInput={} eventConsumer={} streaming={}", userInput, JsonUtils.toJson(eventConsumer), streaming);
 
         // 1.获取上下文，没有就构建
         ConversationTranscript transcript = transcriptStore.load(sessionId)
             .orElseGet(() -> new ConversationTranscript(sessionId, conversationIdGenerator.nextId()));
-        log.info("RuntimeOrchestrator executeInternal transcript={}", JsonUtils.toJson(transcript));
         if (transcript.getConversationId() == null || transcript.getConversationId().isBlank()) {
             transcript.setConversationId(conversationIdGenerator.nextId());
         }
+        log.info("RuntimeOrchestrator executeInternal transcript={}", JsonUtils.toJson(transcript));
 
         String conversationId = transcript.getConversationId();
 
@@ -206,17 +184,10 @@ public class RuntimeOrchestrator {
         String previousTurnId = MDC.get(MDC_TURN_ID);
         String previousMessageId = MDC.get(MDC_MESSAGE_ID);
 
-        MDC.put(MDC_TRACE_ID, traceId);
-        MDC.put(MDC_RUN_ID, runId);
-        MDC.put(MDC_SESSION_ID, sessionId);
         MDC.put(MDC_CONVERSATION_ID, conversationId);
-        MDC.put(MDC_TURN_ID, turnId);
 
         AgentRunContext runContext = null;
         try {
-            log.info("executeInternal executeInternal runtime run start traceId={} runId={} sessionId={} conversationId={} turnId={}",
-                traceId, runId, sessionId, conversationId, turnId);
-
             transcript.setTraceId(traceId);
             transcript.setRunId(runId);
 
@@ -256,12 +227,12 @@ public class RuntimeOrchestrator {
                 .done(false)
                 .build());
 
-            AssistantMessage finalAssistant = null;
+            AssistantMessage finalAssistantMessage = null;
             // 5.循环执行
             for (int iteration = 1; iteration <= maxIterations; iteration++) {
-                //设置循环执行轮次
+                // 设置循环执行轮次
                 runContext.setIteration(iteration);
-                log.info("RuntimeOrchestrator executeInternal runtime loop iteration={} traceId={} runId={} turnId={}", iteration, traceId, runId, turnId);
+                log.info("RuntimeOrchestrator executeInternal runtime loop iteration={}", iteration);
 
                 safeEmit(eventConsumer, RuntimeEvent.builder()
                     .type(RuntimeEventType.ITERATION)
@@ -277,24 +248,32 @@ public class RuntimeOrchestrator {
                 // 6.同步输出：agentLoopEngine
                 AssistantMessage assistantMessage;
                 assistantMessage = agentLoopEngine.run(runContext);
-                log.info("RuntimeOrchestrator executeInternal assistantMessage={}", JsonUtils.toJson(assistantMessage));
+                log.info("RuntimeOrchestrator executeInternal iteration={} assistantMessage={}", iteration, JsonUtils.toJson(assistantMessage));
 
-                AssistantMessage normalizedAssistant = normalizeAssistantMessage(assistantMessage);
-                MDC.put(MDC_MESSAGE_ID, normalizedAssistant.getMessageId());
-                runContext.appendWorkingMessage(normalizedAssistant);
-                transcript.appendMessage(normalizedAssistant);
+                // 构建本轮代理返回信息和选定的工具集的新代理信息,并将当前MessageId记录
+                AssistantMessage newAssistantMessage = normalizeAssistantMessage(assistantMessage);
+                log.info("RuntimeOrchestrator executeInternal iteration={} newAssistantMessage={}", iteration, JsonUtils.toJson(newAssistantMessage));
+                MDC.put(MDC_MESSAGE_ID, newAssistantMessage.getMessageId());
 
-                if (normalizedAssistant.getToolCalls().isEmpty()) {
-                    finalAssistant = normalizedAssistant;
+                // 添加上下文
+                runContext.appendWorkingMessage(newAssistantMessage);
+                transcript.appendMessage(newAssistantMessage);
+
+                // 7.如果确定本轮不执行工具就结束
+                if (newAssistantMessage.getToolCalls().isEmpty()) {
+                    finalAssistantMessage = newAssistantMessage;
                     break;
                 }
 
-                for (ToolCall rawToolCall : normalizedAssistant.getToolCalls()) {
+                // 8.循环执行工具
+                for (ToolCall rawToolCall : newAssistantMessage.getToolCalls()) {
                     ToolCall toolCall = normalizeToolCall(rawToolCall, turnId);
+                    log.info("RuntimeOrchestrator executeInternal iteration={} toolCall={}", iteration, JsonUtils.toJson(toolCall));
                     transcript.appendToolCall(toolCall);
 
                     String previousToolCallId = MDC.get(MDC_TOOL_CALL_ID);
                     MDC.put(MDC_TOOL_CALL_ID, toolCall.getToolCallId());
+
                     try {
                         safeEmit(eventConsumer, RuntimeEvent.builder()
                             .type(RuntimeEventType.TOOL_CALL)
@@ -308,7 +287,10 @@ public class RuntimeOrchestrator {
                             .build());
 
                         ToolResult toolResult = safeExecuteTool(toolCall, turnId);
+                        log.info("RuntimeOrchestrator executeInternal iteration={} toolResult={}", iteration, JsonUtils.toJson(toolResult));
+
                         transcript.appendToolResult(toolResult);
+
                         safeEmit(eventConsumer, RuntimeEvent.builder()
                             .type(RuntimeEventType.TOOL_RESULT)
                             .traceId(traceId)
@@ -327,6 +309,8 @@ public class RuntimeOrchestrator {
                             formatToolOutput(toolResult),
                             Instant.now()
                         );
+                        log.info("RuntimeOrchestrator executeInternal iteration={} toolExecutionMessage={}", iteration, JsonUtils.toJson(toolExecutionMessage));
+
                         MDC.put(MDC_MESSAGE_ID, toolExecutionMessage.getMessageId());
                         runContext.appendWorkingMessage(toolExecutionMessage);
                         transcript.appendMessage(toolExecutionMessage);
@@ -336,11 +320,8 @@ public class RuntimeOrchestrator {
                 }
             }
 
-            if (finalAssistant == null) {
-                throw new AgentRuntimeException(
-                    ErrorCode.RUNTIME_MAX_ITERATIONS_EXCEEDED,
-                    "超过最大循环次数: " + maxIterations
-                );
+            if (finalAssistantMessage == null) {
+                throw new AgentRuntimeException(ErrorCode.RUNTIME_MAX_ITERATIONS_EXCEEDED, "超过最大循环次数: " + maxIterations);
             }
 
             runContext.setAgentRunState(AgentRunState.COMPLETED);
@@ -353,28 +334,23 @@ public class RuntimeOrchestrator {
                 .sessionId(sessionId)
                 .conversationId(conversationId)
                 .turnId(turnId)
-                .content(Optional.ofNullable(finalAssistant.getContent()).orElse(""))
+                .content(Optional.ofNullable(finalAssistantMessage.getContent()).orElse(""))
                 .done(true)
                 .build());
 
-            log.info("Runtime run complete traceId={} runId={} sessionId={} conversationId={} turnId={} messages={} toolCalls={} toolResults={}",
-                traceId,
-                runId,
-                sessionId,
-                conversationId,
-                turnId,
-                transcript.getMessages().size(),
-                transcript.getToolCalls().size(),
-                transcript.getToolResults().size());
-
-            return AgentExecutionResult.builder()
+            AgentExecutionResult result = AgentExecutionResult.builder()
                 .traceId(traceId)
                 .runId(runId)
                 .sessionId(sessionId)
                 .conversationId(conversationId)
                 .turnId(turnId)
-                .assistantMessage(finalAssistant)
+                .assistantMessage(finalAssistantMessage)
                 .build();
+            log.info("RuntimeOrchestrator executeInternal result={}", JsonUtils.toJson(result));
+
+            log.info("RuntimeOrchestrator executeInternal runtime run complete");
+
+            return result;
         } catch (AgentRuntimeException e) {
             if (runContext != null) {
                 runContext.setAgentRunState(AgentRunState.FAILED);

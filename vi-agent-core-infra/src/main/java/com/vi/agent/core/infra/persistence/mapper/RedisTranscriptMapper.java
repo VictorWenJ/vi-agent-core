@@ -2,7 +2,7 @@ package com.vi.agent.core.infra.persistence.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.vi.agent.core.common.util.JsonUtils;
-import com.vi.agent.core.infra.persistence.entity.RedisTranscriptEntity;
+import com.vi.agent.core.infra.persistence.entity.TranscriptEntity;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
@@ -10,11 +10,7 @@ import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolResult;
 import com.vi.agent.core.model.transcript.ConversationTranscript;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -32,12 +28,12 @@ public class RedisTranscriptMapper {
      * @param transcript Transcript 模型
      * @return 持久化实体
      */
-    public RedisTranscriptEntity toEntity(ConversationTranscript transcript) {
+    public TranscriptEntity toEntity(ConversationTranscript transcript) {
         List<PersistedMessage> persistedMessages = new ArrayList<>();
         for (Message message : transcript.getMessages()) {
             persistedMessages.add(toPersistedMessage(message));
         }
-        return RedisTranscriptEntity.builder()
+        return TranscriptEntity.builder()
             .sessionId(transcript.getSessionId())
             .conversationId(transcript.getConversationId())
             .traceId(transcript.getTraceId())
@@ -55,7 +51,7 @@ public class RedisTranscriptMapper {
      * @param entity 持久化实体
      * @return Transcript 模型
      */
-    public ConversationTranscript toModel(RedisTranscriptEntity entity) {
+    public ConversationTranscript toModel(TranscriptEntity entity) {
         ConversationTranscript transcript = new ConversationTranscript(entity.getSessionId(), entity.getConversationId());
         transcript.setTraceId(entity.getTraceId());
         transcript.setRunId(entity.getRunId());
