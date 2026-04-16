@@ -22,11 +22,15 @@ public class ConversationTranscript {
     /** 会话 ID。 */
     private String sessionId;
 
+    /** 会话链路 ID。 */
+    @Setter
+    private String conversationId;
+
     /** 链路追踪 ID。 */
     @Setter
     private String traceId;
 
-    /** 运行 ID。 */
+    /** 最后一次运行 ID。 */
     @Setter
     private String runId;
 
@@ -41,6 +45,11 @@ public class ConversationTranscript {
 
     /** 最后更新时间。 */
     private Instant updatedAt = Instant.now();
+
+    public ConversationTranscript(String sessionId, String conversationId) {
+        this.sessionId = sessionId;
+        this.conversationId = conversationId;
+    }
 
     public ConversationTranscript(String sessionId) {
         this.sessionId = sessionId;
@@ -59,16 +68,25 @@ public class ConversationTranscript {
     }
 
     public void appendMessage(Message message) {
+        if (message == null) {
+            return;
+        }
         this.messages.add(message);
         this.updatedAt = Instant.now();
     }
 
     public void appendToolCall(ToolCall toolCall) {
+        if (toolCall == null) {
+            return;
+        }
         this.toolCalls.add(toolCall);
         this.updatedAt = Instant.now();
     }
 
     public void appendToolResult(ToolResult toolResult) {
+        if (toolResult == null) {
+            return;
+        }
         this.toolResults.add(toolResult);
         this.updatedAt = Instant.now();
     }
@@ -97,4 +115,3 @@ public class ConversationTranscript {
         this.updatedAt = Instant.now();
     }
 }
-

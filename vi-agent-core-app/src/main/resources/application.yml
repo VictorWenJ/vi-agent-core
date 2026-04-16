@@ -3,6 +3,12 @@ spring:
     name: vi-agent-core
   profiles:
     active: dev
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:0}
+      timeout: 3s
 
 server:
   port: 8080
@@ -14,8 +20,16 @@ logging:
 
 vi:
   agent:
+    runtime:
+      max-iterations: 6
     provider:
-      openai:
-        base-url: https://api.openai.com
-        api-key: ${OPENAI_API_KEY:}
-        model: gpt-4o-mini
+      deepseek:
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        chat-path: /chat/completions
+        api-key: ${DEEPSEEK_API_KEY:}
+        model: ${DEEPSEEK_MODEL:deepseek-chat}
+        connect-timeout-ms: 5000
+        read-timeout-ms: 30000
+    transcript:
+      redis:
+        key-prefix: 'transcript:'

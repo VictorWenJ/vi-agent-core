@@ -1,5 +1,7 @@
 package com.vi.agent.core.model.message;
 
+import java.time.Instant;
+
 /**
  * 工具执行结果消息。
  */
@@ -15,7 +17,17 @@ public class ToolExecutionMessage extends BaseMessage {
     private final String toolOutput;
 
     public ToolExecutionMessage(String toolCallId, String toolName, String toolOutput) {
-        super("tool", toolOutput);
+        this(null, toolCallId, toolName, toolOutput, Instant.now());
+    }
+
+    public ToolExecutionMessage(
+        String messageId,
+        String toolCallId,
+        String toolName,
+        String toolOutput,
+        Instant createdAt
+    ) {
+        super(messageId, "tool", toolOutput, createdAt);
         this.toolCallId = toolCallId;
         this.toolName = toolName;
         this.toolOutput = toolOutput;

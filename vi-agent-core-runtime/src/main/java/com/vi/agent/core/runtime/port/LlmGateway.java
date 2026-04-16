@@ -3,6 +3,8 @@ package com.vi.agent.core.runtime.port;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 
+import java.util.function.Consumer;
+
 /**
  * 运行时模型调用网关。
  */
@@ -15,4 +17,15 @@ public interface LlmGateway {
      * @return 助手消息
      */
     AssistantMessage generate(AgentRunContext runContext);
+
+    /**
+     * 生成流式助手回复。
+     *
+     * @param runContext 运行上下文
+     * @param chunkConsumer 分片消费器
+     * @return 助手消息
+     */
+    default AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
+        return generate(runContext);
+    }
 }

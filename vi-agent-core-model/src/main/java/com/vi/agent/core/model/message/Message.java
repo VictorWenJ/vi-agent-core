@@ -8,6 +8,13 @@ import java.time.Instant;
 public interface Message {
 
     /**
+     * 获取消息 ID。
+     *
+     * @return 消息 ID
+     */
+    String getMessageId();
+
+    /**
      * 获取消息角色。
      *
      * @return 角色标识
@@ -15,7 +22,7 @@ public interface Message {
     String getRole();
 
     /**
-     * 获取消息文本内容。
+     * 获取消息内容。
      *
      * @return 消息内容
      */
@@ -24,7 +31,7 @@ public interface Message {
     /**
      * 获取消息创建时间。
      *
-     * @return 消息时间
+     * @return 创建时间
      */
     Instant getCreatedAt();
 }

@@ -13,7 +13,7 @@ import java.lang.reflect.Type;
 import java.util.Objects;
 
 /**
- * Json 工具。
+ * JSON 通用工具。
  */
 @Slf4j
 public final class JsonUtils {
@@ -21,6 +21,7 @@ public final class JsonUtils {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     static {
+        OBJECT_MAPPER.findAndRegisterModules();
         OBJECT_MAPPER.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
         OBJECT_MAPPER.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
         OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -38,8 +39,24 @@ public final class JsonUtils {
         } catch (Exception e) {
             log.error("JsonUtils toJson error", e);
             throw new AgentRuntimeException(
-                ErrorCode.RUNTIME_EXECUTION_FAILED,
-                "JsonUtils toJson error, object: " + object,
+                ErrorCode.JSON_SERIALIZATION_FAILED,
+                "JsonUtils toJson error",
+                e
+            );
+        }
+    }
+
+    public static <T> T jsonToBean(String json, Class<T> clazz) {
+        if (json == null || json.isBlank() || Objects.isNull(clazz)) {
+            return null;
+        }
+        try {
+            return OBJECT_MAPPER.readValue(json, clazz);
+        } catch (Exception e) {
+            log.error("JsonUtils jsonToBean(class) error", e);
+            throw new AgentRuntimeException(
+                ErrorCode.JSON_SERIALIZATION_FAILED,
+                "JsonUtils jsonToBean(class) error",
                 e
             );
         }
@@ -53,10 +70,10 @@ public final class JsonUtils {
             JavaType javaType = OBJECT_MAPPER.getTypeFactory().constructType(type);
             return OBJECT_MAPPER.readValue(json, javaType);
         } catch (Exception e) {
-            log.error("JsonUtils jsonToBean error", e);
+            log.error("JsonUtils jsonToBean(type) error", e);
             throw new AgentRuntimeException(
-                ErrorCode.RUNTIME_EXECUTION_FAILED,
-                "JsonUtils jsonToBean error, json: " + json + " type: " + type.getTypeName(),
+                ErrorCode.JSON_SERIALIZATION_FAILED,
+                "JsonUtils jsonToBean(type) error",
                 e
             );
         }

@@ -1,20 +1,19 @@
 package com.vi.agent.core.infra.persistence;
 
-import com.vi.agent.core.model.message.Message;
-import com.vi.agent.core.model.tool.ToolCall;
-import com.vi.agent.core.model.tool.ToolResult;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Transcript 持久化实体（Phase 1 最小结构）。
+ * Transcript 持久化实体（Redis Hash 映射对象）。
  */
-@Data
+@Getter
+@Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ConversationTranscriptEntity {
@@ -22,21 +21,24 @@ public class ConversationTranscriptEntity {
     /** 会话 ID。 */
     private String sessionId;
 
+    /** 会话链路 ID。 */
+    private String conversationId;
+
     /** 链路追踪 ID。 */
     private String traceId;
 
     /** 运行 ID。 */
     private String runId;
 
-    /** 消息列表。 */
-    private List<Message> messages = new ArrayList<>();
+    /** 消息列表 JSON。 */
+    private String messagesJson;
 
-    /** 工具调用记录。 */
-    private List<ToolCall> toolCalls = new ArrayList<>();
+    /** 工具调用列表 JSON。 */
+    private String toolCallsJson;
 
-    /** 工具执行结果记录。 */
-    private List<ToolResult> toolResults = new ArrayList<>();
+    /** 工具结果列表 JSON。 */
+    private String toolResultsJson;
 
     /** 更新时间。 */
-    private Instant updatedAt = Instant.now();
+    private Instant updatedAt;
 }

@@ -1,15 +1,22 @@
 package com.vi.agent.core.app.config;
 
+import com.vi.agent.core.common.id.ConversationIdGenerator;
+import com.vi.agent.core.common.id.MessageIdGenerator;
 import com.vi.agent.core.common.id.RunIdGenerator;
+import com.vi.agent.core.common.id.ToolCallIdGenerator;
 import com.vi.agent.core.common.id.TraceIdGenerator;
+import com.vi.agent.core.common.id.TurnIdGenerator;
+import com.vi.agent.core.infra.integration.mock.MockReadOnlyTools;
 import com.vi.agent.core.infra.observability.NoopRuntimeMetricsCollector;
 import com.vi.agent.core.infra.observability.RuntimeMetricsCollector;
-import com.vi.agent.core.infra.persistence.InMemoryTranscriptRepository;
+import com.vi.agent.core.infra.persistence.RedisTranscriptRepository;
+import com.vi.agent.core.infra.persistence.TranscriptRedisMapper;
 import com.vi.agent.core.infra.persistence.TranscriptRepository;
 import com.vi.agent.core.infra.persistence.TranscriptStoreService;
+import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
+import com.vi.agent.core.infra.provider.DeepSeekProvider;
 import com.vi.agent.core.infra.provider.LlmProvider;
-import com.vi.agent.core.infra.provider.OpenAiProvider;
-import com.vi.agent.core.model.tool.ToolResult;
+import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
 import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.context.SimpleContextAssembler;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
@@ -17,12 +24,15 @@ import com.vi.agent.core.runtime.engine.DefaultAgentLoopEngine;
 import com.vi.agent.core.runtime.orchestrator.RuntimeOrchestrator;
 import com.vi.agent.core.runtime.port.TranscriptStore;
 import com.vi.agent.core.runtime.tool.DefaultToolGateway;
+import com.vi.agent.core.runtime.tool.ToolBundle;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import com.vi.agent.core.runtime.tool.ToolRegistry;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * Runtime 与 Infra 装配配置。
@@ -41,14 +51,52 @@ public class RuntimeBeanConfig {
     }
 
     @Bean
-    public ToolRegistry toolRegistry() {
+    public ConversationIdGenerator conversationIdGenerator() {
+        return new ConversationIdGenerator();
+    }
+
+    @Bean
+    public TurnIdGenerator turnIdGenerator() {
+        return new TurnIdGenerator();
+    }
+
+    @Bean
+    public MessageIdGenerator messageIdGenerator() {
+        return new MessageIdGenerator();
+    }
+
+    @Bean
+    public ToolCallIdGenerator toolCallIdGenerator() {
+        return new ToolCallIdGenerator();
+    }
+
+    @Bean
+    @ConfigurationProperties(prefix = "vi.agent.provider.deepseek")
+    public DeepSeekProperties deepSeekProperties() {
+        return new DeepSeekProperties();
+    }
+
+    @Bean
+    @ConfigurationProperties(prefix = "vi.agent.transcript.redis")
+    public RedisTranscriptProperties redisTranscriptProperties() {
+        return new RedisTranscriptProperties();
+    }
+
+    @Bean
+    @ConfigurationProperties(prefix = "vi.agent.runtime")
+    public RuntimeProperties runtimeProperties() {
+        return new RuntimeProperties();
+    }
+
+    @Bean
+    public ToolBundle mockReadOnlyTools() {
+        return new MockReadOnlyTools();
+    }
+
+    @Bean
+    public ToolRegistry toolRegistry(List<ToolBundle> toolBundles) {
         ToolRegistry toolRegistry = new ToolRegistry();
-        toolRegistry.register("get_time", toolCall -> new ToolResult(
-            toolCall.getToolCallId(),
-            toolCall.getToolName(),
-            true,
-            OffsetDateTime.now().toString()
-        ));
+        toolRegistry.registerAnnotatedTools(toolBundles);
         return toolRegistry;
     }
 
@@ -63,8 +111,8 @@ public class RuntimeBeanConfig {
     }
 
     @Bean
-    public LlmProvider llmProvider() {
-        return new OpenAiProvider();
+    public LlmProvider llmProvider(DeepSeekProperties deepSeekProperties) {
+        return new DeepSeekProvider(deepSeekProperties);
     }
 
     @Bean
@@ -73,13 +121,24 @@ public class RuntimeBeanConfig {
     }
 
     @Bean
-    public TranscriptRepository transcriptRepository() {
-        return new InMemoryTranscriptRepository();
+    public TranscriptRepository transcriptRepository(
+        StringRedisTemplate stringRedisTemplate,
+        RedisTranscriptProperties redisTranscriptProperties
+    ) {
+        return new RedisTranscriptRepository(stringRedisTemplate, redisTranscriptProperties);
     }
 
     @Bean
-    public TranscriptStore transcriptStore(TranscriptRepository transcriptRepository) {
-        return new TranscriptStoreService(transcriptRepository);
+    public TranscriptRedisMapper transcriptRedisMapper() {
+        return new TranscriptRedisMapper();
+    }
+
+    @Bean
+    public TranscriptStore transcriptStore(
+        TranscriptRepository transcriptRepository,
+        TranscriptRedisMapper transcriptRedisMapper
+    ) {
+        return new TranscriptStoreService(transcriptRepository, transcriptRedisMapper);
     }
 
     @Bean
@@ -94,7 +153,12 @@ public class RuntimeBeanConfig {
         ToolGateway toolGateway,
         TranscriptStore transcriptStore,
         TraceIdGenerator traceIdGenerator,
-        RunIdGenerator runIdGenerator
+        RunIdGenerator runIdGenerator,
+        ConversationIdGenerator conversationIdGenerator,
+        TurnIdGenerator turnIdGenerator,
+        MessageIdGenerator messageIdGenerator,
+        ToolCallIdGenerator toolCallIdGenerator,
+        RuntimeProperties runtimeProperties
     ) {
         return new RuntimeOrchestrator(
             contextAssembler,
@@ -102,7 +166,12 @@ public class RuntimeBeanConfig {
             toolGateway,
             transcriptStore,
             traceIdGenerator,
-            runIdGenerator
+            runIdGenerator,
+            conversationIdGenerator,
+            turnIdGenerator,
+            messageIdGenerator,
+            toolCallIdGenerator,
+            runtimeProperties.getMaxIterations()
         );
     }
 }

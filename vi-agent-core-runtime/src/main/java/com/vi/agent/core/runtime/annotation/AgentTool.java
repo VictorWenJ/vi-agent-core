@@ -15,7 +15,7 @@ public @interface AgentTool {
     /**
      * 工具唯一名称。
      *
-     * @return 工具名
+     * @return 工具名称
      */
     String name();
 
@@ -25,4 +25,11 @@ public @interface AgentTool {
      * @return 描述信息
      */
     String description() default "";
+
+    /**
+     * 工具参数 Schema(JSON)。
+     *
+     * @return 参数 schema
+     */
+    String parametersJson() default "{\"type\":\"object\",\"properties\":{}}";
 }

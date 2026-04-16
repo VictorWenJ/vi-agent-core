@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Phase 1 内存版 Transcript 仓储。
+ * In-memory Transcript 仓储（测试/占位）。
  */
 public class InMemoryTranscriptRepository implements TranscriptRepository {
 

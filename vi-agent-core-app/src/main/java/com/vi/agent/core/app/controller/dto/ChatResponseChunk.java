@@ -1,13 +1,17 @@
 package com.vi.agent.core.app.controller.dto;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * 流式响应分片 DTO。
  */
-@Data
+@Getter
+@Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChatResponseChunk {
@@ -18,10 +22,15 @@ public class ChatResponseChunk {
     /** 运行 ID。 */
     private String runId;
 
+    /** 会话链路 ID。 */
+    private String conversationId;
+
+    /** 当前轮次 ID。 */
+    private String turnId;
+
     /** 当前分片内容。 */
     private String content;
 
     /** 是否结束。 */
     private boolean done;
-
 }

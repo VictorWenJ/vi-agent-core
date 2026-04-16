@@ -11,7 +11,7 @@ public interface TranscriptRepository {
      * 读取会话 Transcript。
      *
      * @param sessionId 会话 ID
-     * @return 实体对象
+     * @return 持久化实体
      */
     Optional<ConversationTranscriptEntity> findBySessionId(String sessionId);
 

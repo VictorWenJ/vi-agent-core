@@ -5,12 +5,14 @@ import com.vi.agent.core.app.controller.dto.ChatResponse;
 import com.vi.agent.core.runtime.orchestrator.RuntimeExecutionResult;
 import com.vi.agent.core.runtime.orchestrator.RuntimeOrchestrator;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 /**
  * 同步聊天 Facade。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatService {
@@ -21,11 +23,14 @@ public class ChatService {
     public Mono<ChatResponse> chat(ChatRequest request) {
         return Mono.fromSupplier(() -> {
             RuntimeExecutionResult result = runtimeOrchestrator.execute(request.getSessionId(), request.getMessage());
-            return new ChatResponse(
-                result.getTraceId(),
-                result.getRunId(),
-                result.getAssistantMessage().getContent()
-            );
+            log.info("ChatService runtime done sessionId={} runId={}", request.getSessionId(), result.getRunId());
+            return ChatResponse.builder()
+                .traceId(result.getTraceId())
+                .runId(result.getRunId())
+                .conversationId(result.getConversationId())
+                .turnId(result.getTurnId())
+                .content(result.getAssistantMessage().getContent())
+                .build();
         });
     }
 }

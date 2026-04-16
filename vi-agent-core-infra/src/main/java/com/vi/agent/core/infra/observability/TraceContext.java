@@ -1,22 +1,27 @@
 package com.vi.agent.core.infra.observability;
 
+import lombok.Builder;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 /**
  * 运行时追踪上下文。
  */
 @Getter
-@RequiredArgsConstructor
+@Builder
 public class TraceContext {
 
     /** 链路追踪 ID。 */
-    private final String traceId;
+    private String traceId;
 
     /** 运行 ID。 */
-    private final String runId;
+    private String runId;
 
     /** 会话 ID。 */
-    private final String sessionId;
-}
+    private String sessionId;
 
+    /** 会话链路 ID。 */
+    private String conversationId;
+
+    /** 当前轮次 ID。 */
+    private String turnId;
+}

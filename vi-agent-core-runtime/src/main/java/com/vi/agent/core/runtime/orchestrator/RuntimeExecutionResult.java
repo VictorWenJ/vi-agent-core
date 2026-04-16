@@ -1,26 +1,31 @@
 package com.vi.agent.core.runtime.orchestrator;
 
 import com.vi.agent.core.model.message.AssistantMessage;
+import lombok.Builder;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 /**
  * Runtime 执行结果。
  */
 @Getter
-@RequiredArgsConstructor
+@Builder
 public class RuntimeExecutionResult {
 
     /** 链路追踪 ID。 */
-    private final String traceId;
+    private String traceId;
 
     /** 运行 ID。 */
-    private final String runId;
+    private String runId;
 
     /** 会话 ID。 */
-    private final String sessionId;
+    private String sessionId;
+
+    /** 会话链路 ID。 */
+    private String conversationId;
+
+    /** 当前轮次 ID。 */
+    private String turnId;
 
     /** 助手输出消息。 */
-    private final AssistantMessage assistantMessage;
+    private AssistantMessage assistantMessage;
 }
-

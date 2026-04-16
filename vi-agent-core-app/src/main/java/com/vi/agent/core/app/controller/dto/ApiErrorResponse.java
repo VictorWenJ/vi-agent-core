@@ -1,13 +1,17 @@
 package com.vi.agent.core.app.controller.dto;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * 错误响应 DTO。
  */
-@Data
+@Getter
+@Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApiErrorResponse {
@@ -17,5 +21,4 @@ public class ApiErrorResponse {
 
     /** 错误信息。 */
     private String errorMessage;
-
 }

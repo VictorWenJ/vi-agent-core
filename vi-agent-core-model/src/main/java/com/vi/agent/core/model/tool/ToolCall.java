@@ -1,13 +1,17 @@
 package com.vi.agent.core.model.tool;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * 工具调用请求。
  */
-@Data
+@Getter
+@Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ToolCall {
@@ -20,5 +24,7 @@ public class ToolCall {
 
     /** 工具参数 JSON。 */
     private String argumentsJson;
-}
 
+    /** 当前轮次 ID。 */
+    private String turnId;
+}

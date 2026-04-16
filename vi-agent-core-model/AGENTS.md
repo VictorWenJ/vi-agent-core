@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> 更新日期：2026-04-15
+> 更新日期：2026-04-16
 
 ## 1. 文档定位
 
@@ -33,7 +33,7 @@
 
 > **模块**：`vi-agent-core-model` — 内部运行时模型模块  
 > **模块定位**：承载消息模型、工具模型、Transcript 模型、运行状态模型、Artifact 引用模型  
-> **当前目标**：服务于基础建设 / Phase 1 骨架阶段  
+> **当前目标**：服务于 Phase 1 主链路对象补齐阶段  
 > **核心约束**：只承载内部模型与少量模型自身行为；不承载 Web DTO、不承载持久化实现、不承载 Runtime 编排  
 > **包结构重点**：`message`、`tool`、`transcript`、`runtime`、`artifact`
 
@@ -48,7 +48,7 @@
 - 保持核心运行时模型与 API 层模型解耦：`model` 模块不包含任何 Web 层注解，也不应直接充当 HTTP 请求或响应体；
 - 保持模型的纯粹性与可序列化性，模型类应尽量不可变，或至少在封装边界上保持可控；
 - 不包含业务编排、持久化实现、依赖注入等，只承载数据结构与少量模型自身行为；
-- 为后续 Context / Memory / Delegation / Replay 等阶段演进提供稳定模型基础。
+- 为当前 Phase 1 的 message / tool / transcript / run 语义提供稳定基础，并为后续 Context / Memory / Delegation / Replay 等阶段演进预留空间。
 
 模块在整体依赖链中的位置：
 
@@ -88,6 +88,13 @@
 
 用于表达运行时对话链路中的内部消息对象。
 
+当前 Phase 1 需要明确支持：
+- `messageId`
+- `role`
+- `content`
+- assistant message 上的 `toolCalls`
+- tool execution message 的标准表达
+
 #### 2）工具模型
 - `ToolDefinition`
 - `ToolCall`
@@ -96,12 +103,22 @@
 
 用于表达工具定义、模型提出的工具调用请求，以及工具执行后的标准化结果。
 
+当前 Phase 1 要求：
+- mock 工具与未来真实工具共享统一内部模型
+- `ToolDefinition` 继续作为统一注册、暴露和调用的最小契约
+- `ToolCall` / `ToolResult` 必须携带后续日志与 transcript 所需最小字段
+
 #### 3）Transcript 模型
 - `ConversationTranscript`
 - `TranscriptEntry`
 - `EntryType`
 
 用于表达一次 session 下的最小完整会话转录与运行时记录聚合对象。
+
+当前 Phase 1 要求：
+- 至少记录用户消息、助手回复、工具调用、工具结果
+- 允许最小聚合行为，如 append / replace
+- transcript 语义独立于具体 Redis / MySQL 存储实现
 
 #### 4）运行状态模型
 - `AgentRunContext`
@@ -111,6 +128,10 @@
 - `TokenUsage`
 
 用于表达当前 run 的上下文、状态和最小运行元信息。
+
+当前 Phase 1 要求：
+- 支撑 `traceId`、`runId`、`conversationId`、`sessionId`、`turnId`
+- 为 sync / stream 共用运行时语义提供最小对象表达
 
 #### 5）Artifact 引用模型
 - `Artifact`
@@ -199,8 +220,6 @@ com.vi.agent.core.model/
 - 不放文件上传、下载、序列化、解析逻辑
 - `Artifact` / `ArtifactRef` 应保持轻量
 
----
-
 ### 4.2 `message/`
 职责：
 - 表达运行时消息模型
@@ -216,8 +235,7 @@ com.vi.agent.core.model/
 - `Message` 作为顶层接口或抽象契约
 - `BaseMessage` 承载公共字段
 - 具体子类表达不同角色消息
-
----
+- 当前阶段应为 `messageId`、tool calls、最小可恢复 transcript 提供稳定字段
 
 ### 4.3 `runtime/`
 职责：
@@ -228,8 +246,6 @@ com.vi.agent.core.model/
 - 只表达 run 信息，不主导 run 流程
 - 不要把 RuntimeOrchestrator 的流程控制塞进这里
 - 不要把 TraceContext、MetricsCollector 等 observability 实现对象混进这里
-
----
 
 ### 4.4 `tool/`
 职责：
@@ -245,8 +261,7 @@ com.vi.agent.core.model/
 - 至少包含 `name`、`description`、`parameters`
 - `parameters` 应为可扩展的 Schema 表达
 - Phase 1 可简化，但必须预留向更标准化 Schema 演进的空间
-
----
+- mock 工具与真实工具在模型层保持统一表达，不做双套模型
 
 ### 4.5 `transcript/`
 职责：
@@ -262,6 +277,7 @@ com.vi.agent.core.model/
 - 但不得演变成业务编排器
 - 不得承担数据库映射职责
 - 不得承担 ContextAssembler 或 MemoryService 职责
+- Transcript 与 Redis Hash 的映射关系属于 `infra.persistence`，不属于 `model`
 
 ---
 
@@ -284,8 +300,6 @@ com.vi.agent.core.model/
 - Repository 存取
 - Runtime 主流程判断
 
----
-
 ### 5.2 API 模型与内部模型严格分离
 `model` 层对象不是 Web 协议对象。
 
@@ -294,8 +308,6 @@ com.vi.agent.core.model/
 - `Message` / `ToolCall` / `ConversationTranscript` 等只属于 `model`
 - 不允许图省事直接把 `model` 对象暴露成 Web 层 DTO
 - 不允许把 Web DTO 直接当内部运行时对象传到 `runtime`
-
----
 
 ### 5.3 Persistence 模型与领域模型严格分离
 `model` 层对象不是持久化实体。
@@ -307,9 +319,7 @@ com.vi.agent.core.model/
 
 如果 `infra.persistence` 需要落盘：
 - 应该通过映射或转换完成
-- 不允许把 JPA / MyBatis / 持久化注解直接写进 `model` 层
-
----
+- 不允许把 JPA / MyBatis / Redis 注解直接写进 `model` 层
 
 ### 5.4 Record、不可变性与普通类选择规则
 `model` 模块优先追求**清晰、稳定、可序列化**，而不是机械统一。
@@ -320,47 +330,18 @@ com.vi.agent.core.model/
 - 不要为了“全部 record 化”而牺牲封装边界
 - 也不要为了“全部普通类化”而保留大量无意义样板代码
 
----
-
 ### 5.5 Lombok 使用规则
 `model` 模块允许并鼓励使用 Lombok，但必须按对象类型区别处理。
 
 #### 适合优先使用 Lombok 的对象
-- 简单承载对象
-- 引用对象
-- 轻量状态对象
-- 没有复杂封装行为的 Tool / Artifact / Runtime 模型
-
-建议使用：
-- `@Getter`
-- `@Setter`
-- `@NoArgsConstructor`
-- `@AllArgsConstructor`
-- `@Builder`
-- `@Data`（谨慎）
+- 轻量值对象
+- 简单运行时状态对象
+- 构造语义清晰、字段稳定的模型
 
 #### 必须采用“选择性 Lombok”的对象
-对于带有：
-- defensive copy
-- 集合封装
-- append / replace 行为
-- 自定义 getter
-- 显式封装边界
-
-的类，例如：
 - `ConversationTranscript`
-- 某些消息基类 / 聚合类
-
-要求：
-- 不要机械使用 `@Data`
-- 但凡无参构造、全参构造、getter、setter 等纯样板代码可安全交给 Lombok 的，就优先交给 Lombok
-- 必须保留关键手写方法和封装行为
-
-也就是说：
-
-**Lombok 用来消灭样板，不用来破坏模型边界。**
-
----
+- `AgentRunContext`
+- 任何带集合封装、append / replace、自定义 getter、防御性拷贝语义的对象
 
 ### 5.6 字段与注释规则
 - 所有 `record` 组件或普通 POJO 字段必须有中文注释
@@ -369,8 +350,6 @@ com.vi.agent.core.model/
     - 是否可空
     - 关键约束（若有）
 - 若当前阶段部分旧代码尚未完全补齐，后续新增与修改时必须按该规则补全
-
----
 
 ### 5.7 集合与可变性规则
 对含集合字段的模型对象，必须谨慎处理。
@@ -387,15 +366,11 @@ com.vi.agent.core.model/
 
 这些对象必须优先保证封装性。
 
----
-
 ### 5.8 构造器与对象创建规则
 - 对简单对象，优先使用 Lombok 或 record 替代样板构造器
 - 对有强约束的对象，可保留手写构造器
 - 若对象创建需要明显表达语义，优先考虑 `@Builder` 或显式工厂方法
 - 不要为了减少几行代码，把对象构造语义做模糊
-
----
 
 ### 5.9 序列化与校验规则
 - 所有模型类必须可被 Jackson 正常序列化 / 反序列化
@@ -403,8 +378,6 @@ com.vi.agent.core.model/
 - 构造器或紧凑构造器内允许做基础校验，如非空、空字符串、非法枚举值
 - 复杂业务校验不应放在模型层
 - 模型类内部不记录业务日志，校验失败应抛出标准异常或 `IllegalArgumentException`
-
----
 
 ### 5.10 日志与工具类规则
 `model` 模块一般**不应该成为日志重点模块**。
@@ -423,7 +396,6 @@ com.vi.agent.core.model/
 ---
 
 ## 6. 当前阶段下的 `model` 模块约束
-
 当前阶段内，`model` 模块允许存在：
 - 最小消息模型
 - 最小工具模型
@@ -447,7 +419,6 @@ com.vi.agent.core.model/
 ## 7. 测试要求
 
 ### 7.1 必须覆盖的测试场景
-
 | 测试目标 | 测试类型 | 覆盖要求 |
 | :--- | :--- | :--- |
 | 消息模型序列化/反序列化 | 单元测试 | 验证主要 Message 实现类能正确序列化为 JSON 并反序列化 |
@@ -464,6 +435,7 @@ com.vi.agent.core.model/
     - 集合封装边界
     - 关键构造逻辑
     - 基本序列化能力
+    - 与 Phase 1 主链路相关的 message / tool / transcript 语义
 
 ### 7.3 测试约束
 - 优先写单元测试
@@ -475,7 +447,6 @@ com.vi.agent.core.model/
 ---
 
 ## 8. 文档维护规则
-
 1. 本文件属于模块级治理文档，受根目录 `AGENTS.md` 的冻结规则约束。
 2. 当模块内包结构、核心类职责、局部约束发生变更时，必须同步更新本文件对应章节。
 3. 新增子包或核心类后，必须在第 4 节包结构说明中补充。

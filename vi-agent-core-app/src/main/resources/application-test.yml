@@ -1,11 +1,17 @@
 spring:
-  datasource:
-    url: jdbc:h2:mem:vi_agent_core_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:1}
 
 logging:
   level:
     root: WARN
     com.vi.agent.core: INFO
+
+vi:
+  agent:
+    provider:
+      deepseek:
+        api-key: test-key

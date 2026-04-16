@@ -18,5 +18,4 @@ public class ChatRequest {
     /** 用户输入内容。 */
     @NotBlank
     private String message;
-
 }

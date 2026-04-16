@@ -7,11 +7,11 @@ public class NoopRuntimeMetricsCollector implements RuntimeMetricsCollector {
 
     @Override
     public void recordSuccess(String traceId, String runId, long durationMs) {
-        // Phase 1 空实现。
+        // Phase 1 最小占位实现
     }
 
     @Override
     public void recordFailure(String traceId, String runId, long durationMs) {
-        // Phase 1 空实现。
+        // Phase 1 最小占位实现
     }
 }
