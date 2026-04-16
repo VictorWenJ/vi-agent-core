@@ -25,6 +25,9 @@ public enum ErrorCode {
     /** 模型提供方调用失败。 */
     PROVIDER_CALL_FAILED("PROVIDER-0001", "模型提供方调用失败"),
 
+    /** 模型提供方配置初始化失败。 */
+    PROVIDER_CONFIG_INVALID_FAILED("PROVIDER-0002", "模型提供方配置初始化失败"),
+
     /** Transcript 存储失败。 */
     TRANSCRIPT_STORE_FAILED("PERSIST-0001", "Transcript 存储失败"),
 

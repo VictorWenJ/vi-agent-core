@@ -1,9 +1,10 @@
 package com.vi.agent.core.app.controller;
 
-import com.vi.agent.core.app.advice.GlobalExceptionHandler;
-import com.vi.agent.core.app.controller.dto.ChatRequest;
-import com.vi.agent.core.app.controller.dto.ChatResponse;
-import com.vi.agent.core.app.service.ChatService;
+import com.vi.agent.core.app.api.advice.GlobalExceptionHandler;
+import com.vi.agent.core.app.api.controller.ChatController;
+import com.vi.agent.core.app.api.dto.request.ChatRequest;
+import com.vi.agent.core.app.api.dto.response.ChatResponse;
+import com.vi.agent.core.app.api.application.ChatApplicationService;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ class ChatControllerTest {
     }
 
     @MockBean
-    private ChatService chatService;
+    private ChatApplicationService chatService;
 
     @Test
     void chatShouldReturnSuccessResponse() {

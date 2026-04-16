@@ -14,14 +14,16 @@ import com.vi.agent.core.model.message.*;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.runtime.AgentRunContext;
-import com.vi.agent.core.model.runtime.RunState;
+import com.vi.agent.core.model.runtime.AgentRunState;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolResult;
 import com.vi.agent.core.model.transcript.ConversationTranscript;
 import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
-import com.vi.agent.core.runtime.engine.StreamAgentLoopEngine;
+import com.vi.agent.core.runtime.event.RuntimeEvent;
+import com.vi.agent.core.runtime.event.RuntimeEventType;
 import com.vi.agent.core.runtime.port.TranscriptStore;
+import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -57,11 +59,6 @@ public class RuntimeOrchestrator {
      * Agent Loop 引擎。
      */
     private final AgentLoopEngine agentLoopEngine;
-
-    /**
-     * Agent Loop 引擎。
-     */
-    private final StreamAgentLoopEngine streamAgentLoopEngine;
 
     /**
      * 工具网关。
@@ -111,7 +108,6 @@ public class RuntimeOrchestrator {
     public RuntimeOrchestrator(
         ContextAssembler contextAssembler,
         AgentLoopEngine agentLoopEngine,
-        StreamAgentLoopEngine streamAgentLoopEngine,
         ToolGateway toolGateway,
         TranscriptStore transcriptStore,
         TraceIdGenerator traceIdGenerator,
@@ -123,7 +119,7 @@ public class RuntimeOrchestrator {
     ) {
         this(
             contextAssembler,
-            agentLoopEngine, streamAgentLoopEngine,
+            agentLoopEngine,
             toolGateway,
             transcriptStore,
             traceIdGenerator,
@@ -138,7 +134,7 @@ public class RuntimeOrchestrator {
 
     public RuntimeOrchestrator(
         ContextAssembler contextAssembler,
-        AgentLoopEngine agentLoopEngine, StreamAgentLoopEngine streamAgentLoopEngine,
+        AgentLoopEngine agentLoopEngine,
         ToolGateway toolGateway,
         TranscriptStore transcriptStore,
         TraceIdGenerator traceIdGenerator,
@@ -151,7 +147,6 @@ public class RuntimeOrchestrator {
     ) {
         this.contextAssembler = contextAssembler;
         this.agentLoopEngine = agentLoopEngine;
-        this.streamAgentLoopEngine = streamAgentLoopEngine;
         this.toolGateway = toolGateway;
         this.transcriptStore = transcriptStore;
         this.traceIdGenerator = traceIdGenerator;
@@ -170,7 +165,7 @@ public class RuntimeOrchestrator {
      * @param userInput 用户输入
      * @return 执行结果
      */
-    public RuntimeExecutionResult execute(String sessionId, String userInput) {
+    public AgentExecutionResult execute(String sessionId, String userInput) {
         return executeInternal(sessionId, userInput, null, false);
     }
 
@@ -182,11 +177,11 @@ public class RuntimeOrchestrator {
      * @param eventConsumer 事件消费器
      * @return 执行结果
      */
-    public RuntimeExecutionResult executeStreaming(String sessionId, String userInput, Consumer<RuntimeStreamEvent> eventConsumer) {
+    public AgentExecutionResult executeStreaming(String sessionId, String userInput, Consumer<RuntimeEvent> eventConsumer) {
         return executeInternal(sessionId, userInput, eventConsumer, true);
     }
 
-    private RuntimeExecutionResult executeInternal(String sessionId, String userInput, Consumer<RuntimeStreamEvent> eventConsumer, boolean streaming) {
+    private AgentExecutionResult executeInternal(String sessionId, String userInput, Consumer<RuntimeEvent> eventConsumer, boolean streaming) {
         ValidationUtils.requireNonBlank(sessionId, "sessionId");
         ValidationUtils.requireNonBlank(userInput, "userInput");
 
@@ -245,13 +240,13 @@ public class RuntimeOrchestrator {
                 workingMessages,
                 toolGateway.listDefinitions(),
                 transcript,
-                RunState.STARTED
+                AgentRunState.STARTED
             );
             log.info("RuntimeOrchestrator executeInternal runContext={}", JsonUtils.toJson(runContext));
 
             // 4.流式事件构建
-            safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                .type(RuntimeStreamEventType.START)
+            safeEmit(eventConsumer, RuntimeEvent.builder()
+                .type(RuntimeEventType.START)
                 .traceId(traceId)
                 .runId(runId)
                 .sessionId(sessionId)
@@ -268,8 +263,8 @@ public class RuntimeOrchestrator {
                 runContext.setIteration(iteration);
                 log.info("RuntimeOrchestrator executeInternal runtime loop iteration={} traceId={} runId={} turnId={}", iteration, traceId, runId, turnId);
 
-                safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                    .type(RuntimeStreamEventType.ITERATION)
+                safeEmit(eventConsumer, RuntimeEvent.builder()
+                    .type(RuntimeEventType.ITERATION)
                     .traceId(traceId)
                     .runId(runId)
                     .sessionId(sessionId)
@@ -281,20 +276,7 @@ public class RuntimeOrchestrator {
 
                 // 6.流式输出：streamAgentLoopEngine；同步输出：agentLoopEngine
                 AssistantMessage assistantMessage;
-                if (streaming) {
-                    assistantMessage = streamAgentLoopEngine.run(runContext, chunk -> safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                        .type(RuntimeStreamEventType.TOKEN)
-                        .traceId(traceId)
-                        .runId(runId)
-                        .sessionId(sessionId)
-                        .conversationId(conversationId)
-                        .turnId(turnId)
-                        .content(chunk)
-                        .done(false)
-                        .build()));
-                } else {
-                    assistantMessage = agentLoopEngine.run(runContext);
-                }
+                assistantMessage = agentLoopEngine.run(runContext);
                 log.info("RuntimeOrchestrator executeInternal assistantMessage={}", JsonUtils.toJson(assistantMessage));
 
                 AssistantMessage normalizedAssistant = normalizeAssistantMessage(assistantMessage);
@@ -314,8 +296,8 @@ public class RuntimeOrchestrator {
                     String previousToolCallId = MDC.get(MDC_TOOL_CALL_ID);
                     MDC.put(MDC_TOOL_CALL_ID, toolCall.getToolCallId());
                     try {
-                        safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                            .type(RuntimeStreamEventType.TOOL_CALL)
+                        safeEmit(eventConsumer, RuntimeEvent.builder()
+                            .type(RuntimeEventType.TOOL_CALL)
                             .traceId(traceId)
                             .runId(runId)
                             .sessionId(sessionId)
@@ -327,8 +309,8 @@ public class RuntimeOrchestrator {
 
                         ToolResult toolResult = safeExecuteTool(toolCall, turnId);
                         transcript.appendToolResult(toolResult);
-                        safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                            .type(RuntimeStreamEventType.TOOL_RESULT)
+                        safeEmit(eventConsumer, RuntimeEvent.builder()
+                            .type(RuntimeEventType.TOOL_RESULT)
                             .traceId(traceId)
                             .runId(runId)
                             .sessionId(sessionId)
@@ -361,11 +343,11 @@ public class RuntimeOrchestrator {
                 );
             }
 
-            runContext.setRunState(RunState.COMPLETED);
+            runContext.setAgentRunState(AgentRunState.COMPLETED);
             transcriptStore.save(transcript);
 
-            safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                .type(RuntimeStreamEventType.COMPLETE)
+            safeEmit(eventConsumer, RuntimeEvent.builder()
+                .type(RuntimeEventType.COMPLETE)
                 .traceId(traceId)
                 .runId(runId)
                 .sessionId(sessionId)
@@ -385,7 +367,7 @@ public class RuntimeOrchestrator {
                 transcript.getToolCalls().size(),
                 transcript.getToolResults().size());
 
-            return RuntimeExecutionResult.builder()
+            return AgentExecutionResult.builder()
                 .traceId(traceId)
                 .runId(runId)
                 .sessionId(sessionId)
@@ -395,10 +377,10 @@ public class RuntimeOrchestrator {
                 .build();
         } catch (AgentRuntimeException e) {
             if (runContext != null) {
-                runContext.setRunState(RunState.FAILED);
+                runContext.setAgentRunState(AgentRunState.FAILED);
             }
-            safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                .type(RuntimeStreamEventType.ERROR)
+            safeEmit(eventConsumer, RuntimeEvent.builder()
+                .type(RuntimeEventType.ERROR)
                 .traceId(traceId)
                 .runId(runId)
                 .sessionId(sessionId)
@@ -413,10 +395,10 @@ public class RuntimeOrchestrator {
             throw e;
         } catch (Exception e) {
             if (runContext != null) {
-                runContext.setRunState(RunState.FAILED);
+                runContext.setAgentRunState(AgentRunState.FAILED);
             }
-            safeEmit(eventConsumer, RuntimeStreamEvent.builder()
-                .type(RuntimeStreamEventType.ERROR)
+            safeEmit(eventConsumer, RuntimeEvent.builder()
+                .type(RuntimeEventType.ERROR)
                 .traceId(traceId)
                 .runId(runId)
                 .sessionId(sessionId)
@@ -517,7 +499,7 @@ public class RuntimeOrchestrator {
         }
     }
 
-    private void safeEmit(Consumer<RuntimeStreamEvent> eventConsumer, RuntimeStreamEvent event) {
+    private void safeEmit(Consumer<RuntimeEvent> eventConsumer, RuntimeEvent event) {
         if (eventConsumer == null || event == null) {
             return;
         }

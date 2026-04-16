@@ -5,7 +5,7 @@ import java.time.Instant;
 /**
  * 工具执行结果消息。
  */
-public class ToolExecutionMessage extends BaseMessage {
+public class ToolExecutionMessage extends AbstractMessage {
 
     /** 工具调用 ID。 */
     private final String toolCallId;

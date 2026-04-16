@@ -3,12 +3,10 @@ package com.vi.agent.core.model.runtime;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import com.vi.agent.core.model.transcript.ConversationTranscript;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -46,7 +44,7 @@ public class AgentRunContext {
     private final ConversationTranscript transcript;
 
     /** 当前运行状态。 */
-    private RunState runState;
+    private AgentRunState agentRunState;
 
     /** 当前迭代次数。 */
     private int iteration;
@@ -61,7 +59,7 @@ public class AgentRunContext {
         List<Message> workingMessages,
         List<ToolDefinition> availableTools,
         ConversationTranscript transcript,
-        RunState runState
+        AgentRunState agentRunState
     ) {
         this.traceId = traceId;
         this.runId = runId;
@@ -72,7 +70,7 @@ public class AgentRunContext {
         this.workingMessages = new ArrayList<>(workingMessages);
         this.availableTools = availableTools == null ? new ArrayList<>() : new ArrayList<>(availableTools);
         this.transcript = transcript;
-        this.runState = runState;
+        this.agentRunState = agentRunState;
     }
 
     public void appendWorkingMessage(Message message) {

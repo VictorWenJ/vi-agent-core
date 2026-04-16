@@ -5,7 +5,7 @@ import java.time.Instant;
 /**
  * 用户消息。
  */
-public class UserMessage extends BaseMessage {
+public class UserMessage extends AbstractMessage {
 
     public UserMessage(String content) {
         super(null, "user", content);

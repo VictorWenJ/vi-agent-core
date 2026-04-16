@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * 助手消息。
  */
-public class AssistantMessage extends BaseMessage {
+public class AssistantMessage extends AbstractMessage {
 
     /** 助手规划的工具调用列表。 */
     private final List<ToolCall> toolCalls;

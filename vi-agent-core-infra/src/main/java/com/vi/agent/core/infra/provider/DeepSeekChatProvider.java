@@ -1,0 +1,58 @@
+package com.vi.agent.core.infra.provider;
+
+import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
+import com.vi.agent.core.infra.provider.common.LlmHttpExecutor;
+import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
+
+/**
+ * DeepSeek Provider 实现。
+ */
+public class DeepSeekChatProvider extends OpenAICompatibleChatProvider {
+
+    private final DeepSeekProperties properties;
+
+    public DeepSeekChatProvider(DeepSeekProperties properties, LlmHttpExecutor httpExecutor) {
+        super(httpExecutor);
+        this.properties = properties;
+    }
+
+    @Override
+    protected String providerName() {
+        return "DeepSeek";
+    }
+
+    @Override
+    protected String providerKey() {
+        return "deepseek";
+    }
+
+    @Override
+    protected String baseUrl() {
+        return properties.getBaseUrl();
+    }
+
+    @Override
+    protected String chatPath() {
+        return properties.getChatPath();
+    }
+
+    @Override
+    protected String apiKey() {
+        return properties.getApiKey();
+    }
+
+    @Override
+    protected String model() {
+        return properties.getModel();
+    }
+
+    @Override
+    protected int connectTimeoutMs() {
+        return properties.getConnectTimeoutMs();
+    }
+
+    @Override
+    protected int readTimeoutMs() {
+        return properties.getReadTimeoutMs();
+    }
+}

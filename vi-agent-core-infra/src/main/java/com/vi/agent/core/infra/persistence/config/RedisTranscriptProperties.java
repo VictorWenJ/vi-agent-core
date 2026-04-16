@@ -1,7 +1,8 @@
 package com.vi.agent.core.infra.persistence.config;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
+
+import java.time.Instant;
 
 /**
  * Redis Transcript 配置。
@@ -12,4 +13,39 @@ public class RedisTranscriptProperties {
 
     /** Redis key 前缀。 */
     private String keyPrefix = "transcript:";
+
+    /**
+     * Transcript 持久化实体（Redis Hash 映射对象）。
+     */
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ConversationTranscriptEntity {
+
+        /** 会话 ID。 */
+        private String sessionId;
+
+        /** 会话链路 ID。 */
+        private String conversationId;
+
+        /** 链路追踪 ID。 */
+        private String traceId;
+
+        /** 运行 ID。 */
+        private String runId;
+
+        /** 消息列表 JSON。 */
+        private String messagesJson;
+
+        /** 工具调用列表 JSON。 */
+        private String toolCallsJson;
+
+        /** 工具结果列表 JSON。 */
+        private String toolResultsJson;
+
+        /** 更新时间。 */
+        private Instant updatedAt;
+    }
 }
