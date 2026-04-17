@@ -1,6 +1,6 @@
 # ARCHITECTURE.md
 
-> 更新日期：2026-04-16
+> 更新日期：2026-04-17
 
 ## 1. 文档定位
 
@@ -10,36 +10,32 @@
 - 系统总体分层是什么
 - 各层分别负责什么
 - 各层之间如何依赖
-- 核心链路的调用流程
+- 当前阶段主链路如何调用
 
 本文件不负责：
-- 仓库级协作规则（见 `AGENTS.md`）
-- 阶段路线图（见 `PROJECT_PLAN.md`）
+- 仓库级协作规则与开发约束（见 `AGENTS.md`）
+- 阶段路线图与任务状态（见 `PROJECT_PLAN.md`）
+- 具体包结构、类职责与局部规则（见各模块 `AGENTS.md`）
 - 代码审查细节（见 `CODE_REVIEW.md`）
 
 ---
 
 ## 2. 架构定位
 
-`vi-agent-core` 旨在构建一个**逻辑分布式、职责可分**的 Agent Runtime Framework。
-当前阶段（Phase 1）为单体应用，但内部严格按逻辑服务边界设计，为未来物理拆分预留接缝。
+`vi-agent-core` 旨在构建一个**逻辑分布式、职责可分、单体先行落地**的 Agent Runtime Framework。
+当前阶段（Phase 1）仍然是单体应用，但内部必须按稳定的逻辑边界设计，不能退化为“大 chat service”。
 
 核心借鉴思想：
-- **Claude Code / Agent SDK**：Agent Loop、Tool Use、Skills、Subagents、Runtime Kernel。
-- **OpenClaw**：Gateway、Context Engine、Memory、Session、Streaming、Authoritative Runtime Path。
-- **旧项目工程经验**：多模块分层、中心编排 + 子处理器/子策略、注册表扩展、同步与异步链路分离、配置驱动、运行时监控。
+- **Claude Code / Agent SDK**：Agent Loop、Tool Use、Runtime Kernel、受控扩展点
+- **OpenClaw**：Gateway、Context Engine、Session / Streaming / Provider 边界
+- **传统企业后端经验**：中心编排、依赖倒置、注册表扩展、配置驱动、可测试性优先
 
-因此，本项目的架构原则不是“Controller + Service + Provider”三层聊天服务，而是：
-- 用 **Runtime Core** 统一编排一次用户请求的完整生命周期；
-- 用 **Context / Tool / Memory / Provider / Persistence** 作为可替换、可扩展的能力模块；
-- 用 **Session / Transcript / Artifact / Observability** 承接状态、审计与回放基础；
-- 用 **逻辑服务边界** 为后续的物理分布式拆分预留演进路径。
-
-当前 Phase 1 的实现收口为：
+当前 Phase 1 的技术收口为：
 - 主模型提供方以 **DeepSeek** 为准
-- 工具能力先以 **统一注册机制 + mock 只读工具** 跑通闭环
+- 工具能力以 **`@AgentTool` + `ToolRegistry` + mock 工具** 跑通闭环
 - 会话短期状态以 **Redis Hash Transcript** 为准
-- 流式输出采用 **runtime 内部事件 / 结果 + app 层 WebFlux/SSE 适配** 的边界
+- 流式输出采用 **provider streaming → runtime event → app SSE** 的分层边界
+- 本轮同时要修正 **依赖方向** 与 **POM 表达能力**
 
 ### 2.1 Maven 模块落地视图（Phase 1）
 
@@ -51,129 +47,166 @@
 - `vi-agent-core-model`：内部运行时模型层
 - `vi-agent-core-common`：轻量公共能力层
 
-其中，LangChain4j 在当前阶段仅放置于 `infra` 侧作为基础设施依赖，不主导 `runtime` 的核心抽象设计。
+当前代码现实与标准目标已完成本轮关键治理收口：
+- `infra -> runtime` 历史反向依赖已移除
+- 共享契约 `LlmGateway`、`TranscriptStore`、`@AgentTool`、`ToolBundle` 已下沉到 `model`
+- 当前依赖方向已回归到：`runtime/infra -> model/common`
 
-当前公共能力层已落地 `JsonUtils`、`ValidationUtils`、ID 生成器与公共异常等基础能力；后续新增可复用公共逻辑时，应继续沿用“统一沉淀到 `common` 模块、由上层复用”的方式演进。
+包结构、类职责、模块内依赖规则已下沉到各模块 `AGENTS.md`；本文件不再重复展开类级别明细。
 
 ---
 
 ## 3. 总体分层（逻辑视图）
 
-### 3.1 接入层（`controller/`）
-- **职责**：暴露 REST API，处理 SSE 流式连接。
-- **关键组件**：`ChatController`、`StreamController`。
-- **约束**：不包含业务逻辑，只做请求解析与响应序列化；不得用同步式 `try/catch/finally` 包裹 `Mono/Flux` 模拟同步调用。
-- **借鉴来源**：
-  - OpenClaw 的 Gateway / Session Routing：入口层负责接入与路由，而不是承担运行时核心。
-  - 旧项目的 `BlacklistServiceImpl`：入口层保持轻薄，复杂流程全部交给内部编排服务。
+### 3.1 接入层（`app/api`）
+- **职责**：暴露 REST API、承接 SSE 流式连接、做请求绑定与响应协议输出
+- **当前代码落点**：`ChatController`、`ChatStreamController`、`HealthController`、`GlobalExceptionHandler`
+- **约束**：
+  - 只做接入、参数绑定、协议适配与异常出口
+  - 不承载 Runtime 主循环
+  - 不直接处理 provider delta / tool fragment 解析
+  - 不把同步阻塞逻辑直接跑在 WebFlux 事件线程上
 
-### 3.2 应用入口层（`service/`）
-- **职责**：作为 Facade，承接请求并委托给核心运行时。
-- **关键组件**：`ChatService`、`StreamingChatService`。
-- **约束**：不直接调用模型或工具，保持轻薄；`StreamingChatService` 负责把 runtime 内部流式结果适配成 WebFlux/SSE，不负责实现 loop 主逻辑。
-- **借鉴来源**：
-  - 旧项目中“Provider / Service 只转发、编排下沉”的经验。
-  - OpenClaw 的入口与 Runtime 解耦思路。
+### 3.2 应用入口层（`app/application` + `app/config`）
+- **职责**：作为 Facade 与顶层装配层，连接 WebFlux 与 Runtime / Infra
+- **当前代码落点**：`ChatApplicationService`、`ChatStreamApplicationService`、`RuntimeCoreConfig`、`ProviderConfig`、`PersistenceConfig`、`ToolConfig`
+- **约束**：
+  - Application 层只做转发、轻量映射、调度隔离、SSE 适配
+  - 配置层只做 Bean 装配，不做业务编排
+  - 不把 provider / Redis / tool registry 的实现细节写进 controller
 
-### 3.3 核心运行时层（`core/`）
-系统的心脏，包含以下子模块：
+### 3.3 核心运行时层（`runtime`）
+- **职责**：统一 run 生命周期、Context 组装、Agent Loop、Tool 协调、Runtime Event 产生
+- **当前代码落点**：`RuntimeOrchestrator`、`AgentLoopEngine`、`SimpleAgentLoopEngine`、`ContextAssembler`、`ToolGateway`、`ToolRegistry`、`RuntimeEvent`
+- **约束**：
+  - `RuntimeOrchestrator` 是唯一主链路编排中心
+  - sync / stream 必须共享同一套 Runtime 语义
+  - runtime 只产生内部事件，不负责 SSE/Reactor 协议适配
+  - 跨层共享契约不应长期挂在 runtime；本轮需向 `model` / `common` 下沉
 
-- **`runtime/`**：`RuntimeOrchestrator` 与其内部 Agent Loop 执行机制，负责“推理-工具-再推理”循环，是系统唯一执行总线。
-- **`context/`**：上下文装配与管理，当前阶段只做最小 history 拼装；Token 预算、历史裁剪、Prompt Block 组装、Working Context 构建属于 Phase 2。
-- **`tool/`**：统一工具网关，负责工具注册、Schema 暴露、执行与结果标准化；当前阶段先以统一注册机制 + mock 工具跑通闭环。
-- **`memory/`**：短期记忆、摘要与长期偏好存储（Phase 2 重点）。
-- **`delegation/`**：受控子代理委派与子任务执行边界（Phase 3 重点）。
-- **`skill/`**：技能注册、匹配与装配（Phase 3 重点）。
+### 3.4 基础设施层（`infra`）
+- **职责**：提供 Provider、Persistence、Observability、Mock Integration 的具体实现
+- **当前代码落点**：
+  - provider：`DeepSeekChatProvider`、`OpenAICompatibleChatProvider` 等
+  - persistence：`TranscriptStoreAdapter`、`RedisTranscriptRepository`、`RedisTranscriptMapper`
+  - integration：`MockReadOnlyTools`
+  - observability：`TraceContext`、`RuntimeMetricsCollector`
+- **约束**：
+  - 只做实现与适配，不做主流程编排
+  - provider streaming 解析属于 infra，不上移到 app
+  - persistence 只管 Redis / MySQL / repository / mapper，不参与 Working Context 组装
+  - 本轮必须移除对 runtime 的历史反向依赖
 
-这一层的设计同时吸收：
-- Claude Code 的 Agent Loop、Skill、Subagent 思想；
-- OpenClaw 的 Context Engine、Session-aware Runtime 思想；
-- 旧项目的 `CentralProcessService + Handler / Retrieval / Feature` 这类“中心编排 + 注册扩展器”经验。
+### 3.5 数据模型层（`model`）
+- **职责**：定义内部运行时模型与跨层共享契约
+- **当前代码落点**：`AbstractMessage`、`UserMessage`、`AssistantMessage`、`ToolExecutionMessage`、`ToolCall`、`ToolResult`、`ConversationTranscript`、`AgentRunContext`
+- **本轮重点**：
+  - 让主消息模型承接 `turnId`
+  - 让 Transcript 记录具备按 turn 追踪能力
+  - 逐步承接 `runtime` 与 `infra` 共享的契约
 
-当前 Phase 1 要求 runtime 正式补齐：
-- `RuntimeOrchestrator` 统一 run 生命周期
-- `AgentLoopEngine` 统一 while loop
-- `ToolGateway` / `ToolRegistry` 统一工具路由
-- loop 结果回填 transcript 后再次推理
-- sync / stream 共享同一套运行时语义
-
-### 3.4 基础设施层（`infrastructure/`）
-- **`provider/`**：LLM、Embedding、Rerank 等模型能力统一抽象。当前 Phase 1 主实现为 `DeepSeekProvider`；`OpenAiProvider` 保留扩展位。
-- **`persistence/`**：数据库、Redis、Transcript、Artifact 等存储访问。当前 Phase 1 的 Transcript 短期存储主实现为 Redis Hash。
-- **`observability/`**：日志、Trace、Metrics 收口（Phase 4 重点）。当前日志输出统一通过 SLF4J 门面，日志实现与格式策略统一由 `vi-agent-core-app/src/main/resources/log4j2-spring.xml` 管理。
-- **`integration/`**：未来外部系统、MCP、第三方服务适配点。
-
-这一层承接旧项目中“远端调用/配置/队列/监控视为架构组成部分”的经验，但在新项目中必须通过标准接口和适配层接入，而不是静态工具类分散调用。
-
-### 3.5 数据模型层（`model/`）
-- **职责**：定义跨层共享的 POJO/Record 契约（如 `Message`、`ToolCall`、`AgentRun`、`ConversationTranscript`）。
-- **约束**：协议模型、运行时模型、持久化模型应语义分层，不得混用。
-- **借鉴来源**：旧项目中 request / response / info / entity / enum 的领域建模习惯，但在新项目中需要更明确地区分协议对象、运行态对象和持久化对象。
-- **当前补齐重点**：为 `messageId`、`toolCallId`、tool result、transcript 聚合和最小运行状态提供稳定表达。
-
-### 3.6 公共能力层（`common/`）
-- **职责**：承载轻量、无状态、可跨模块复用的基础能力，如公共异常、ID 生成器、校验工具、JSON 工具等。
-- **当前落地内容**：`AgentRuntimeException`、`ErrorCode`、`IdGenerator`、`TraceIdGenerator`、`RunIdGenerator`、`JsonUtils`、`ValidationUtils`。
-- **边界约束**：`common` 只能提供通用能力，不得承载业务编排、Runtime 调度、外部依赖装配或容器生命周期逻辑。
-- **工具类规则**：类似 `JsonUtils` 这类可复用公共逻辑，应统一沉淀在 `common/util` 中供各模块复用，避免在 `runtime`、`infra`、`app` 内重复实现同类逻辑。
-- **当前补齐重点**：扩展 `conversationId`、`turnId`、`messageId`、`toolCallId` 等运行时标识生成能力。
+### 3.6 公共能力层（`common`）
+- **职责**：承载异常、ID、校验、JSON 等轻量公共能力
+- **当前代码落点**：`AgentRuntimeException`、`ErrorCode`、各类 `IdGenerator`、`JsonUtils`、`ValidationUtils`
+- **约束**：
+  - 只放纯基础能力
+  - 不放运行时语义强、需要被 provider / runtime 协作编排的 SPI
+  - 不放 Spring Bean、Repository、Provider 调用逻辑
 
 ---
 
 ## 4. 依赖方向
 
-**正向依赖原则：**
+### 4.1 标准目标依赖方向
+```text
+common
+  ↑
+model
+  ↑        ↑
+runtime   infra
+   \      /
+      app
+```
 
-`controller` → `service` → `core/runtime` → `core/context` / `core/tool` / `infrastructure/provider` / `infrastructure/persistence` → `model`
+说明：
+- `common` 是最底层
+- `model` 在 `common` 之上，承载内部模型与共享契约
+- `runtime` 与 `infra` 都依赖 `model` / `common`
+- `app` 作为唯一运行入口，装配 `runtime` + `infra`
 
-**模块级依赖（已落地）：**
+### 4.2 当前代码中的历史例外
+历史例外已在本轮治理完成：
+- `infra/pom.xml` 不再依赖 `runtime`
+- 以下共享契约已从 `runtime` 下沉到 `model`：
+  - `model.port.LlmGateway`
+  - `model.port.TranscriptStore`
+  - `model.annotation.AgentTool`
+  - `model.tool.ToolBundle`
 
-`vi-agent-core-app` → `vi-agent-core-runtime` + `vi-agent-core-infra` + `vi-agent-core-model` + `vi-agent-core-common`  
-`vi-agent-core-infra` → `vi-agent-core-runtime` + `vi-agent-core-model` + `vi-agent-core-common`  
-`vi-agent-core-runtime` → `vi-agent-core-model` + `vi-agent-core-common`  
-`vi-agent-core-model` → `vi-agent-core-common`
-
-**关键约束：**
-- `core` 层不依赖 `controller` 或 `service`。
-- `app` 是唯一启动与装配入口，`runtime` 不反向依赖 `app`。
-- `runtime` 只依赖 ports / 抽象协作对象，不感知 WebFlux `Flux` / `ServerSentEvent` 等协议适配细节。
-- `app` 负责把 runtime 流式结果适配成 WebFlux/SSE。
-- `infrastructure` 层只向外暴露实现，不反向主导业务层。
-- `tool` 模块必须通过 `ToolGateway` 访问，不允许跨层直接调用 `ToolExecutor`。
-- `runtime` 是唯一核心编排入口；`context`、`tool`、`memory`、`skill`、`delegation` 不得互相形成无边界横向调用。
-- `provider`、`persistence`、`integration` 必须走适配器/网关，不允许在运行时主链路中直接 `new` 具体外部客户端。
-- `transcript`、`memory`、`working context`、`artifact` 必须分层建模，禁止在一个对象里混装多种职责。
-- 同步交互链路和异步后台链路必须解耦；未来委派、审批、长任务恢复等能力应沿独立边界演进。
+**当前治理结果**：
+- `infra` 仅依赖 `model` / `common`
+- `runtime` 仅依赖 `model` / `common`
+- POM 依赖方向与架构边界保持一致
 
 ---
 
 ## 5. 核心调用链路
 
 ### 5.1 同步对话链路
-`POST /api/chat` → `ChatService` → `RuntimeOrchestrator` → `TranscriptStore` 加载 Redis Transcript → `ContextAssembler` 组装 working messages → `AgentLoopEngine` 调用 `DeepSeekProvider` → 如识别到 `tool_calls` 则经 `ToolGateway` / `ToolRegistry` 执行 mock 工具 → `ToolResult` / `ToolExecutionMessage` 回填 transcript → 再次调用 `DeepSeekProvider` → `RuntimeOrchestrator` 保存 Redis Transcript → 返回 JSON。
+`POST /api/chat`
+→ `ChatController`
+→ `ChatApplicationService`
+→ `RuntimeOrchestrator.execute(...)`
+→ `TranscriptStore` 加载 Transcript
+→ `ContextAssembler` 组装 working messages
+→ `AgentLoopEngine` 调用 LLM
+→ 如识别到 `tool_calls`，经 `ToolGateway` / `ToolRegistry` 执行工具并回填
+→ 再次调用 LLM
+→ `RuntimeOrchestrator` 保存 Transcript
+→ 返回 JSON 响应
+
+当前本轮要求补齐：
+- 同步链路中的阻塞调用必须从 WebFlux 事件线程隔离出去
+- 错误码与 HTTP 状态映射要分层清晰
 
 ### 5.2 流式对话链路
-`POST /api/chat/stream` → `StreamingChatService` → `RuntimeOrchestrator` → 内部 Agent Loop 循环产生 runtime 流式结果或事件 → `StreamingChatService` 适配为 `Flux<ServerSentEvent<?>>` → 前端逐段接收。
+`POST /api/chat/stream`
+→ `ChatStreamController`
+→ `ChatStreamApplicationService`
+→ `RuntimeOrchestrator.executeStreaming(...)`
+→ provider streaming
+→ runtime 内部产生 token / tool / complete / error 等事件
+→ `ChatStreamApplicationService` 适配为 `Flux<ServerSentEvent<...>>`
+→ 前端逐段接收
 
-约束：
-- runtime 只负责内部流式语义，不负责 SSE 序列化。
-- `Flux` / `ServerSentEvent` 不得反向侵入 `runtime` 核心。
-- 流式和非流式路径应尽量共享同一套 loop 语义与工具回填语义。
+当前本轮要求补齐：
+- streaming 入口不能再只是“套一层事件回调后仍走同步 generate”
+- runtime 必须真正产出 token/delta 级别事件
+- SSE / Reactor 类型继续留在 `app` 层，不侵入 `runtime`
 
 ### 5.3 工具调用链路
-Spring Bean / `@AgentTool` → `ToolRegistry` 启动时统一注册 → `RuntimeOrchestrator` / `AgentLoopEngine` 识别 `tool_calls` → `ToolGateway.route()` → `ToolExecutor.execute()` → 结果标准化为 `ToolResult` → 回填到 Runtime 内部消息列表和 Transcript。
+`@AgentTool` 标记的方法
+→ `ToolRegistry` 统一注册
+→ `RuntimeOrchestrator` / `AgentLoopEngine` 识别模型提出的 `tool_calls`
+→ `ToolGateway` 路由执行
+→ `ToolResult` / `ToolExecutionMessage` 回填到 working messages 与 Transcript
+→ 再次推理
 
-约束：
-- 当前阶段工具以 mock 只读工具为主，但也必须经过统一注册、统一路由、统一回填。
-- 不允许在 orchestrator / controller 中写死工具执行逻辑。
-- 工具调用记录必须进入 transcript / run 记录链路。
+说明：
+- 当前工具以 mock 只读工具为主
+- mock 工具也必须经过统一注册、统一路由、统一回填
+- 工具闭环属于 Runtime 责任，不允许被 app / infra 旁路实现
 
 ### 5.4 状态落盘链路（Phase 1 最小版）
-`RuntimeOrchestrator` → `TranscriptStore` → Redis Hash 保存最小会话历史（至少包含用户消息、助手回复、工具调用记录）与运行标识（`traceId` / `runId` / `conversationId` / `sessionId` / `updatedAt`）。
+`RuntimeOrchestrator`
+→ `TranscriptStore`
+→ `TranscriptStoreAdapter`
+→ `RedisTranscriptRepository`
+→ Redis Hash
 
-当前主推荐 Redis Hash 口径：
-- **key**：`transcript:{sessionId}`
-- **field**：
+当前建议保持的 Redis Hash 口径：
+- key：`transcript:{sessionId}`
+- field：
   - `conversationId`
   - `traceId`
   - `runId`
@@ -181,57 +214,51 @@ Spring Bean / `@AgentTool` → `ToolRegistry` 启动时统一注册 → `Runtime
   - `toolCalls`
   - `toolResults`
   - `updatedAt`
-- **value**：
-  - 标量字段直接存字符串
-  - 复杂字段以 JSON 字符串存储
 
 说明：
-- Redis 在当前阶段负责近期上下文与最小恢复。
-- MySQL 作为后续长期持久化与审计层，不在本轮落地。
-- Redis Hash 的映射与序列化细节属于 `infra.persistence`，不属于 `model`。
+- Redis 当前负责最小恢复，不负责长期治理与审计
+- Redis 裁剪 / TTL / MySQL 长期持久化不属于本轮
+- 映射与序列化细节属于 `infra.persistence`，不属于 `model`
 
 ### 5.5 未来委派链路（预留）
-`RuntimeOrchestrator` → `DelegationService` → 子代理最小上下文执行 → 结构化结果回收 → 主运行时继续汇总。
-
-这条链路借鉴 Claude Code 的 Subagents 和 OpenClaw 的 Multi-Agent 思想，但当前阶段仅预留边界，不实现完整能力。
+本轮仍只保留 `DelegationCoordinator` 等最小扩展位，不实现完整多代理执行。
+相关包结构与接口边界见 `vi-agent-core-runtime/AGENTS.md`。
 
 ---
 
 ## 6. 关键模块边界说明
 
-| 模块 | 核心职责 | 边界约束 |
+| 模块 | 核心职责 | 关键约束 |
 | :--- | :--- | :--- |
-| **RuntimeOrchestrator** | 执行 ReAct/Agent Loop，统一调度上下文、模型、工具与状态写回 | 不直接操作 HTTP 协议，不直接调用具体数据库客户端，不绕过网关访问外部系统 |
-| **ContextAssembler** | 构建每一轮的 working context | 不调用模型，只做数据选择、裁剪、拼装与预算控制。**Phase 1 简单实现：直接返回全量历史消息，不进行 Token 计数或裁剪** |
-| **ToolGateway** | 统一工具入口、Schema 暴露、执行标准化 | 工具实现必须通过此网关注册，不得绕过；当前 mock 工具也必须走统一管道 |
-| **MemoryService** | 管理摘要、短期记忆与长期偏好 | 与 Transcript 严格分离，不是聊天记录的简单复制 |
-| **Transcript / TranscriptStore** | 保存全量历史与运行轨迹 | 当前 Phase 1 主实现为 Redis Hash；不承载上下文裁剪逻辑，不等于 Memory |
-| **ArtifactStore** | 保存大对象、中间结果、草稿、附件 | 不直接进入 Working Context，必须通过引用或摘要进入 |
-| **AgentRegistry / SkillRegistry** | 维护可扩展 Agent/Skill 定义 | 新增能力优先注册，不允许把扩展逻辑硬编码进 Runtime 核心 |
+| `app` | 唯一运行入口、WebFlux 接入、SSE 适配、配置装配 | 不编排 Runtime，不解析 provider streaming 协议 |
+| `runtime` | 唯一主链路编排、Loop、Tool 协调、Runtime Event | 不依赖 Web 协议对象，不长期承载共享契约 |
+| `infra` | Provider / Persistence / Observability / Mock 实现 | 不主导流程，不长期依赖 runtime |
+| `model` | Message / Tool / Transcript / Run 模型与共享契约 | 不承载持久化实现和业务编排 |
+| `common` | 异常、ID、JSON、校验等轻量基础能力 | 不膨胀为业务工具箱或 SPI 杂糅层 |
+
+更细的包结构、类职责、模块内依赖规则统一见各模块 `AGENTS.md`。
 
 ---
 
 ## 7. 当前阶段架构约束（Phase 1）
-- **单体应用，逻辑分层**：所有模块在同一进程中，但代码边界必须清晰。
-- **单 Agent 模式**：先实现主 Agent 完整闭环，暂不做子代理委派。
-- **同步与流式共用核心语义**：`RuntimeOrchestrator` 同时支撑 `/chat` 和 `/chat/stream`，但 SSE 适配停留在 `app` 层。
-- **Tool Calling 为 Phase 1 核心**：必须实现可扩展的工具注册与调用机制；当前以 mock 只读工具跑通闭环。
-- **DeepSeek 为当前主模型实现**：`DeepSeekProvider` 是本轮主接入对象；`OpenAiProvider` 仅保留扩展位。
-- **最小状态底座必须到位**：至少具备最小 Transcript（用户消息、助手回复、工具调用记录）、`traceId` / `runId` / `conversationId` / `sessionId` / `turnId` / `messageId` / `toolCallId`。
-- **Redis Transcript 当前为正式短期实现**：Redis 负责近期上下文与最小恢复；MySQL 长期持久化后置。
-- **为后续阶段预留接口**：`ContextAssembler`（返回全量历史）、`MemoryService`、`DelegationService`、`SkillRegistry` 等接口需提前定义，但仅提供简单或空实现。
-- **只读工具优先**：写操作工具、审批、策略控制放后续阶段实现。
-- **保持旧项目正确经验，修复旧项目反模式**：继承“中心编排 + 注册扩展 + 运行时监控”，不再使用 static 全局状态和容器外绕路取 Bean 模式。
+- 单体部署、逻辑分层
+- `RuntimeOrchestrator` 是唯一主链路编排中心
+- streaming 必须经过 provider streaming → runtime event → app SSE 适配三段式链路
+- 同步 chat 的阻塞路径必须隔离出 WebFlux 事件线程
+- `turnId` 要从 run context 继续下沉到消息模型与 transcript
+- `infra -> runtime` 历史反向依赖必须在本轮移除
+- Redis Transcript 继续作为当前最小正式实现
+- 日志脱敏、Redis 裁剪、MySQL 升级不属于本轮阻塞项
+- Skill / Delegation / RAG / Approval / Replay / Evaluation 继续后置
 
 ---
 
 ## 8. 文档模板冻结规则
-与 `AGENTS.md` 第 4 节保持一致，本文件同样受模板冻结规则约束：
-- 只做增量更新，不改变整体风格与章节结构。
-- 任何架构变更必须先更新本文档，再修改代码。
+与 `AGENTS.md` 第 4 节保持一致，本文件同样受模板冻结规则约束。
+当根目录架构文档出现职责过细时，允许将实现细节下沉到模块 `AGENTS.md`，但不得打乱整体章节结构。
 
 ---
 
 ## 9. 一句话总结
 
-`ARCHITECTURE.md` 定义了 `vi-agent-core` 在当前 Phase 1 补齐期的逻辑分层与模块边界：以 `RuntimeOrchestrator` 为唯一总线，以 `DeepSeekProvider`、统一 `ToolRegistry`、Redis Transcript 和 app 层 WebFlux/SSE 适配为主落地方案，在不偷跑高阶段能力的前提下把最小 Agent 主链路真正跑通。
+`ARCHITECTURE.md` 当前只做一件事：把 `app / runtime / infra / model / common` 的边界、依赖方向和主调用链路定死，并明确指出本轮必须修掉 `infra -> runtime` 反向依赖和“假流式”这两个结构性问题。

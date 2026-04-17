@@ -14,6 +14,9 @@ public abstract class AbstractMessage implements Message {
     /** 消息 ID。 */
     private final String messageId;
 
+    /** 当前轮次 ID。 */
+    private final String turnId;
+
     /** 消息角色。 */
     private final String role;
 
@@ -23,14 +26,11 @@ public abstract class AbstractMessage implements Message {
     /** 消息创建时间。 */
     private final Instant createdAt;
 
-    protected AbstractMessage(String messageId, String role, String content) {
-        this(messageId, role, content, Instant.now());
-    }
-
-    protected AbstractMessage(String messageId, String role, String content, Instant createdAt) {
+    protected AbstractMessage(String messageId, String turnId, String role, String content, Instant createdAt) {
         this.messageId = (messageId == null || messageId.isBlank()) ? "msg-" + UUID.randomUUID() : messageId;
+        this.turnId = turnId;
         this.role = role;
-        this.content = content;
+        this.content = content == null ? "" : content;
         this.createdAt = createdAt == null ? Instant.now() : createdAt;
     }
 }

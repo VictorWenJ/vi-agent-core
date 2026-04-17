@@ -75,7 +75,12 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
                 requestOptions(),
                 line -> handleStreamLine(line, runContext.getTurnId(), fullContent, toolCallStateMap, chunkConsumer)
             );
-            return new AssistantMessage(fullContent.toString(), toToolCalls(toolCallStateMap, runContext.getTurnId()));
+            return AssistantMessage.create(
+                null,
+                runContext.getTurnId(),
+                fullContent.toString(),
+                toToolCalls(toolCallStateMap, runContext.getTurnId())
+            );
         } catch (AgentRuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -189,7 +194,12 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
 
         ChatCompletionsMessage message = choice.getMessage();
         List<ToolCall> toolCalls = collectToolCalls(message.getToolCalls(), defaultTurnId);
-        return new AssistantMessage(Optional.ofNullable(message.getContent()).orElse(""), toolCalls);
+        return AssistantMessage.create(
+            null,
+            defaultTurnId,
+            Optional.ofNullable(message.getContent()).orElse(""),
+            toolCalls
+        );
     }
 
     protected void handleStreamLine(

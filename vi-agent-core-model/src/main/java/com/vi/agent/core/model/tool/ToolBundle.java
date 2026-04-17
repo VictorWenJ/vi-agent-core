@@ -1,4 +1,4 @@
-package com.vi.agent.core.runtime.tool;
+package com.vi.agent.core.model.tool;
 
 /**
  * 工具集合标记接口。

@@ -4,8 +4,8 @@ import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.infra.persistence.mapper.RedisTranscriptMapper;
 import com.vi.agent.core.infra.persistence.repository.TranscriptRepository;
+import com.vi.agent.core.model.port.TranscriptStore;
 import com.vi.agent.core.model.transcript.ConversationTranscript;
-import com.vi.agent.core.runtime.port.TranscriptStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

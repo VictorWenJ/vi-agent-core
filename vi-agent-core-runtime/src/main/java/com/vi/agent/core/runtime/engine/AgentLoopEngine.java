@@ -17,4 +17,13 @@ public interface AgentLoopEngine {
      * @return 助手消息
      */
     AssistantMessage run(AgentRunContext runContext);
+
+    /**
+     * 执行流式 Agent Loop 推理。
+     *
+     * @param runContext 运行上下文
+     * @param chunkConsumer 分片消费器
+     * @return 助手消息
+     */
+    AssistantMessage runStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer);
 }

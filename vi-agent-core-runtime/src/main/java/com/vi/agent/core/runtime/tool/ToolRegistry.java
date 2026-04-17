@@ -2,11 +2,10 @@ package com.vi.agent.core.runtime.tool;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
+import com.vi.agent.core.model.annotation.AgentTool;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import com.vi.agent.core.model.tool.ToolResult;
-import com.vi.agent.core.runtime.annotation.AgentTool;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;

@@ -1,8 +1,8 @@
 package com.vi.agent.core.app.config;
 
 import com.vi.agent.core.infra.integration.mock.MockReadOnlyTools;
+import com.vi.agent.core.model.tool.ToolBundle;
 import com.vi.agent.core.runtime.tool.DefaultToolGateway;
-import com.vi.agent.core.runtime.tool.ToolBundle;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import com.vi.agent.core.runtime.tool.ToolRegistry;
 import org.springframework.context.annotation.Bean;

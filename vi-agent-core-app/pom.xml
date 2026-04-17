@@ -16,22 +16,18 @@
         <dependency>
             <groupId>com.vi.agent</groupId>
             <artifactId>vi-agent-core-common</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.vi.agent</groupId>
             <artifactId>vi-agent-core-model</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.vi.agent</groupId>
             <artifactId>vi-agent-core-runtime</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.vi.agent</groupId>
             <artifactId>vi-agent-core-infra</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
         <dependency>

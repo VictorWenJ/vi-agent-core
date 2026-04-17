@@ -1,4 +1,4 @@
-package com.vi.agent.core.runtime.annotation;
+package com.vi.agent.core.model.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

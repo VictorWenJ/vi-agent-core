@@ -73,4 +73,21 @@ class ChatControllerTest {
             .jsonPath("$.errorCode").isEqualTo("COMMON-0001")
             .jsonPath("$.errorMessage").isEqualTo("bad request");
     }
+
+    @Test
+    void chatShouldMapProviderErrorTo502() {
+        given(chatService.chat(any(ChatRequest.class))).willReturn(Mono.error(
+            new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "provider failed")
+        ));
+
+        webTestClient.post()
+            .uri("/api/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("{\"sessionId\":\"s-1\",\"message\":\"hi\"}")
+            .exchange()
+            .expectStatus().isEqualTo(502)
+            .expectBody()
+            .jsonPath("$.errorCode").isEqualTo("PROVIDER-0001")
+            .jsonPath("$.errorMessage").isEqualTo("provider failed");
+    }
 }

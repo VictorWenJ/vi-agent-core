@@ -9,6 +9,7 @@ import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.ToolExecutionMessage;
 import com.vi.agent.core.model.message.UserMessage;
+import com.vi.agent.core.model.port.TranscriptStore;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.AgentRunState;
 import com.vi.agent.core.model.tool.ToolCall;
@@ -18,13 +19,11 @@ import com.vi.agent.core.runtime.context.ContextAssembler;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
 import com.vi.agent.core.runtime.event.RuntimeEvent;
 import com.vi.agent.core.runtime.event.RuntimeEventType;
-import com.vi.agent.core.runtime.port.TranscriptStore;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -169,7 +168,7 @@ public class RuntimeOrchestrator {
 
         // 1.获取上下文，没有就构建
         ConversationTranscript transcript = transcriptStore.load(sessionId)
-            .orElseGet(() -> new ConversationTranscript(sessionId, conversationIdGenerator.nextId()));
+            .orElseGet(() -> ConversationTranscript.start(sessionId, conversationIdGenerator.nextId()));
         if (transcript.getConversationId() == null || transcript.getConversationId().isBlank()) {
             transcript.setConversationId(conversationIdGenerator.nextId());
         }
@@ -191,7 +190,7 @@ public class RuntimeOrchestrator {
             transcript.setTraceId(traceId);
             transcript.setRunId(runId);
 
-            UserMessage userMessage = new UserMessage(messageIdGenerator.nextId(), userInput);
+            UserMessage userMessage = UserMessage.create(messageIdGenerator.nextId(), turnId, userInput);
             MDC.put(MDC_MESSAGE_ID, userMessage.getMessageId());
 
             // 2.萃集历史上下文
@@ -247,11 +246,23 @@ public class RuntimeOrchestrator {
 
                 // 6.同步输出：agentLoopEngine
                 AssistantMessage assistantMessage;
-                assistantMessage = agentLoopEngine.run(runContext);
+                if (streaming) {
+                    assistantMessage = agentLoopEngine.runStreaming(runContext, chunk -> emitTokenEvent(
+                        eventConsumer,
+                        traceId,
+                        runId,
+                        sessionId,
+                        conversationId,
+                        turnId,
+                        chunk
+                    ));
+                } else {
+                    assistantMessage = agentLoopEngine.run(runContext);
+                }
                 log.info("RuntimeOrchestrator executeInternal iteration={} assistantMessage={}", iteration, JsonUtils.toJson(assistantMessage));
 
                 // 构建本轮代理返回信息和选定的工具集的新代理信息,并将当前MessageId记录
-                AssistantMessage newAssistantMessage = normalizeAssistantMessage(assistantMessage);
+                AssistantMessage newAssistantMessage = normalizeAssistantMessage(assistantMessage, turnId);
                 log.info("RuntimeOrchestrator executeInternal iteration={} newAssistantMessage={}", iteration, JsonUtils.toJson(newAssistantMessage));
                 MDC.put(MDC_MESSAGE_ID, newAssistantMessage.getMessageId());
 
@@ -302,12 +313,12 @@ public class RuntimeOrchestrator {
                             .done(false)
                             .build());
 
-                        ToolExecutionMessage toolExecutionMessage = new ToolExecutionMessage(
+                        ToolExecutionMessage toolExecutionMessage = ToolExecutionMessage.create(
                             messageIdGenerator.nextId(),
+                            turnId,
                             toolResult.getToolCallId(),
                             toolResult.getToolName(),
-                            formatToolOutput(toolResult),
-                            Instant.now()
+                            formatToolOutput(toolResult)
                         );
                         log.info("RuntimeOrchestrator executeInternal iteration={} toolExecutionMessage={}", iteration, JsonUtils.toJson(toolExecutionMessage));
 
@@ -398,15 +409,15 @@ public class RuntimeOrchestrator {
         }
     }
 
-    private AssistantMessage normalizeAssistantMessage(AssistantMessage assistantMessage) {
+    private AssistantMessage normalizeAssistantMessage(AssistantMessage assistantMessage, String turnId) {
         if (assistantMessage == null) {
             throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "模型返回空助手消息");
         }
-        return new AssistantMessage(
+        return AssistantMessage.create(
             messageIdGenerator.nextId(),
+            turnId,
             Optional.ofNullable(assistantMessage.getContent()).orElse(""),
-            assistantMessage.getToolCalls(),
-            Instant.now()
+            assistantMessage.getToolCalls()
         );
     }
 
@@ -484,6 +495,30 @@ public class RuntimeOrchestrator {
         } catch (Exception e) {
             log.warn("Runtime stream event consumer failed type={}", event.getType(), e);
         }
+    }
+
+    private void emitTokenEvent(
+        Consumer<RuntimeEvent> eventConsumer,
+        String traceId,
+        String runId,
+        String sessionId,
+        String conversationId,
+        String turnId,
+        String chunk
+    ) {
+        if (chunk == null || chunk.isBlank()) {
+            return;
+        }
+        safeEmit(eventConsumer, RuntimeEvent.builder()
+            .type(RuntimeEventType.TOKEN)
+            .traceId(traceId)
+            .runId(runId)
+            .sessionId(sessionId)
+            .conversationId(conversationId)
+            .turnId(turnId)
+            .content(chunk)
+            .done(false)
+            .build());
     }
 
     private void restoreMdcValue(String key, String value) {

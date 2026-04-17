@@ -52,10 +52,6 @@ public class RedisTranscriptMapper {
      * @return Transcript 模型
      */
     public ConversationTranscript toModel(TranscriptEntity entity) {
-        ConversationTranscript transcript = new ConversationTranscript(entity.getSessionId(), entity.getConversationId());
-        transcript.setTraceId(entity.getTraceId());
-        transcript.setRunId(entity.getRunId());
-
         List<PersistedMessage> persistedMessages = JsonUtils.jsonToBean(
             entity.getMessagesJson(),
             new TypeReference<List<PersistedMessage>>() {
@@ -79,16 +75,22 @@ public class RedisTranscriptMapper {
             new TypeReference<List<ToolResult>>() {
             }.getType()
         );
-
-        transcript.replaceMessages(messages);
-        transcript.replaceToolCalls(toolCalls == null ? Collections.emptyList() : toolCalls);
-        transcript.replaceToolResults(toolResults == null ? Collections.emptyList() : toolResults);
-        return transcript;
+        return ConversationTranscript.restore(
+            entity.getSessionId(),
+            entity.getConversationId(),
+            entity.getTraceId(),
+            entity.getRunId(),
+            messages,
+            toolCalls == null ? Collections.emptyList() : toolCalls,
+            toolResults == null ? Collections.emptyList() : toolResults,
+            entity.getUpdatedAt()
+        );
     }
 
     private PersistedMessage toPersistedMessage(Message message) {
         PersistedMessage.PersistedMessageBuilder builder = PersistedMessage.builder()
             .messageId(message.getMessageId())
+            .turnId(message.getTurnId())
             .role(message.getRole())
             .content(message.getContent())
             .createdAt(message.getCreatedAt());
@@ -106,31 +108,34 @@ public class RedisTranscriptMapper {
 
     private Message toMessage(PersistedMessage persistedMessage) {
         if (persistedMessage == null) {
-            return new UserMessage("");
+            return UserMessage.create(null, null, "");
         }
         Instant createdAt = persistedMessage.getCreatedAt() == null ? Instant.now() : persistedMessage.getCreatedAt();
         if ("assistant".equalsIgnoreCase(persistedMessage.getRole())) {
             List<ToolCall> toolCalls = persistedMessage.getToolCalls() == null
                 ? Collections.emptyList()
                 : persistedMessage.getToolCalls();
-            return new AssistantMessage(
+            return AssistantMessage.restore(
                 persistedMessage.getMessageId(),
+                persistedMessage.getTurnId(),
                 persistedMessage.getContent(),
                 toolCalls,
                 createdAt
             );
         }
         if ("tool".equalsIgnoreCase(persistedMessage.getRole())) {
-            return new ToolExecutionMessage(
+            return ToolExecutionMessage.restore(
                 persistedMessage.getMessageId(),
+                persistedMessage.getTurnId(),
                 persistedMessage.getToolCallId(),
                 persistedMessage.getToolName(),
                 persistedMessage.getToolOutput() == null ? persistedMessage.getContent() : persistedMessage.getToolOutput(),
                 createdAt
             );
         }
-        return new UserMessage(
+        return UserMessage.restore(
             persistedMessage.getMessageId(),
+            persistedMessage.getTurnId(),
             persistedMessage.getContent(),
             createdAt
         );
@@ -148,6 +153,9 @@ public class RedisTranscriptMapper {
 
         /** 消息角色。 */
         private String role;
+
+        /** 当前轮次 ID。 */
+        private String turnId;
 
         /** 消息内容。 */
         private String content;

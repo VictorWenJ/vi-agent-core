@@ -6,7 +6,7 @@ import com.vi.agent.core.infra.persistence.mapper.RedisTranscriptMapper;
 import com.vi.agent.core.infra.persistence.repository.InMemoryTranscriptRepository;
 import com.vi.agent.core.infra.persistence.repository.RedisTranscriptRepository;
 import com.vi.agent.core.infra.persistence.repository.TranscriptRepository;
-import com.vi.agent.core.runtime.port.TranscriptStore;
+import com.vi.agent.core.model.port.TranscriptStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;

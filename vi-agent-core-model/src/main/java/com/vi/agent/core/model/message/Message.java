@@ -15,6 +15,13 @@ public interface Message {
     String getMessageId();
 
     /**
+     * 获取消息所属轮次 ID。
+     *
+     * @return 轮次 ID
+     */
+    String getTurnId();
+
+    /**
      * 获取消息角色。
      *
      * @return 角色标识

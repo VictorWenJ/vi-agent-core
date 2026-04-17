@@ -52,6 +52,8 @@ public class ChatStreamApplicationService {
     private boolean shouldEmit(RuntimeEventType type) {
         return type == RuntimeEventType.START
             || type == RuntimeEventType.ITERATION
+            || type == RuntimeEventType.TOKEN
+            || type == RuntimeEventType.DELTA
             || type == RuntimeEventType.TOOL_CALL
             || type == RuntimeEventType.TOOL_RESULT
             || type == RuntimeEventType.COMPLETE

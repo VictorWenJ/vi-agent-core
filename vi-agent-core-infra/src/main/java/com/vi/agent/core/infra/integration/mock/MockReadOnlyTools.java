@@ -2,8 +2,8 @@ package com.vi.agent.core.infra.integration.mock;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.vi.agent.core.common.util.JsonUtils;
-import com.vi.agent.core.runtime.annotation.AgentTool;
-import com.vi.agent.core.runtime.tool.ToolBundle;
+import com.vi.agent.core.model.annotation.AgentTool;
+import com.vi.agent.core.model.tool.ToolBundle;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.OffsetDateTime;

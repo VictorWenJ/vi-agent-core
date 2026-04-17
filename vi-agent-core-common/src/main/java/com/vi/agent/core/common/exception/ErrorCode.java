@@ -22,6 +22,9 @@ public enum ErrorCode {
     /** 工具执行失败。 */
     TOOL_EXECUTION_FAILED("TOOL-0002", "工具执行失败"),
 
+    /** 工具未注册。 */
+    TOOL_NOT_REGISTERED("TOOL-0003", "工具未注册"),
+
     /** 模型提供方调用失败。 */
     PROVIDER_CALL_FAILED("PROVIDER-0001", "模型提供方调用失败"),
 

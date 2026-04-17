@@ -1,4 +1,4 @@
-package com.vi.agent.core.runtime.port;
+package com.vi.agent.core.model.port;
 
 import com.vi.agent.core.model.transcript.ConversationTranscript;
 

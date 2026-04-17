@@ -1,6 +1,6 @@
 package com.vi.agent.core.infra.provider;
 
-import com.vi.agent.core.runtime.port.LlmGateway;
+import com.vi.agent.core.model.port.LlmGateway;
 
 /**
  * LLM Provider 抽象。
