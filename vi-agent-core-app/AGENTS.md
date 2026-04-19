@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> 更新日期：2026-04-17
+> 更新日期：2026-04-18
 
 ## 1. 文档定位
 
@@ -15,7 +15,7 @@
 
 本文件不负责：
 - 仓库级协作规则（见根目录 `AGENTS.md`）
-- 项目阶段规划（见根目录 `PROJECT_PLAN.md`）
+- 执行清单类内容（见根目录 `PROJECT_PLAN.md`，当前已清空）
 - 总体架构与依赖方向（见根目录 `ARCHITECTURE.md`）
 - 全局审查标准（见根目录 `CODE_REVIEW.md`）
 
@@ -26,16 +26,6 @@
 3. 根目录 `ARCHITECTURE.md`
 4. 根目录 `CODE_REVIEW.md`
 5. 本文件 `vi-agent-core-app/AGENTS.md`
-
----
-
-## 1.1 AI 代理必读速览
-
-> **模块**：`vi-agent-core-app` — 顶层启动、接入、装配与 SSE 适配模块  
-> **模块定位**：唯一运行模块；承接 WebFlux API、Application Facade、配置装配、异常出口  
-> **当前目标**：服务于 Phase 1 收口阶段的接入正确性与输出正确性  
-> **本轮重点**：同步 `/chat` 阻塞隔离、`/chat/stream` 只做 SSE 适配、错误码到 HTTP 状态映射、POM 启动职责标准化  
-> **核心约束**：`app` 只做接入、装配、适配与异常出口；不得承载 Runtime Loop、Provider 实现、Redis 持久化细节
 
 ---
 
@@ -81,6 +71,7 @@
 - `ViAgentCoreApplication`
 - `config/` 下的顶层 Bean 装配
 - `config/properties/` 下的配置绑定对象
+-  预算参数、Prompt Repository 配置、Redis/MySQL 持久化配置统一加载
 
 #### 2）Web 接入
 - `api/controller/`
@@ -195,6 +186,7 @@ com.vi.agent.core.app/
 - 只做装配，不做业务编排
 - `ToolConfig` 负责工具集合 Bean 与统一注册装配，不负责工具执行逻辑
 - `RuntimeCoreConfig` 负责 Runtime 相关 Bean 装配，不在这里写流程代码
+- `reserved_output_tokens`、`reserved_tool_loop_tokens`、`safety_margin_tokens` 等预算参数统一在 `app/config` 绑定与加载
 - POM 与启动职责统一收口到 `app`，`spring-boot-maven-plugin` 只属于本模块
 
 ### 4.3 `api/controller/`
@@ -282,29 +274,31 @@ com.vi.agent.core.app/
 - `app` 可以依赖 `spring-boot-starter-*`
 - `app` 只声明自己直接使用的内部模块依赖
 - 不在 `app` POM 中重复声明由根 POM 已统一管理的版本
-- 不在 `app` 中引入与当前阶段无关的重量级前端、工作流、向量库依赖
+- 不在 `app` 中引入与已确认范围无关的重量级前端、工作流、向量库依赖
+- 配置型预算参数、Prompt Repository 配置与 Redis/MySQL 配置统一在本模块收口，不得让 runtime / infra 自行读散落配置
 
 ---
 
-## 6. 当前阶段下的 `app` 模块约束
+## 6. `app` 模块补充约束
 
-当前阶段内，`app` 模块允许存在：
+`app` 模块允许存在：
 - 同步 `/chat` 与流式 `/chat/stream` 入口
 - `ChatApplicationService` 与 `ChatStreamApplicationService`
 - 顶层配置装配
 - 统一异常出口
 - SSE 适配逻辑
+-  预算参数、Prompt Repository 配置、Redis/MySQL 配置统一加载
 
 但不得提前引入：
 - Runtime Loop
 - Tool Routing
 - Provider streaming 解析
-- Redis Transcript 持久化实现
+- Redis / MySQL 持久化实现细节
 - 前端页面与工作台逻辑
 
-当前阶段内，`app` 模块的唯一目标是：
+`app` 模块的核心目标是：
 
-**把接入、装配、错误出口和 SSE 适配做对，并保证同步路径不阻塞 WebFlux 事件线程。**
+**把接入、装配、错误出口和 SSE 适配做对，并把预算参数与顶层配置统一收口到 `app/config`，同时保证同步路径不阻塞 WebFlux 事件线程。**
 
 ---
 
@@ -319,7 +313,7 @@ com.vi.agent.core.app/
 | `ChatApplicationService` | 单元测试 | 验证同步转发与阻塞隔离 |
 | `ChatStreamApplicationService` | 单元测试 / 响应式测试 | 验证 runtime event 到 SSE 的适配 |
 
-### 7.2 当前阶段测试目标
+### 7.2 测试目标
 - `/chat`、`/chat/stream` 关键入口测试通过
 - 错误状态映射测试通过
 - `ChatApplicationService` 的阻塞隔离行为可验证
@@ -345,3 +339,11 @@ com.vi.agent.core.app/
 ## 9. 一句话总结
 
 `vi-agent-core-app` 的职责，是作为整个 Agent Runtime 系统的唯一运行入口与 Facade 层，把 WebFlux 接入、SSE 适配、错误出口与顶层装配做正确，而不是把运行时主循环写进 Web 层。
+
+## 10. 会话双层模型适配规则
+
+- `ChatRequest` 固定语义：`conversationId`、`sessionId`、`requestId`、`message`。
+- app 层不做会话 pair 解析，不在 controller/application 中硬编码会话恢复策略。
+- `ChatResponse` 对外返回：`conversationId`、`sessionId`、`requestId`、`runId`、`turnId`、`assistant(等价字段)`、`usage`。
+- `ChatStreamEvent` 对外返回：`conversationId`、`sessionId`、`requestId`、`runId`、`turnId`、`messageId`、`delta`、`finishReason/error`。
+- app DTO 对外不返回 `traceId`。
