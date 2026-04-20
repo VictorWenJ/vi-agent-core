@@ -2,43 +2,45 @@ package com.vi.agent.core.runtime.tool;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import com.vi.agent.core.model.tool.ToolResult;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /**
- * 默认工具网关实现。
+ * Default tool gateway.
  */
 @Slf4j
-@RequiredArgsConstructor
+@Component
 public class DefaultToolGateway implements ToolGateway {
 
-    /** 工具注册表。 */
-    private final ToolRegistry toolRegistry;
+    @Resource
+    private ToolRegistry toolRegistry;
 
     @Override
-    public ToolResult route(ToolCall toolCall) {
+    public ToolResult execute(ToolCall toolCall) {
+        log.info("DefaultToolGateway execute modelRequest={}", JsonUtils.toJson(toolCall));
         ToolExecutor toolExecutor = toolRegistry.find(toolCall.getToolName())
             .orElseThrow(() -> new AgentRuntimeException(
                 ErrorCode.TOOL_NOT_FOUND,
-                "未找到工具: " + toolCall.getToolName()
+                "Tool not found: " + toolCall.getToolName()
             ));
 
-        ToolResult result = toolExecutor.execute(toolCall);
-        if (result == null) {
+        ToolResult toolResult = toolExecutor.execute(toolCall);
+        if (toolResult == null) {
             throw new AgentRuntimeException(
                 ErrorCode.TOOL_EXECUTION_FAILED,
-                "工具返回空结果: " + toolCall.getToolName()
+                "Tool returned null: " + toolCall.getToolName()
             );
         }
+        log.info("DefaultToolGateway execute toolResult={}", JsonUtils.toJson(toolResult));
 
-        log.info("ToolGateway route done toolName={} toolCallId={} success={}",
-            result.getToolName(), result.getToolCallId(), result.isSuccess());
-        return result;
+        return toolResult;
     }
 
     @Override

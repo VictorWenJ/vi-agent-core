@@ -1,20 +1,18 @@
 package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
-import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DoubaoProperties;
+import jakarta.annotation.Resource;
+import org.springframework.stereotype.Component;
 
 /**
- * 豆包 Provider 实现。
+ * Doubao provider implementation.
  */
+@Component("doubaoLlmGateway")
 public class DoubaoChatProvider extends OpenAICompatibleChatProvider {
 
-    private final DoubaoProperties properties;
-
-    public DoubaoChatProvider(DoubaoProperties properties, LlmHttpExecutor httpExecutor) {
-        super(httpExecutor);
-        this.properties = properties;
-    }
+    @Resource
+    private DoubaoProperties properties;
 
     @Override
     protected String providerName() {
@@ -56,3 +54,4 @@ public class DoubaoChatProvider extends OpenAICompatibleChatProvider {
         return properties.getReadTimeoutMs();
     }
 }
+

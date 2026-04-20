@@ -1,7 +1,12 @@
-management:
-  health:
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/vi_agent_core?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    username: root
+    password: root
+  data:
     redis:
-      enabled: false
+      host: localhost
+      port: 6379
 
 logging:
   level:
@@ -12,34 +17,8 @@ vi:
   agent:
     runtime:
       max-iterations: 6
+      session-state-window: 200
 
     provider:
       routing:
         default-provider: deepseek
-
-      deepseek:
-        api-key: ${DEEPSEEK_API_KEY:sk-8f20b04bdf1849bb96c78c38948bf8b4}
-        model: ${DEEPSEEK_MODEL:deepseek-chat}
-        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
-        chat-path: /chat/completions
-        connect-timeout-ms: 3000
-        read-timeout-ms: 60000
-
-      doubao:
-        api-key: ${DOUBAO_API_KEY:45fcac73-1c33-4ba7-b0e1-4bfd96f40271}
-        model: ${DOUBAO_MODEL:doubao-seed-2-0-pro-260215}
-        base-url: ${DOUBAO_BASE_URL:https://ark.cn-beijing.volces.com}
-        chat-path: /api/v3/chat/completions
-        connect-timeout-ms: 3000
-        read-timeout-ms: 60000
-
-      openai:
-        api-key: ${OPENAI_API_KEY:}
-        model: ${OPENAI_MODEL:gpt-4o-mini}
-        base-url: ${OPENAI_BASE_URL:https://api.openai.com}
-        chat-path: /v1/chat/completions
-        connect-timeout-ms: 3000
-        read-timeout-ms: 60000
-
-    transcript:
-      store-type: memory

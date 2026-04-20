@@ -1,33 +1,40 @@
 package com.vi.agent.core.app.api.dto.response;
 
-import lombok.AllArgsConstructor;
+import com.vi.agent.core.model.llm.FinishReason;
+import com.vi.agent.core.model.runtime.RunStatus;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+
+import java.time.Instant;
 
 /**
- * 聊天响应 DTO。
+ * Chat response DTO.
  */
 @Getter
-@Setter
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class ChatResponse {
 
-    /** 链路追踪 ID。 */
-    private String traceId;
+    private String requestId;
 
-    /** 运行 ID。 */
-    private String runId;
+    private RunStatus runStatus;
 
-    /** 会话链路 ID。 */
     private String conversationId;
 
-    /** 当前轮次 ID。 */
+    private String sessionId;
+
     private String turnId;
 
-    /** 助手输出内容。 */
+    private String userMessageId;
+
+    private String assistantMessageId;
+
+    private String runId;
+
     private String content;
+
+    private FinishReason finishReason;
+
+    private UsageInfo usage;
+
+    private Instant createdAt;
 }

@@ -1,58 +1,21 @@
 package com.vi.agent.core.app.config;
 
-import com.vi.agent.core.infra.persistence.adapter.TranscriptStoreAdapter;
-import com.vi.agent.core.infra.persistence.config.RedisTranscriptProperties;
-import com.vi.agent.core.infra.persistence.mapper.RedisTranscriptMapper;
-import com.vi.agent.core.infra.persistence.repository.InMemoryTranscriptRepository;
-import com.vi.agent.core.infra.persistence.repository.RedisTranscriptRepository;
-import com.vi.agent.core.infra.persistence.repository.TranscriptRepository;
-import com.vi.agent.core.model.port.TranscriptStore;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import com.baomidou.mybatisplus.annotation.DbType;
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.core.StringRedisTemplate;
 
 @Configuration(proxyBeanMethods = false)
+@MapperScan("com.vi.agent.core.infra.persistence.mysql.mapper")
 public class PersistenceConfig {
 
     @Bean
-    @ConfigurationProperties(prefix = "vi.agent.transcript.redis")
-    public RedisTranscriptProperties redisTranscriptProperties() {
-        return new RedisTranscriptProperties();
-    }
-
-    @Bean
-    @ConditionalOnProperty(
-        prefix = "vi.agent.transcript",
-        name = "store-type",
-        havingValue = "memory"
-    )
-    public TranscriptRepository inMemoryTranscriptRepository() {
-        return new InMemoryTranscriptRepository();
-    }
-
-    @Bean
-    @ConditionalOnProperty(
-        prefix = "vi.agent.transcript",
-        name = "store-type",
-        havingValue = "redis",
-        matchIfMissing = true
-    )
-    public TranscriptRepository redisTranscriptRepository(
-        StringRedisTemplate stringRedisTemplate,
-        RedisTranscriptProperties redisTranscriptProperties
-    ) {
-        return new RedisTranscriptRepository(stringRedisTemplate, redisTranscriptProperties);
-    }
-
-    @Bean
-    public RedisTranscriptMapper transcriptRedisMapper() {
-        return new RedisTranscriptMapper();
-    }
-
-    @Bean
-    public TranscriptStore transcriptStore(TranscriptRepository transcriptRepository, RedisTranscriptMapper redisTranscriptMapper) {
-        return new TranscriptStoreAdapter(transcriptRepository, redisTranscriptMapper);
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        return interceptor;
     }
 }
+

@@ -233,7 +233,7 @@ com.vi.agent.core.app/
 ### 5.2 依赖注入规则
 - 一律使用构造器注入
 - Spring Bean 优先使用 `@RequiredArgsConstructor`
-- 禁止 `@Autowired` 字段注入
+- 使用 `@Resource` 字段注入
 - 禁止在 controller / application / config 中手工 new 核心依赖
 
 ### 5.3 Lombok 使用规则

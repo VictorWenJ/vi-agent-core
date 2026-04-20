@@ -23,6 +23,11 @@ public class IdGeneratorConfig {
     }
 
     @Bean
+    public SessionIdGenerator sessionIdGenerator() {
+        return new SessionIdGenerator();
+    }
+
+    @Bean
     public TurnIdGenerator turnIdGenerator() {
         return new TurnIdGenerator();
     }

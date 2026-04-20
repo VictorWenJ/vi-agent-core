@@ -5,6 +5,7 @@ import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.annotation.AgentTool;
 import com.vi.agent.core.model.tool.ToolBundle;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -14,6 +15,7 @@ import java.util.Optional;
  * Phase 1 mock 只读工具集合。
  */
 @Slf4j
+@Component
 public class MockReadOnlyTools implements ToolBundle {
 
     /**

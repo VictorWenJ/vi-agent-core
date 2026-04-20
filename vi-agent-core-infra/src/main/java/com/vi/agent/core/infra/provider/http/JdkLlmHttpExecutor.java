@@ -3,6 +3,7 @@ package com.vi.agent.core.infra.provider.http;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
  * 基于 JDK HttpClient 的公共 HTTP 执行器。
  */
 @Slf4j
+@Component
 public class JdkLlmHttpExecutor implements LlmHttpExecutor {
 
     /**

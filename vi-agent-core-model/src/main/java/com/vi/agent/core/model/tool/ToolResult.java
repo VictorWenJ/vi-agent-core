@@ -1,36 +1,28 @@
 package com.vi.agent.core.model.tool;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 /**
- * 工具执行结果。
+ * Tool execution output.
  */
 @Getter
-@Setter
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class ToolResult {
 
-    /** 工具调用 ID。 */
-    private String toolCallId;
+    private final String toolCallId;
 
-    /** 工具名称。 */
-    private String toolName;
+    private final String toolName;
 
-    /** 当前轮次 ID。 */
-    private String turnId;
+    private final String turnId;
 
-    /** 是否执行成功。 */
-    private boolean success;
+    private final boolean success;
 
-    /** 工具输出内容。 */
-    private String output;
+    private final String output;
 
-    /** 错误信息。 */
-    private String errorMessage;
+    private final String errorCode;
+
+    private final String errorMessage;
+
+    private final Long durationMs;
 }

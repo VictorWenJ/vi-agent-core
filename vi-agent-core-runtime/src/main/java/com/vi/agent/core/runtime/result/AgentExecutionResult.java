@@ -1,31 +1,42 @@
 package com.vi.agent.core.runtime.result;
 
+import com.vi.agent.core.model.llm.FinishReason;
+import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.runtime.RunStatus;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.time.Instant;
+
 /**
- * Runtime 执行结果。
+ * Runtime execution result.
  */
 @Getter
 @Builder
 public class AgentExecutionResult {
 
-    /** 链路追踪 ID。 */
-    private String traceId;
+    private final String requestId;
 
-    /** 运行 ID。 */
-    private String runId;
+    private final RunStatus runStatus;
 
-    /** 会话 ID。 */
-    private String sessionId;
+    private final String conversationId;
 
-    /** 会话链路 ID。 */
-    private String conversationId;
+    private final String sessionId;
 
-    /** 当前轮次 ID。 */
-    private String turnId;
+    private final String turnId;
 
-    /** 助手输出消息。 */
-    private AssistantMessage assistantMessage;
+    private final String userMessageId;
+
+    private final String assistantMessageId;
+
+    private final String runId;
+
+    private final AssistantMessage finalAssistantMessage;
+
+    private final FinishReason finishReason;
+
+    private final UsageInfo usage;
+
+    private final Instant createdAt;
 }

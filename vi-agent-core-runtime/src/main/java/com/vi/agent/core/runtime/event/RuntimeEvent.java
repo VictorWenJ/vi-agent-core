@@ -1,36 +1,53 @@
 package com.vi.agent.core.runtime.event;
 
+import com.vi.agent.core.model.llm.FinishReason;
+import com.vi.agent.core.model.llm.UsageInfo;
+import com.vi.agent.core.model.runtime.RunStatus;
+import com.vi.agent.core.model.tool.ToolCallRecord;
+import com.vi.agent.core.model.tool.ToolResultRecord;
 import lombok.Builder;
 import lombok.Getter;
 
 /**
- * Runtime 内部流式事件。
+ * Runtime event object.
  */
 @Getter
 @Builder
 public class RuntimeEvent {
 
-    /** 事件类型。 */
-    private RuntimeEventType type;
+    private RuntimeEventType eventType;
 
-    /** 链路追踪 ID。 */
-    private String traceId;
+    private RunStatus runStatus;
 
-    /** 运行 ID。 */
-    private String runId;
+    private String requestId;
 
-    /** 会话 ID。 */
-    private String sessionId;
-
-    /** 会话链路 ID。 */
     private String conversationId;
 
-    /** 当前轮次 ID。 */
+    private String sessionId;
+
     private String turnId;
 
-    /** 事件内容。 */
+    private String runId;
+
+    private String messageId;
+
+    private String delta;
+
     private String content;
 
-    /** 是否完成。 */
-    private boolean done;
+    private FinishReason finishReason;
+
+    private UsageInfo usage;
+
+    private ToolCallRecord toolCall;
+
+    private ToolResultRecord toolResult;
+
+    private String errorCode;
+
+    private String errorMessage;
+
+    private String errorType;
+
+    private boolean retryable;
 }

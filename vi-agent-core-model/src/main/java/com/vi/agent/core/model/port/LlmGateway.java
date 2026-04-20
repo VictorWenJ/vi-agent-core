@@ -1,29 +1,16 @@
 package com.vi.agent.core.model.port;
 
-import com.vi.agent.core.model.message.AssistantMessage;
-import com.vi.agent.core.model.runtime.AgentRunContext;
+import com.vi.agent.core.model.llm.ModelRequest;
+import com.vi.agent.core.model.llm.ModelResponse;
 
 import java.util.function.Consumer;
 
 /**
- * 运行时模型调用网关。
+ * Provider neutral LLM gateway.
  */
 public interface LlmGateway {
 
-    /**
-     * 生成助手回复。
-     *
-     * @param runContext 运行上下文
-     * @return 助手消息
-     */
-    AssistantMessage generate(AgentRunContext runContext);
+    ModelResponse generate(ModelRequest modelRequest);
 
-    /**
-     * 生成流式助手回复。
-     *
-     * @param runContext 运行上下文
-     * @param chunkConsumer 分片消费器
-     * @return 助手消息
-     */
-    AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer);
+    ModelResponse generateStreaming(ModelRequest modelRequest, Consumer<String> chunkConsumer);
 }

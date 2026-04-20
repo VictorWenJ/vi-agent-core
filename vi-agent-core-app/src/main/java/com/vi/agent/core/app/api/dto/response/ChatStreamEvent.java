@@ -1,36 +1,44 @@
 package com.vi.agent.core.app.api.dto.response;
 
-import lombok.AllArgsConstructor;
+import com.vi.agent.core.model.llm.FinishReason;
+import com.vi.agent.core.model.runtime.RunStatus;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 /**
- * 流式响应分片 DTO。
+ * Streaming chat event DTO.
  */
 @Getter
-@Setter
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class ChatStreamEvent {
 
-    /** 链路追踪 ID。 */
-    private String traceId;
+    private StreamEventType eventType;
 
-    /** 运行 ID。 */
-    private String runId;
+    private RunStatus runStatus;
 
-    /** 会话链路 ID。 */
+    private String requestId;
+
     private String conversationId;
 
-    /** 当前轮次 ID。 */
+    private String sessionId;
+
     private String turnId;
 
-    /** 当前分片内容。 */
+    private String runId;
+
+    private String messageId;
+
+    private String delta;
+
     private String content;
 
-    /** 是否结束。 */
-    private boolean done;
+    private FinishReason finishReason;
+
+    private UsageInfo usage;
+
+    private ToolCallPayload toolCall;
+
+    private ToolResultPayload toolResult;
+
+    private ErrorPayload error;
 }

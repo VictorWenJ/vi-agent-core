@@ -6,7 +6,7 @@ import com.vi.agent.core.model.annotation.AgentTool;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import com.vi.agent.core.model.tool.ToolResult;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -19,44 +19,30 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 工具注册表。
+ * Tool registry.
  */
-@Slf4j
+@Component
 public class ToolRegistry {
 
-    /** 已注册工具执行器映射。 */
     private final Map<String, ToolExecutor> executors = new ConcurrentHashMap<>();
 
-    /** 已注册工具定义映射。 */
     private final Map<String, ToolDefinition> definitions = new ConcurrentHashMap<>();
 
-    /**
-     * 注册工具。
-     *
-     * @param definition 工具定义
-     * @param executor 工具执行器
-     */
     public void register(ToolDefinition definition, ToolExecutor executor) {
         if (definition == null || definition.getName() == null || definition.getName().isBlank()) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "工具定义为空或名称为空");
+            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "tool definition is invalid");
         }
         if (executor == null) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "工具执行器不能为空");
+            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "tool executor is null");
         }
         String toolName = definition.getName();
         if (executors.containsKey(toolName)) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "重复注册工具: " + toolName);
+            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "duplicate tool: " + toolName);
         }
         executors.put(toolName, executor);
         definitions.put(toolName, definition);
-        log.info("ToolRegistry registered toolName={}", toolName);
     }
 
-    /**
-     * 基于注解扫描注册工具。
-     *
-     * @param toolBundle 工具集合对象
-     */
     public void registerAnnotatedTools(Object toolBundle) {
         if (toolBundle == null) {
             return;
@@ -76,11 +62,6 @@ public class ToolRegistry {
         }
     }
 
-    /**
-     * 批量注册注解工具。
-     *
-     * @param toolBundles 工具集合对象列表
-     */
     public void registerAnnotatedTools(Collection<?> toolBundles) {
         if (toolBundles == null) {
             return;
@@ -90,21 +71,10 @@ public class ToolRegistry {
         }
     }
 
-    /**
-     * 查询工具执行器。
-     *
-     * @param toolName 工具名称
-     * @return 可选执行器
-     */
     public Optional<ToolExecutor> find(String toolName) {
         return Optional.ofNullable(executors.get(toolName));
     }
 
-    /**
-     * 获取已注册工具定义列表。
-     *
-     * @return 工具定义列表
-     */
     public List<ToolDefinition> listDefinitions() {
         List<ToolDefinition> list = new ArrayList<>(definitions.values());
         list.sort(Comparator.comparing(ToolDefinition::getName));
@@ -113,14 +83,15 @@ public class ToolRegistry {
 
     private void validateToolMethod(Method method) {
         if (Modifier.isStatic(method.getModifiers())) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "@AgentTool 不允许标记 static 方法: " + method.getName());
+            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "@AgentTool cannot mark static method");
         }
         if (method.getParameterCount() > 1) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "@AgentTool 方法参数最多 1 个: " + method.getName());
+            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, "@AgentTool supports at most one parameter");
         }
     }
 
     private ToolResult invokeToolMethod(Object toolBundle, Method method, ToolCall toolCall) {
+        long start = System.currentTimeMillis();
         try {
             method.setAccessible(true);
             Object value;
@@ -135,7 +106,7 @@ public class ToolRegistry {
                 } else {
                     throw new AgentRuntimeException(
                         ErrorCode.INVALID_ARGUMENT,
-                        "@AgentTool 方法参数类型仅支持 String 或 ToolCall: " + method.getName()
+                        "@AgentTool parameter must be String or ToolCall"
                     );
                 }
             }
@@ -145,17 +116,18 @@ public class ToolRegistry {
                 .turnId(toolCall.getTurnId())
                 .success(true)
                 .output(value == null ? "" : String.valueOf(value))
-                .errorMessage("")
+                .durationMs(System.currentTimeMillis() - start)
                 .build();
         } catch (Exception e) {
-            log.error("ToolRegistry invoke tool failed toolName={} method={}", toolCall.getToolName(), method.getName(), e);
             return ToolResult.builder()
                 .toolCallId(toolCall.getToolCallId())
                 .toolName(toolCall.getToolName())
                 .turnId(toolCall.getTurnId())
                 .success(false)
                 .output("")
+                .errorCode(ErrorCode.TOOL_EXECUTION_FAILED.getCode())
                 .errorMessage(e.getMessage())
+                .durationMs(System.currentTimeMillis() - start)
                 .build();
         }
     }

@@ -1,9 +1,18 @@
 spring:
   application:
     name: vi-agent-core
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/vi_agent_core?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
   data:
     redis:
-      host: ${REDIS_HOST:redis}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       database: ${REDIS_DB:0}
       timeout: 3s
@@ -25,6 +34,7 @@ vi:
   agent:
     runtime:
       max-iterations: 6
+      session-state-window: 200
 
     provider:
       routing:
@@ -53,8 +63,3 @@ vi:
         chat-path: /v1/chat/completions
         connect-timeout-ms: 3000
         read-timeout-ms: 60000
-
-    transcript:
-      store-type: redis
-      redis:
-        key-prefix: "transcript:"

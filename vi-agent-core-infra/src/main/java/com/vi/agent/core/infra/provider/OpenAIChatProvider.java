@@ -1,20 +1,18 @@
 package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
-import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.OpenAIProperties;
+import jakarta.annotation.Resource;
+import org.springframework.stereotype.Component;
 
 /**
- * OpenAI Provider 实现。
+ * OpenAI provider implementation.
  */
+@Component("openaiLlmGateway")
 public class OpenAIChatProvider extends OpenAICompatibleChatProvider {
 
-    private final OpenAIProperties properties;
-
-    public OpenAIChatProvider(OpenAIProperties properties, LlmHttpExecutor httpExecutor) {
-        super(httpExecutor);
-        this.properties = properties;
-    }
+    @Resource
+    private OpenAIProperties properties;
 
     @Override
     protected String providerName() {
@@ -56,3 +54,4 @@ public class OpenAIChatProvider extends OpenAICompatibleChatProvider {
         return properties.getReadTimeoutMs();
     }
 }
+

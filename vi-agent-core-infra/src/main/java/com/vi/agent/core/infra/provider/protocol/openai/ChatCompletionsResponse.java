@@ -6,14 +6,15 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * Chat Completion 响应体。
+ * Chat completion response.
  */
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ChatCompletionsResponse {
 
-    /**
-     * 结果列表。
-     */
     private List<ChatCompletionsChoice> choices;
+
+    private ChatCompletionsUsage usage;
+
+    private String model;
 }

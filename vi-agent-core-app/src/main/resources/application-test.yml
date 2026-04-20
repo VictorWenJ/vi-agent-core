@@ -1,17 +1,27 @@
 spring:
+  datasource:
+    url: jdbc:h2:mem:vi_agent_core;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: true
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      database: ${REDIS_DB:1}
+      host: localhost
+      port: 6379
 
-logging:
-  level:
-    root: WARN
-    com.vi.agent.core: INFO
+management:
+  health:
+    redis:
+      enabled: false
 
 vi:
   agent:
+    runtime:
+      max-iterations: 4
+      session-state-window: 100
+
     provider:
-      deepseek:
-        api-key: test-key
+      routing:
+        default-provider: deepseek

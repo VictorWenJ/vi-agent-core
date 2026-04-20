@@ -4,121 +4,132 @@ import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
-import com.vi.agent.core.infra.provider.LlmProvider;
 import com.vi.agent.core.infra.provider.http.HttpRequestOptions;
-import com.vi.agent.core.infra.provider.http.JdkLlmHttpExecutor;
 import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.protocol.openai.*;
-import com.vi.agent.core.model.message.AssistantMessage;
-import com.vi.agent.core.model.message.Message;
-import com.vi.agent.core.model.message.ToolExecutionMessage;
-import com.vi.agent.core.model.runtime.AgentRunContext;
-import com.vi.agent.core.model.tool.ToolCall;
+import com.vi.agent.core.model.llm.*;
+import com.vi.agent.core.model.message.*;
+import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.tool.ToolDefinition;
-import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.Resource;
 
 import java.util.*;
 import java.util.function.Consumer;
 
 /**
- * OpenAI 协议兼容 Provider 公共基类。
+ * Shared OpenAI-compatible provider implementation.
  */
-@Slf4j
-public abstract class OpenAICompatibleChatProvider implements LlmProvider {
+public abstract class OpenAICompatibleChatProvider implements LlmGateway {
 
-    /**
-     * 公共 HTTP 执行器。
-     */
-    protected final LlmHttpExecutor httpExecutor;
-
-    protected OpenAICompatibleChatProvider() {
-        this(new JdkLlmHttpExecutor());
-    }
-
-    protected OpenAICompatibleChatProvider(LlmHttpExecutor httpExecutor) {
-        this.httpExecutor = httpExecutor;
-    }
+    @Resource
+    protected LlmHttpExecutor httpExecutor;
 
     @Override
-    public AssistantMessage generate(AgentRunContext runContext) {
+    public ModelResponse generate(ModelRequest modelRequest) {
         assertConfigured();
-        ChatCompletionsRequest request = buildRequest(runContext, false);
+        ChatCompletionsRequest request = buildRequest(modelRequest, false);
         String payload = JsonUtils.toJson(request);
 
         try {
-            log.info("OpenAICompatibleChatProvider generate payload={}", payload);
             String responseBody = httpExecutor.post(endpoint(), defaultHeaders(), payload, requestOptions());
-            log.info("OpenAICompatibleChatProvider generate responseBody={}", responseBody);
-            return parseAssistantMessage(responseBody, runContext.getTurnId());
+            return parseModelResponse(responseBody);
         } catch (AgentRuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " 同步调用失败", e);
+            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " sync call failed", e);
         }
     }
 
     @Override
-    public AssistantMessage generateStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
+    public ModelResponse generateStreaming(ModelRequest modelRequest, Consumer<String> chunkConsumer) {
         assertConfigured();
-        ChatCompletionsRequest request = buildRequest(runContext, true);
+        ChatCompletionsRequest request = buildRequest(modelRequest, true);
+        request.setStreamOptions(new ChatCompletionsStreamOptions());
+        request.getStreamOptions().setIncludeUsage(true);
+
         String payload = JsonUtils.toJson(request);
 
         StringBuilder fullContent = new StringBuilder();
         Map<String, StreamingToolCallAccumulator> toolCallStateMap = new LinkedHashMap<>();
+        UsageInfo usage = UsageInfo.empty();
+        FinishReason finishReason = FinishReason.STOP;
+        String modelName = model();
 
         try {
-            log.info("OpenAICompatibleChatProvider generateStreaming payload={}", payload);
+            final UsageInfo[] usageRef = new UsageInfo[] {usage};
+            final FinishReason[] reasonRef = new FinishReason[] {finishReason};
+            final String[] modelRef = new String[] {modelName};
             httpExecutor.postStream(
                 endpoint(),
                 defaultHeaders(),
                 payload,
                 requestOptions(),
-                line -> handleStreamLine(line, runContext.getTurnId(), fullContent, toolCallStateMap, chunkConsumer)
+                line -> {
+                    ChatCompletionsStreamChunk chunk = parseStreamLine(line, fullContent, toolCallStateMap, chunkConsumer);
+                    if (chunk == null) {
+                        return;
+                    }
+                    if (chunk.getUsage() != null) {
+                        usageRef[0] = toUsageInfo(chunk.getUsage(), providerKey(), chunk.getModel() == null ? model() : chunk.getModel());
+                    }
+                    if (chunk.getModel() != null) {
+                        modelRef[0] = chunk.getModel();
+                    }
+                    if (chunk.getChoices() != null) {
+                        for (ChatCompletionsStreamChoice choice : chunk.getChoices()) {
+                            if (choice != null && choice.getFinishReason() != null && !choice.getFinishReason().isBlank()) {
+                                reasonRef[0] = toFinishReason(choice.getFinishReason());
+                            }
+                        }
+                    }
+                }
             );
-            return AssistantMessage.create(
-                null,
-                runContext.getTurnId(),
-                fullContent.toString(),
-                toToolCalls(toolCallStateMap, runContext.getTurnId())
-            );
+
+            return ModelResponse.builder()
+                .content(fullContent.toString())
+                .toolCalls(toModelToolCalls(toolCallStateMap))
+                .finishReason(reasonRef[0])
+                .usage(usageRef[0])
+                .provider(providerKey())
+                .model(modelRef[0])
+                .build();
         } catch (AgentRuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " 流式调用失败", e);
+            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " stream call failed", e);
         }
     }
 
-    protected ChatCompletionsRequest buildRequest(AgentRunContext runContext, boolean stream) {
+    protected ChatCompletionsRequest buildRequest(ModelRequest modelRequest, boolean stream) {
         ChatCompletionsRequest request = new ChatCompletionsRequest();
         request.setModel(model());
         request.setStream(stream);
 
-        List<ChatCompletionsMessage> chatCompletionsMessages = new ArrayList<>();
-        List<Message> workingMessages = runContext.getWorkingMessages();
-        if (workingMessages != null && !workingMessages.isEmpty()) {
-            for (Message message : workingMessages) {
-                ChatCompletionsMessage chatCompletionsMessage = toApiMessage(message);
-                if (chatCompletionsMessage != null) {
-                    chatCompletionsMessages.add(chatCompletionsMessage);
+        List<ChatCompletionsMessage> apiMessages = new ArrayList<>();
+        if (modelRequest.getMessages() != null) {
+            for (Message message : modelRequest.getMessages()) {
+                ChatCompletionsMessage apiMessage = toApiMessage(message);
+                if (apiMessage != null) {
+                    apiMessages.add(apiMessage);
                 }
             }
         }
-        request.setMessages(chatCompletionsMessages);
+        request.setMessages(apiMessages);
 
-        List<ToolDefinition> availableTools = runContext.getAvailableTools();
-        if (availableTools != null && !availableTools.isEmpty()) {
-            List<ChatCompletionsToolDefinition> apiTools = new ArrayList<>();
-            for (ToolDefinition definition : availableTools) {
-                ChatCompletionsToolDefinition chatCompletionsToolDefinition = toApiToolDefinition(definition);
-                if (chatCompletionsToolDefinition != null) {
-                    apiTools.add(chatCompletionsToolDefinition);
+        if (modelRequest.getTools() != null && !modelRequest.getTools().isEmpty()) {
+            List<ChatCompletionsToolDefinition> tools = new ArrayList<>();
+            for (ToolDefinition definition : modelRequest.getTools()) {
+                ChatCompletionsToolDefinition tool = toApiToolDefinition(definition);
+                if (tool != null) {
+                    tools.add(tool);
                 }
             }
-            if (!apiTools.isEmpty()) {
-                request.setTools(apiTools);
+            if (!tools.isEmpty()) {
+                request.setTools(tools);
                 request.setToolChoice("auto");
             }
         }
+
         return request;
     }
 
@@ -126,26 +137,53 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
         if (message == null) {
             return null;
         }
-        ChatCompletionsMessage chatCompletionsMessage = new ChatCompletionsMessage();
-        chatCompletionsMessage.setRole(message.getRole());
-        chatCompletionsMessage.setContent(message.getContent());
+
+        if (message instanceof ToolResultMessage toolResultMessage) {
+            ChatCompletionsMessage api = new ChatCompletionsMessage();
+            api.setRole("tool");
+            api.setContent(toolResultMessage.getContent());
+            api.setToolCallId(toolResultMessage.getToolCallId());
+            api.setName(toolResultMessage.getToolName());
+            return api;
+        }
+
+        ChatCompletionsMessage api = new ChatCompletionsMessage();
+        api.setRole(toApiRole(message.getRole()));
+        api.setContent(message.getContent());
 
         if (message instanceof AssistantMessage assistantMessage
             && assistantMessage.getToolCalls() != null
             && !assistantMessage.getToolCalls().isEmpty()) {
-            List<ChatCompletionsToolCall> chatCompletionsToolCalls = new ArrayList<>();
-            for (ToolCall toolCall : assistantMessage.getToolCalls()) {
-                chatCompletionsToolCalls.add(toApiToolCall(toolCall));
+            List<ChatCompletionsToolCall> toolCalls = new ArrayList<>();
+            for (ModelToolCall toolCall : assistantMessage.getToolCalls()) {
+                ChatCompletionsToolCall apiToolCall = new ChatCompletionsToolCall();
+                apiToolCall.setId(toolCall.getToolCallId());
+                apiToolCall.setType("function");
+                ChatCompletionsFunction function = new ChatCompletionsFunction();
+                function.setName(toolCall.getToolName());
+                function.setArguments(toolCall.getArgumentsJson());
+                apiToolCall.setFunction(function);
+                toolCalls.add(apiToolCall);
             }
-            chatCompletionsMessage.setToolCalls(chatCompletionsToolCalls);
+            api.setToolCalls(toolCalls);
         }
 
-        if (message instanceof ToolExecutionMessage toolExecutionMessage) {
-            chatCompletionsMessage.setToolCallId(toolExecutionMessage.getToolCallId());
-            chatCompletionsMessage.setName(toolExecutionMessage.getToolName());
-            chatCompletionsMessage.setContent(toolExecutionMessage.getToolOutput());
+        if (message instanceof ToolCallMessage toolCallMessage) {
+            List<ChatCompletionsToolCall> toolCalls = new ArrayList<>();
+            ChatCompletionsToolCall apiToolCall = new ChatCompletionsToolCall();
+            apiToolCall.setId(toolCallMessage.getToolCallId());
+            apiToolCall.setType("function");
+            ChatCompletionsFunction function = new ChatCompletionsFunction();
+            function.setName(toolCallMessage.getToolName());
+            function.setArguments(toolCallMessage.getArgumentsJson());
+            apiToolCall.setFunction(function);
+            toolCalls.add(apiToolCall);
+            api.setRole("assistant");
+            api.setToolCalls(toolCalls);
+            api.setContent(null);
         }
-        return chatCompletionsMessage;
+
+        return api;
     }
 
     protected ChatCompletionsToolDefinition toApiToolDefinition(ToolDefinition definition) {
@@ -153,8 +191,8 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
             return null;
         }
 
-        ChatCompletionsToolDefinition chatCompletionsToolDefinition = new ChatCompletionsToolDefinition();
-        chatCompletionsToolDefinition.setType("function");
+        ChatCompletionsToolDefinition toolDefinition = new ChatCompletionsToolDefinition();
+        toolDefinition.setType("function");
 
         ChatCompletionsFunction function = new ChatCompletionsFunction();
         function.setName(definition.getName());
@@ -165,183 +203,199 @@ public abstract class OpenAICompatibleChatProvider implements LlmProvider {
             Object.class
         );
         function.setParameters(parameters == null ? Map.of("type", "object", "properties", Map.of()) : parameters);
-        chatCompletionsToolDefinition.setFunction(function);
-        return chatCompletionsToolDefinition;
+
+        toolDefinition.setFunction(function);
+        return toolDefinition;
     }
 
-    protected ChatCompletionsToolCall toApiToolCall(ToolCall toolCall) {
-        ChatCompletionsToolCall chatCompletionsToolCall = new ChatCompletionsToolCall();
-        chatCompletionsToolCall.setId(toolCall.getToolCallId());
-        chatCompletionsToolCall.setType("function");
-
-        ChatCompletionsFunction function = new ChatCompletionsFunction();
-        function.setName(toolCall.getToolName());
-        function.setArguments(Optional.ofNullable(toolCall.getArgumentsJson()).orElse("{}"));
-        chatCompletionsToolCall.setFunction(function);
-        return chatCompletionsToolCall;
-    }
-
-    protected AssistantMessage parseAssistantMessage(String body, String defaultTurnId) {
+    protected ModelResponse parseModelResponse(String body) {
         ChatCompletionsResponse response = JsonUtils.jsonToBean(body, ChatCompletionsResponse.class);
         if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " 返回为空");
+            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " empty response");
         }
 
         ChatCompletionsChoice choice = response.getChoices().get(0);
         if (choice == null || choice.getMessage() == null) {
-            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " 返回缺少 message");
+            throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " missing message");
         }
 
         ChatCompletionsMessage message = choice.getMessage();
-        List<ToolCall> toolCalls = collectToolCalls(message.getToolCalls(), defaultTurnId);
-        return AssistantMessage.create(
-            null,
-            defaultTurnId,
-            Optional.ofNullable(message.getContent()).orElse(""),
-            toolCalls
-        );
+        List<ModelToolCall> toolCalls = toModelToolCalls(message.getToolCalls());
+
+        return ModelResponse.builder()
+            .content(Optional.ofNullable(message.getContent()).orElse(""))
+            .toolCalls(toolCalls)
+            .finishReason(toFinishReason(choice.getFinishReason()))
+            .usage(toUsageInfo(response.getUsage(), providerKey(), response.getModel()))
+            .provider(providerKey())
+            .model(response.getModel() == null ? model() : response.getModel())
+            .build();
     }
 
-    protected void handleStreamLine(
+    protected ChatCompletionsStreamChunk parseStreamLine(
         String line,
-        String defaultTurnId,
         StringBuilder fullContent,
         Map<String, StreamingToolCallAccumulator> toolCallStateMap,
         Consumer<String> chunkConsumer
     ) {
         if (line == null || line.isBlank() || !line.startsWith("data:")) {
-            return;
+            return null;
         }
 
         String data = line.substring("data:".length()).trim();
         if ("[DONE]".equals(data)) {
-            return;
+            return null;
         }
 
-        ChatCompletionsStreamChunk streamResponse = JsonUtils.jsonToBean(data, ChatCompletionsStreamChunk.class);
-        if (streamResponse == null || streamResponse.getChoices() == null || streamResponse.getChoices().isEmpty()) {
-            return;
+        ChatCompletionsStreamChunk streamChunk = JsonUtils.jsonToBean(data, ChatCompletionsStreamChunk.class);
+        if (streamChunk == null) {
+            return null;
         }
 
-        for (ChatCompletionsStreamChoice choice : streamResponse.getChoices()) {
-            ChatCompletionsDelta delta = choice.getDelta();
-            if (delta == null) {
+        if (streamChunk.getChoices() == null || streamChunk.getChoices().isEmpty()) {
+            return streamChunk;
+        }
+
+        for (ChatCompletionsStreamChoice choice : streamChunk.getChoices()) {
+            if (choice == null || choice.getDelta() == null) {
                 continue;
             }
+            ChatCompletionsDelta delta = choice.getDelta();
             if (delta.getContent() != null && !delta.getContent().isBlank()) {
                 fullContent.append(delta.getContent());
                 if (chunkConsumer != null) {
                     chunkConsumer.accept(delta.getContent());
                 }
             }
-            mergeStreamToolCalls(toolCallStateMap, delta.getToolCalls(), defaultTurnId);
+            mergeStreamToolCalls(toolCallStateMap, delta.getToolCalls(), toolCallStateMap.size());
         }
-    }
-
-    protected List<ToolCall> collectToolCalls(List<ChatCompletionsToolCall> chatCompletionsToolCalls, String defaultTurnId) {
-        if (chatCompletionsToolCalls == null || chatCompletionsToolCalls.isEmpty()) {
-            return List.of();
-        }
-        List<ToolCall> toolCalls = new ArrayList<>();
-        for (ChatCompletionsToolCall chatCompletionsToolCall : chatCompletionsToolCalls) {
-            ToolCall toolCall = toToolCall(chatCompletionsToolCall, defaultTurnId);
-            if (toolCall != null) {
-                toolCalls.add(toolCall);
-            }
-        }
-        return toolCalls;
-    }
-
-    protected ToolCall toToolCall(ChatCompletionsToolCall chatCompletionsToolCall, String defaultTurnId) {
-        if (chatCompletionsToolCall == null || chatCompletionsToolCall.getFunction() == null) {
-            return null;
-        }
-        String toolName = chatCompletionsToolCall.getFunction().getName();
-        if (toolName == null || toolName.isBlank()) {
-            return null;
-        }
-        String toolCallId = resolveToolCallId(chatCompletionsToolCall, 0);
-        return ToolCall.builder()
-            .toolCallId(toolCallId)
-            .toolName(toolName)
-            .argumentsJson(Optional.ofNullable(chatCompletionsToolCall.getFunction().getArguments()).orElse("{}"))
-            .turnId(defaultTurnId)
-            .build();
+        return streamChunk;
     }
 
     protected void mergeStreamToolCalls(
-        Map<String, StreamingToolCallAccumulator> toolCallStateMap,
-        List<ChatCompletionsToolCall> chatCompletionsToolCalls,
-        String defaultTurnId
+        Map<String, StreamingToolCallAccumulator> stateMap,
+        List<ChatCompletionsToolCall> toolCalls,
+        int seqStart
     ) {
-        if (chatCompletionsToolCalls == null || chatCompletionsToolCalls.isEmpty()) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
             return;
         }
-        for (ChatCompletionsToolCall chatCompletionsToolCall : chatCompletionsToolCalls) {
-            if (chatCompletionsToolCall == null) {
+        int seq = seqStart;
+        for (ChatCompletionsToolCall toolCall : toolCalls) {
+            if (toolCall == null) {
                 continue;
             }
-            String stateKey = resolveStreamStateKey(chatCompletionsToolCall, toolCallStateMap.size());
-            StreamingToolCallAccumulator state = toolCallStateMap.computeIfAbsent(stateKey, key -> new StreamingToolCallAccumulator());
-
+            String key = resolveStreamStateKey(toolCall, seq++);
+            StreamingToolCallAccumulator state = stateMap.computeIfAbsent(key, ignored -> new StreamingToolCallAccumulator());
             if (state.toolCallId == null || state.toolCallId.isBlank()) {
-                state.toolCallId = resolveToolCallId(chatCompletionsToolCall, toolCallStateMap.size());
+                state.toolCallId = resolveToolCallId(toolCall, stateMap.size());
             }
-            if (state.turnId == null || state.turnId.isBlank()) {
-                state.turnId = defaultTurnId;
-            }
-
-            if (chatCompletionsToolCall.getFunction() != null) {
-                if (chatCompletionsToolCall.getFunction().getName() != null && !chatCompletionsToolCall.getFunction().getName().isBlank()) {
-                    state.toolName = chatCompletionsToolCall.getFunction().getName();
+            if (toolCall.getFunction() != null) {
+                if (toolCall.getFunction().getName() != null && !toolCall.getFunction().getName().isBlank()) {
+                    state.toolName = toolCall.getFunction().getName();
                 }
-                if (chatCompletionsToolCall.getFunction().getArguments() != null && !chatCompletionsToolCall.getFunction().getArguments().isEmpty()) {
-                    state.argumentsBuilder.append(chatCompletionsToolCall.getFunction().getArguments());
+                if (toolCall.getFunction().getArguments() != null) {
+                    state.argumentsBuilder.append(toolCall.getFunction().getArguments());
                 }
             }
         }
     }
 
-    protected List<ToolCall> toToolCalls(Map<String, StreamingToolCallAccumulator> toolCallStateMap, String defaultTurnId) {
-        if (toolCallStateMap == null || toolCallStateMap.isEmpty()) {
-            return List.of();
+    protected String resolveStreamStateKey(ChatCompletionsToolCall toolCall, int sequence) {
+        if (toolCall.getId() != null && !toolCall.getId().isBlank()) {
+            return toolCall.getId();
         }
-        List<ToolCall> toolCalls = new ArrayList<>();
-        for (StreamingToolCallAccumulator state : toolCallStateMap.values()) {
-            if (state.toolName == null || state.toolName.isBlank()) {
-                continue;
-            }
-            String argumentsJson = state.argumentsBuilder.length() == 0 ? "{}" : state.argumentsBuilder.toString();
-            toolCalls.add(
-                ToolCall.builder()
-                    .toolCallId(Optional.ofNullable(state.toolCallId).orElse(providerKey() + "-tool-call"))
-                    .toolName(state.toolName)
-                    .argumentsJson(argumentsJson)
-                    .turnId(Optional.ofNullable(state.turnId).orElse(defaultTurnId))
-                    .build()
-            );
-        }
-        return toolCalls;
-    }
-
-    protected String resolveStreamStateKey(ChatCompletionsToolCall chatCompletionsToolCall, int sequence) {
-        if (chatCompletionsToolCall.getId() != null && !chatCompletionsToolCall.getId().isBlank()) {
-            return chatCompletionsToolCall.getId();
-        }
-        if (chatCompletionsToolCall.getIndex() != null) {
-            return providerKey() + "-idx-" + chatCompletionsToolCall.getIndex();
+        if (toolCall.getIndex() != null) {
+            return providerKey() + "-idx-" + toolCall.getIndex();
         }
         return providerKey() + "-seq-" + sequence;
     }
 
-    protected String resolveToolCallId(ChatCompletionsToolCall chatCompletionsToolCall, int sequence) {
-        if (chatCompletionsToolCall.getId() != null && !chatCompletionsToolCall.getId().isBlank()) {
-            return chatCompletionsToolCall.getId();
+    protected String resolveToolCallId(ChatCompletionsToolCall toolCall, int sequence) {
+        if (toolCall.getId() != null && !toolCall.getId().isBlank()) {
+            return toolCall.getId();
         }
-        if (chatCompletionsToolCall.getIndex() != null) {
-            return providerKey() + "-tool-call-" + chatCompletionsToolCall.getIndex();
+        if (toolCall.getIndex() != null) {
+            return providerKey() + "-tool-call-" + toolCall.getIndex();
         }
         return providerKey() + "-tool-call-" + sequence;
+    }
+
+    protected List<ModelToolCall> toModelToolCalls(List<ChatCompletionsToolCall> apiToolCalls) {
+        if (apiToolCalls == null || apiToolCalls.isEmpty()) {
+            return List.of();
+        }
+        List<ModelToolCall> modelToolCalls = new ArrayList<>();
+        int seq = 0;
+        for (ChatCompletionsToolCall apiToolCall : apiToolCalls) {
+            if (apiToolCall == null || apiToolCall.getFunction() == null) {
+                continue;
+            }
+            String name = apiToolCall.getFunction().getName();
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            modelToolCalls.add(ModelToolCall.builder()
+                .toolCallId(resolveToolCallId(apiToolCall, seq++))
+                .toolName(name)
+                .argumentsJson(Optional.ofNullable(apiToolCall.getFunction().getArguments()).orElse("{}"))
+                .build());
+        }
+        return modelToolCalls;
+    }
+
+    protected List<ModelToolCall> toModelToolCalls(Map<String, StreamingToolCallAccumulator> stateMap) {
+        if (stateMap == null || stateMap.isEmpty()) {
+            return List.of();
+        }
+        List<ModelToolCall> toolCalls = new ArrayList<>();
+        for (StreamingToolCallAccumulator value : stateMap.values()) {
+            if (value == null || value.toolName == null || value.toolName.isBlank()) {
+                continue;
+            }
+            toolCalls.add(ModelToolCall.builder()
+                .toolCallId(value.toolCallId)
+                .toolName(value.toolName)
+                .argumentsJson(value.argumentsBuilder.length() == 0 ? "{}" : value.argumentsBuilder.toString())
+                .build());
+        }
+        return toolCalls;
+    }
+
+    protected UsageInfo toUsageInfo(ChatCompletionsUsage usage, String provider, String modelName) {
+        if (usage == null) {
+            return UsageInfo.builder().provider(provider).model(modelName == null ? model() : modelName).build();
+        }
+        return UsageInfo.builder()
+            .inputTokens(usage.getPromptTokens())
+            .outputTokens(usage.getCompletionTokens())
+            .totalTokens(usage.getTotalTokens())
+            .provider(provider)
+            .model(modelName == null ? model() : modelName)
+            .build();
+    }
+
+    protected FinishReason toFinishReason(String finishReason) {
+        if (finishReason == null || finishReason.isBlank()) {
+            return FinishReason.STOP;
+        }
+        return switch (finishReason.toLowerCase(Locale.ROOT)) {
+            case "tool_calls", "tool_call", "function_call" -> FinishReason.TOOL_CALL;
+            case "length" -> FinishReason.LENGTH;
+            case "error" -> FinishReason.ERROR;
+            case "cancelled" -> FinishReason.CANCELLED;
+            default -> FinishReason.STOP;
+        };
+    }
+
+    protected String toApiRole(MessageRole role) {
+        return switch (role) {
+            case USER -> "user";
+            case ASSISTANT -> "assistant";
+            case TOOL -> "tool";
+            case SYSTEM -> "system";
+            case SUMMARY -> "system";
+        };
     }
 
     protected String endpoint() {

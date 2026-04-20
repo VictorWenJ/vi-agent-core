@@ -1,20 +1,20 @@
 package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
-import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
+import jakarta.annotation.Resource;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Component;
 
 /**
- * DeepSeek Provider 实现。
+ * DeepSeek provider implementation.
  */
+@Primary
+@Component("deepseekLlmGateway")
 public class DeepSeekChatProvider extends OpenAICompatibleChatProvider {
 
-    private final DeepSeekProperties properties;
-
-    public DeepSeekChatProvider(DeepSeekProperties properties, LlmHttpExecutor httpExecutor) {
-        super(httpExecutor);
-        this.properties = properties;
-    }
+    @Resource
+    private DeepSeekProperties properties;
 
     @Override
     protected String providerName() {
@@ -56,3 +56,4 @@ public class DeepSeekChatProvider extends OpenAICompatibleChatProvider {
         return properties.getReadTimeoutMs();
     }
 }
+
