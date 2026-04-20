@@ -1,5 +1,10 @@
 # Maven
 **/target/
+.m2/
+.mvn-settings.xml
+settings.xml
+dependency-reduced-pom.xml
+.flattened-pom.xml
 
 # IDE
 .idea/
@@ -7,10 +12,15 @@
 *.ipr
 *.iws
 .vscode/
+out/
+**/out/
 
 # Logs
 *.log
 logs/
+**/logs/
+hs_err_pid*
+replay_pid*
 
 # Environment
 .env
@@ -29,3 +39,4 @@ Thumbs.db
 # Test reports
 **/surefire-reports/
 **/failsafe-reports/
+**/jacoco.exec
