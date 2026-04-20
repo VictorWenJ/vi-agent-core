@@ -24,7 +24,9 @@ import reactor.core.publisher.Flux;
 @RequiredArgsConstructor
 public class ChatStreamController {
 
-    /** 流式聊天 Facade 服务。 */
+    /**
+     * 流式聊天 Facade 服务。
+     */
     private final ChatStreamApplicationService chatStreamApplicationService;
 
     @PostMapping

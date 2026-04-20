@@ -23,7 +23,12 @@ public class ChatApplicationService {
 
     public Mono<ChatResponse> chat(ChatRequest request) {
         return Mono.fromCallable(() -> {
-            AgentExecutionResult result = runtimeOrchestrator.execute(request.getSessionId(), request.getMessage());
+            AgentExecutionResult result = runtimeOrchestrator.execute(
+                request.getConversationId(),
+                request.getSessionId(),
+                request.getRequestId(),
+                request.getMessage());
+
             return ChatResponse.builder()
                 .traceId(result.getTraceId())
                 .runId(result.getRunId())

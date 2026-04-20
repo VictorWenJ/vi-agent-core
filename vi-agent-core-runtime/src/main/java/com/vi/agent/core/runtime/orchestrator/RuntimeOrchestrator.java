@@ -133,8 +133,8 @@ public class RuntimeOrchestrator {
      * @param userInput 用户输入
      * @return 执行结果
      */
-    public AgentExecutionResult execute(String sessionId, String userInput) {
-        return executeInternal(sessionId, userInput, null, false);
+    public AgentExecutionResult execute(String conversationId, String sessionId, String requestId, String userInput) {
+        return executeInternal(conversationId, sessionId, requestId, userInput, null, false);
     }
 
     /**
@@ -145,15 +145,23 @@ public class RuntimeOrchestrator {
      * @param eventConsumer 事件消费器
      * @return 执行结果
      */
-    public AgentExecutionResult executeStreaming(String sessionId, String userInput, Consumer<RuntimeEvent> eventConsumer) {
-        return executeInternal(sessionId, userInput, eventConsumer, true);
+    public AgentExecutionResult executeStreaming(String conversationId, String sessionId, String requestId, String userInput, Consumer<RuntimeEvent> eventConsumer) {
+        return executeInternal(conversationId, sessionId, requestId, userInput, eventConsumer, true);
     }
 
-    private AgentExecutionResult executeInternal(String sessionId, String userInput, Consumer<RuntimeEvent> eventConsumer, boolean streaming) {
-        ValidationUtils.requireNonBlank(sessionId, "sessionId");
+    private AgentExecutionResult executeInternal(
+        String conversationId,
+        String sessionId,
+        String requestId,
+        String userInput,
+        Consumer<RuntimeEvent> eventConsumer,
+        boolean streaming
+    ) {
+        ValidationUtils.requireNonBlank(requestId, "requestId");
         ValidationUtils.requireNonBlank(userInput, "userInput");
 
-        log.info("RuntimeOrchestrator executeInternal runtime run start");
+        log.info("RuntimeOrchestrator executeInternal start conversationId={} sessionId={} requestId={} userInput={} eventConsumer={} streaming={}",
+            conversationId, sessionId, requestId, userInput, JsonUtils.toJson(eventConsumer), streaming);
 
         String runId = runIdGenerator.nextId();
         String traceId = traceIdGenerator.nextId();
@@ -164,8 +172,6 @@ public class RuntimeOrchestrator {
         MDC.put(MDC_TRACE_ID, traceId);
         MDC.put(MDC_SESSION_ID, sessionId);
 
-        log.info("RuntimeOrchestrator executeInternal userInput={} eventConsumer={} streaming={}", userInput, JsonUtils.toJson(eventConsumer), streaming);
-
         // 1.获取上下文，没有就构建
         ConversationTranscript transcript = transcriptStore.load(sessionId)
             .orElseGet(() -> ConversationTranscript.start(sessionId, conversationIdGenerator.nextId()));
@@ -174,7 +180,7 @@ public class RuntimeOrchestrator {
         }
         log.info("RuntimeOrchestrator executeInternal transcript={}", JsonUtils.toJson(transcript));
 
-        String conversationId = transcript.getConversationId();
+        conversationId = transcript.getConversationId();
 
         String previousTraceId = MDC.get(MDC_TRACE_ID);
         String previousRunId = MDC.get(MDC_RUN_ID);
@@ -247,12 +253,13 @@ public class RuntimeOrchestrator {
                 // 6.同步输出：agentLoopEngine
                 AssistantMessage assistantMessage;
                 if (streaming) {
+                    String finalConversationId = conversationId;
                     assistantMessage = agentLoopEngine.runStreaming(runContext, chunk -> emitTokenEvent(
                         eventConsumer,
                         traceId,
                         runId,
                         sessionId,
-                        conversationId,
+                        finalConversationId,
                         turnId,
                         chunk
                     ));

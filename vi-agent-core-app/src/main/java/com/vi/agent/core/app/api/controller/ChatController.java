@@ -23,7 +23,9 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class ChatController {
 
-    /** 聊天 Facade 服务。 */
+    /**
+     * 聊天 Facade 服务。
+     */
     private final ChatApplicationService chatApplicationService;
 
     @PostMapping

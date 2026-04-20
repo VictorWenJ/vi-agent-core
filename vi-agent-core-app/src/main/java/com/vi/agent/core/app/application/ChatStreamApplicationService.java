@@ -19,28 +19,35 @@ import reactor.core.scheduler.Schedulers;
 @RequiredArgsConstructor
 public class ChatStreamApplicationService {
 
-    /** Runtime 核心编排器。 */
+    /**
+     * Runtime 核心编排器。
+     */
     private final RuntimeOrchestrator runtimeOrchestrator;
 
     public Flux<ServerSentEvent<ChatStreamEvent>> stream(ChatRequest request) {
         return Flux.create(sink -> Schedulers.boundedElastic().schedule(() -> {
             try {
-                runtimeOrchestrator.executeStreaming(request.getSessionId(), request.getMessage(), event -> {
-                    if (!shouldEmit(event.getType())) {
-                        return;
-                    }
-                    ChatStreamEvent chunk = ChatStreamEvent.builder()
-                        .traceId(event.getTraceId())
-                        .runId(event.getRunId())
-                        .conversationId(event.getConversationId())
-                        .turnId(event.getTurnId())
-                        .content(event.getContent())
-                        .done(event.isDone())
-                        .build();
-                    sink.next(ServerSentEvent.builder(chunk)
-                        .event(event.getType().name().toLowerCase())
-                        .build());
-                });
+                runtimeOrchestrator.executeStreaming(
+                    request.getConversationId(),
+                    request.getSessionId(),
+                    request.getRequestId(),
+                    request.getMessage(),
+                    event -> {
+                        if (!shouldEmit(event.getType())) {
+                            return;
+                        }
+                        ChatStreamEvent chunk = ChatStreamEvent.builder()
+                            .traceId(event.getTraceId())
+                            .runId(event.getRunId())
+                            .conversationId(event.getConversationId())
+                            .turnId(event.getTurnId())
+                            .content(event.getContent())
+                            .done(event.isDone())
+                            .build();
+                        sink.next(ServerSentEvent.builder(chunk)
+                            .event(event.getType().name().toLowerCase())
+                            .build());
+                    });
                 sink.complete();
             } catch (Exception e) {
                 log.error("ChatStreamApplicationService stream failed sessionId={}", request.getSessionId(), e);
