@@ -11,6 +11,7 @@
 
     <artifactId>vi-agent-core-app</artifactId>
     <name>vi-agent-core-app</name>
+    <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
@@ -115,6 +116,18 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>repackage-exec-jar</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.vi.agent.core.app.ViAgentCoreApplication</mainClass>
+                            <classifier>exec</classifier>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -83,7 +83,7 @@ public class PersistenceCoordinator {
         turnRepository.update(turn);
 
         Session session = runContext.getSession();
-        session.markFailed();
+        session.touch(Instant.now());
         sessionRepository.update(session);
 
         sessionStateRepository.evict(session.getSessionId());

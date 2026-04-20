@@ -97,6 +97,7 @@ public class DefaultSessionResolutionService implements SessionResolutionService
 
         Session session = sessionRepository.findBySessionId(conversation.getActiveSessionId())
             .orElseThrow(() -> new AgentRuntimeException(ErrorCode.SESSION_NOT_FOUND, "active session not found"));
+        assertSessionContinuable(session);
 
         return SessionResolutionResult.builder()
             .conversation(conversation)
@@ -121,6 +122,7 @@ public class DefaultSessionResolutionService implements SessionResolutionService
         if (!Objects.equals(session.getConversationId(), conversation.getConversationId())) {
             throw new AgentRuntimeException(ErrorCode.SESSION_CONVERSATION_MISMATCH, "session does not belong to conversation");
         }
+        assertSessionContinuable(session);
 
         return SessionResolutionResult.builder()
             .conversation(conversation)
@@ -170,5 +172,20 @@ public class DefaultSessionResolutionService implements SessionResolutionService
             .createdConversation(false)
             .createdSession(true)
             .build();
+    }
+
+    private void assertSessionContinuable(Session session) {
+        if (session.getStatus() == SessionStatus.ARCHIVED) {
+            throw new AgentRuntimeException(
+                ErrorCode.SESSION_ARCHIVED_NOT_CONTINUABLE,
+                "archived session can not be continued"
+            );
+        }
+        if (session.getStatus() == SessionStatus.FAILED) {
+            throw new AgentRuntimeException(
+                ErrorCode.SESSION_FAILED_NOT_CONTINUABLE,
+                "failed session can not be continued"
+            );
+        }
     }
 }

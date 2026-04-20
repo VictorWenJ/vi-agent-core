@@ -53,7 +53,13 @@ public enum ErrorCode {
     SESSION_CONVERSATION_MISMATCH("SESSION-0004", "Session does not belong to conversation"),
 
     /** 同一 session 并发请求被锁策略拒绝。 */
-    SESSION_CONCURRENT_REQUEST("SESSION-0005", "Concurrent request in same session is rejected");
+    SESSION_CONCURRENT_REQUEST("SESSION-0005", "Concurrent request in same session is rejected"),
+
+    /** 已归档 session 不允许继续。 */
+    SESSION_ARCHIVED_NOT_CONTINUABLE("SESSION-0006", "Archived session is not continuable"),
+
+    /** 失败态 session 不允许继续。 */
+    SESSION_FAILED_NOT_CONTINUABLE("SESSION-0007", "Failed session is not continuable");
 
     /** 稳定错误码值。 */
     private final String code;

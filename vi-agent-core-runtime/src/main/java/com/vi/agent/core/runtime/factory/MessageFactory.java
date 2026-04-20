@@ -39,8 +39,18 @@ public class MessageFactory {
     }
 
     public AssistantMessage createAssistantMessage(String sessionId, String turnId, String content, java.util.List<ModelToolCall> toolCalls) {
+        return createAssistantMessage(sessionId, turnId, nextAssistantMessageId(), content, toolCalls);
+    }
+
+    public AssistantMessage createAssistantMessage(
+        String sessionId,
+        String turnId,
+        String assistantMessageId,
+        String content,
+        java.util.List<ModelToolCall> toolCalls
+    ) {
         long sequence = nextSequenceNo(sessionId);
-        return AssistantMessage.create(runIdentityFactory.nextMessageId(), turnId, sequence, content, toolCalls);
+        return AssistantMessage.create(assistantMessageId, turnId, sequence, content, toolCalls);
     }
 
     public ToolCallMessage createToolCallMessage(
@@ -79,6 +89,10 @@ public class MessageFactory {
             return modelToolCall.getToolCallId();
         }
         return runIdentityFactory.nextToolCallId();
+    }
+
+    public String nextAssistantMessageId() {
+        return runIdentityFactory.nextMessageId();
     }
 
     public ToolCall toToolCall(String turnId, String toolCallId, ModelToolCall modelToolCall) {

@@ -25,7 +25,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 
 /**
  * Default loop engine with llm-tool iterations.
@@ -52,11 +51,11 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
     }
 
     @Override
-    public LoopExecutionResult runStreaming(AgentRunContext runContext, Consumer<String> chunkConsumer) {
-        return execute(runContext, chunkConsumer);
+    public LoopExecutionResult runStreaming(AgentRunContext runContext, AssistantStreamListener streamListener) {
+        return execute(runContext, streamListener);
     }
 
-    private LoopExecutionResult execute(AgentRunContext runContext, Consumer<String> chunkConsumer) {
+    private LoopExecutionResult execute(AgentRunContext runContext, AssistantStreamListener streamListener) {
         List<Message> appendedMessages = new ArrayList<>();
         List<ToolCallRecord> toolCallRecords = new ArrayList<>();
         List<ToolResultRecord> toolResultRecords = new ArrayList<>();
@@ -79,9 +78,14 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 .build();
             log.info("SimpleAgentLoopEngine execute modelRequest={}", JsonUtils.toJson(modelRequest));
 
-            ModelResponse modelResponse = chunkConsumer == null
+            String assistantMessageId = messageFactory.nextAssistantMessageId();
+            if (streamListener != null) {
+                streamListener.onMessageStarted(assistantMessageId);
+            }
+
+            ModelResponse modelResponse = streamListener == null
                 ? llmGateway.generate(modelRequest)
-                : llmGateway.generateStreaming(modelRequest, chunkConsumer);
+                : llmGateway.generateStreaming(modelRequest, delta -> streamListener.onMessageDelta(assistantMessageId, delta));
             log.info("SimpleAgentLoopEngine execute modelResponse={}", JsonUtils.toJson(modelResponse));
 
             if (modelResponse == null) {
@@ -93,13 +97,19 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             AssistantMessage assistantMessage = messageFactory.createAssistantMessage(
                 runContext.getSession().getSessionId(),
                 runContext.getTurn().getTurnId(),
+                assistantMessageId,
                 modelResponse.getContent(),
                 modelToolCalls
             );
             runContext.appendWorkingMessage(assistantMessage);
             appendedMessages.add(assistantMessage);
             finalAssistant = assistantMessage;
-            finalFinishReason = modelResponse.getFinishReason() == null ? FinishReason.STOP : modelResponse.getFinishReason();
+            FinishReason currentFinishReason = modelResponse.getFinishReason() == null ? FinishReason.STOP : modelResponse.getFinishReason();
+            finalFinishReason = currentFinishReason;
+
+            if (streamListener != null) {
+                streamListener.onMessageCompleted(assistantMessage, currentFinishReason);
+            }
 
             if (modelToolCalls.isEmpty()) {
                 break;

@@ -53,7 +53,10 @@ public class GlobalExceptionHandler {
 
             case TOOL_EXECUTION_FAILED -> HttpStatus.UNPROCESSABLE_ENTITY;
 
-            case RUNTIME_MAX_ITERATIONS_EXCEEDED, SESSION_CONCURRENT_REQUEST -> HttpStatus.CONFLICT;
+            case RUNTIME_MAX_ITERATIONS_EXCEEDED,
+                 SESSION_CONCURRENT_REQUEST,
+                 SESSION_ARCHIVED_NOT_CONTINUABLE,
+                 SESSION_FAILED_NOT_CONTINUABLE -> HttpStatus.CONFLICT;
 
             case SESSION_CONVERSATION_MISMATCH -> HttpStatus.BAD_REQUEST;
 

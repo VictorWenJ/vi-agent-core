@@ -12,6 +12,7 @@ import com.vi.agent.core.model.runtime.*;
 import com.vi.agent.core.model.session.SessionResolutionResult;
 import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.runtime.command.RuntimeExecuteCommand;
+import com.vi.agent.core.runtime.engine.AssistantStreamListener;
 import com.vi.agent.core.runtime.engine.AgentLoopEngine;
 import com.vi.agent.core.runtime.event.RuntimeEvent;
 import com.vi.agent.core.runtime.event.RuntimeEventType;
@@ -159,34 +160,57 @@ public class RuntimeOrchestrator {
                 .runId(runMetadata.getRunId())
                 .build());
 
-            emit(eventConsumer, RuntimeEvent.builder()
-                .eventType(RuntimeEventType.MESSAGE_STARTED)
-                .runStatus(RunStatus.RUNNING)
-                .requestId(command.getRequestId())
-                .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                .sessionId(sessionId)
-                .turnId(turn.getTurnId())
-                .runId(runMetadata.getRunId())
-                .messageId(userMessage.getMessageId())
-                .build());
-
             // 9.loop engine处理
             final String streamingTurnId = turn.getTurnId();
             final String streamingRunId = runMetadata.getRunId();
-            final String streamingMessageId = userMessage.getMessageId();
             final String streamingConversationId = sessionResolutionResult.getConversation().getConversationId();
             LoopExecutionResult loopResult = streaming
-                ? agentLoopEngine.runStreaming(runContext, delta -> emit(eventConsumer, RuntimeEvent.builder()
-                    .eventType(RuntimeEventType.MESSAGE_DELTA)
-                    .runStatus(RunStatus.RUNNING)
-                    .requestId(command.getRequestId())
-                    .conversationId(streamingConversationId)
-                    .sessionId(sessionId)
-                    .turnId(streamingTurnId)
-                    .runId(streamingRunId)
-                    .messageId(streamingMessageId)
-                    .delta(delta)
-                    .build()))
+                ? agentLoopEngine.runStreaming(runContext, new AssistantStreamListener() {
+                    @Override
+                    public void onMessageStarted(String assistantMessageId) {
+                        emit(eventConsumer, RuntimeEvent.builder()
+                            .eventType(RuntimeEventType.MESSAGE_STARTED)
+                            .runStatus(RunStatus.RUNNING)
+                            .requestId(command.getRequestId())
+                            .conversationId(streamingConversationId)
+                            .sessionId(sessionId)
+                            .turnId(streamingTurnId)
+                            .runId(streamingRunId)
+                            .messageId(assistantMessageId)
+                            .build());
+                    }
+
+                    @Override
+                    public void onMessageDelta(String assistantMessageId, String delta) {
+                        emit(eventConsumer, RuntimeEvent.builder()
+                            .eventType(RuntimeEventType.MESSAGE_DELTA)
+                            .runStatus(RunStatus.RUNNING)
+                            .requestId(command.getRequestId())
+                            .conversationId(streamingConversationId)
+                            .sessionId(sessionId)
+                            .turnId(streamingTurnId)
+                            .runId(streamingRunId)
+                            .messageId(assistantMessageId)
+                            .delta(delta)
+                            .build());
+                    }
+
+                    @Override
+                    public void onMessageCompleted(AssistantMessage assistantMessage, FinishReason finishReason) {
+                        emit(eventConsumer, RuntimeEvent.builder()
+                            .eventType(RuntimeEventType.MESSAGE_COMPLETED)
+                            .runStatus(RunStatus.RUNNING)
+                            .requestId(command.getRequestId())
+                            .conversationId(streamingConversationId)
+                            .sessionId(sessionId)
+                            .turnId(streamingTurnId)
+                            .runId(streamingRunId)
+                            .messageId(assistantMessage.getMessageId())
+                            .content(assistantMessage.getContent())
+                            .finishReason(finishReason)
+                            .build());
+                    }
+                })
                 : agentLoopEngine.run(runContext);
             log.info("RuntimeOrchestrator executeInternal loopResult={}", JsonUtils.toJson(loopResult));
 
@@ -219,20 +243,6 @@ public class RuntimeOrchestrator {
 
             runContext.markCompleted();
             persistenceCoordinator.persistSuccess(runContext, loopResult);
-
-            emit(eventConsumer, RuntimeEvent.builder()
-                .eventType(RuntimeEventType.MESSAGE_COMPLETED)
-                .runStatus(RunStatus.COMPLETED)
-                .requestId(command.getRequestId())
-                .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                .sessionId(sessionId)
-                .turnId(turn.getTurnId())
-                .runId(runMetadata.getRunId())
-                .messageId(loopResult.getAssistantMessage().getMessageId())
-                .content(loopResult.getAssistantMessage().getContent())
-                .finishReason(loopResult.getFinishReason())
-                .usage(loopResult.getUsage())
-                .build());
 
             emit(eventConsumer, RuntimeEvent.builder()
                 .eventType(RuntimeEventType.RUN_COMPLETED)
