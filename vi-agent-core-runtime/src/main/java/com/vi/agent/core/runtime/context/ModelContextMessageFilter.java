@@ -1,10 +1,12 @@
 package com.vi.agent.core.runtime.context;
 
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.MessageType;
 import com.vi.agent.core.model.message.ToolCallMessage;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Filters messages that are legal for model context.
@@ -13,19 +15,11 @@ import java.util.List;
 public class ModelContextMessageFilter {
 
     public List<Message> filter(List<Message> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return List.of();
-        }
-        return messages.stream()
-            .filter(this::isModelContextMessage)
-            .toList();
-    }
-
-    public boolean isModelContextMessage(Message message) {
-        if (message == null) {
-            return false;
-        }
-        return !(message instanceof ToolCallMessage);
+        return Optional.ofNullable(messages)
+            .map(mess -> mess.stream()
+                .filter(mes -> MessageType.TOOL_CALL != mes.getMessageType())
+                .toList())
+            .orElse(List.of());
     }
 }
 

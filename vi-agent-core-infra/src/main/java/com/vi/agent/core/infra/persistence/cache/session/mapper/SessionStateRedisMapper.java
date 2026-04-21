@@ -49,7 +49,7 @@ public class SessionStateRedisMapper {
         List<Message> messages = Optional.ofNullable(cacheDocument.getMessageDocuments())
             .map(documents ->
                 documents.stream()
-                    .filter(messageDocument -> Objects.nonNull(messageDocument) && MessageType.TOOL_CALL.name().equals(messageDocument.getMessageType()))
+                    .filter(messageDocument -> Objects.nonNull(messageDocument) && !MessageType.TOOL_CALL.name().equals(messageDocument.getMessageType()))
                     .map(this::toMessage)
                     .filter(Objects::nonNull)
                     .toList())

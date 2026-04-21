@@ -3,7 +3,6 @@ package com.vi.agent.core.runtime.orchestrator;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
-import com.vi.agent.core.common.util.ValidationUtils;
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
@@ -25,7 +24,6 @@ import com.vi.agent.core.runtime.mdc.RuntimeMdcManager;
 import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import com.vi.agent.core.runtime.session.SessionResolutionService;
-import com.vi.agent.core.runtime.state.SessionStateLoader;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import com.vi.agent.core.model.port.SessionLockRepository;
 import jakarta.annotation.Resource;
@@ -54,9 +52,6 @@ public class RuntimeOrchestrator {
 
     @Resource
     private TurnLifecycleService turnLifecycleService;
-
-    @Resource
-    private SessionStateLoader sessionStateLoader;
 
     @Resource
     private MessageFactory messageFactory;
@@ -127,10 +122,10 @@ public class RuntimeOrchestrator {
             );
 
             // 7.加载历史消息
-            List<Message> historyMassages = sessionStateLoader.load(sessionResolutionResult.getConversation().getConversationId(), sessionId);
-            log.info("RuntimeOrchestrator executeInternal historyMassages={}", JsonUtils.toJson(historyMassages));
+            List<Message> historyMessages = persistenceCoordinator.load(sessionResolutionResult.getConversation().getConversationId(), sessionId);
+            log.info("RuntimeOrchestrator executeInternal historyMassages={}", JsonUtils.toJson(historyMessages));
 
-            historyMassages.add(userMessage);
+            historyMessages.add(userMessage);
 
             // 8.构建当前上下文
             runContext = AgentRunContext.builder()
@@ -139,7 +134,7 @@ public class RuntimeOrchestrator {
                 .session(sessionResolutionResult.getSession())
                 .turn(turn)
                 .userInput(command.getMessage())
-                .workingMessages(historyMassages)
+                .workingMessages(historyMessages)
                 .availableTools(toolGateway.listDefinitions())
                 .state(AgentRunState.STARTED)
                 .iteration(0)
