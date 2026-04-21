@@ -43,6 +43,44 @@ public class ToolExecutionMysqlConvertor {
         return entity;
     }
 
+    public ToolCallRecord toModel(AgentToolCallEntity entity) {
+        if (entity == null) {
+            return null;
+        }
+        return ToolCallRecord.builder()
+            .toolCallId(entity.getToolCallId())
+            .conversationId(entity.getConversationId())
+            .sessionId(entity.getSessionId())
+            .turnId(entity.getTurnId())
+            .messageId(entity.getMessageId())
+            .toolName(entity.getToolName())
+            .argumentsJson(entity.getArgumentsJson())
+            .sequenceNo(entity.getSequenceNo() == null ? 0 : entity.getSequenceNo())
+            .status(entity.getStatus())
+            .createdAt(MysqlTimeConvertor.toInstant(entity.getCreatedAt()))
+            .build();
+    }
+
+    public ToolResultRecord toModel(AgentToolResultEntity entity) {
+        if (entity == null) {
+            return null;
+        }
+        return ToolResultRecord.builder()
+            .toolCallId(entity.getToolCallId())
+            .conversationId(entity.getConversationId())
+            .sessionId(entity.getSessionId())
+            .turnId(entity.getTurnId())
+            .messageId(entity.getMessageId())
+            .toolName(entity.getToolName())
+            .success(Boolean.TRUE.equals(entity.getSuccess()))
+            .outputJson(entity.getOutputJson())
+            .errorCode(entity.getErrorCode())
+            .errorMessage(entity.getErrorMessage())
+            .durationMs(entity.getDurationMs())
+            .createdAt(MysqlTimeConvertor.toInstant(entity.getCreatedAt()))
+            .build();
+    }
+
     private Instant defaultNow(Instant instant) {
         return instant == null ? Instant.now() : instant;
     }
