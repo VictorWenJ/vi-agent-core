@@ -100,7 +100,6 @@ public class RuntimeOrchestrator {
         RunMetadata runMetadata = runIdentityFactory.createRunMetadata();
         String sessionId = sessionResolutionResult.getSession().getSessionId();
 
-
         // 4.加锁处理
         handleLock(sessionId, runMetadata);
 
