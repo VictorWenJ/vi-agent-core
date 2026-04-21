@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:mysql://mysql:3306/vi_agent_core?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false
+    username: root
+    password: vi_agent_root_pwd
+  data:
+    redis:
+      host: redis
+      port: 6379
+      database: 0
+
+server:
+  port: 8080

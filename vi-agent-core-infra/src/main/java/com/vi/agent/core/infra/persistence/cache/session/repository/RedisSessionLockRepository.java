@@ -15,23 +15,23 @@ import java.time.Duration;
 public class RedisSessionLockRepository implements SessionLockRepository {
 
     @Resource
-    private StringRedisTemplate redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Resource
     private SessionRedisKeyBuilder keyBuilder;
 
     @Override
     public boolean tryLock(String sessionId, String runId, Duration ttl) {
-        Boolean result = redisTemplate.opsForValue().setIfAbsent(keyBuilder.sessionLockKey(sessionId), runId, ttl);
+        Boolean result = stringRedisTemplate.opsForValue().setIfAbsent(keyBuilder.sessionLockKey(sessionId), runId, ttl);
         return Boolean.TRUE.equals(result);
     }
 
     @Override
     public void unlock(String sessionId, String runId) {
         String key = keyBuilder.sessionLockKey(sessionId);
-        String current = redisTemplate.opsForValue().get(key);
+        String current = stringRedisTemplate.opsForValue().get(key);
         if (runId.equals(current)) {
-            redisTemplate.delete(key);
+            stringRedisTemplate.delete(key);
         }
     }
 }

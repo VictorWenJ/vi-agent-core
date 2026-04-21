@@ -85,9 +85,6 @@ public class RuntimeOrchestrator {
     }
 
     private AgentExecutionResult executeInternal(RuntimeExecuteCommand command, Consumer<RuntimeEvent> eventConsumer, boolean streaming) {
-        ValidationUtils.requireNonBlank(command.getRequestId(), "requestId");
-        ValidationUtils.requireNonBlank(command.getMessage(), "message");
-
         // 1.找到上一轮运行结果，如果request重复，就将上一轮运行结果返回
         TurnDedupResult turnDedupResult = turnLifecycleService.findAndBuildByRequestId(command.getRequestId());
         log.info("RuntimeOrchestrator executeInternal turnDedupResult={}", JsonUtils.toJson(turnDedupResult));

@@ -45,9 +45,8 @@ public class DefaultSessionResolutionService implements SessionResolutionService
     }
 
     private SessionResolutionResult resolveNewConversation(RuntimeExecuteCommand command) {
-        if (command.getConversationId() != null || command.getSessionId() != null) {
-            throw new AgentRuntimeException(ErrorCode.SESSION_MODE_INVALID,
-                "NEW_CONVERSATION requires conversationId/sessionId to be empty");
+        if (StringUtils.isNotBlank(command.getConversationId()) || StringUtils.isNotBlank(command.getSessionId())) {
+            throw new AgentRuntimeException(ErrorCode.SESSION_MODE_INVALID, "NEW_CONVERSATION requires conversationId/sessionId to be empty");
         }
         Instant now = Instant.now();
         String conversationId = runIdentityFactory.nextConversationId();
@@ -176,16 +175,10 @@ public class DefaultSessionResolutionService implements SessionResolutionService
 
     private void assertSessionContinuable(Session session) {
         if (session.getStatus() == SessionStatus.ARCHIVED) {
-            throw new AgentRuntimeException(
-                ErrorCode.SESSION_ARCHIVED_NOT_CONTINUABLE,
-                "archived session can not be continued"
-            );
+            throw new AgentRuntimeException(ErrorCode.SESSION_ARCHIVED_NOT_CONTINUABLE, "archived session can not be continued");
         }
         if (session.getStatus() == SessionStatus.FAILED) {
-            throw new AgentRuntimeException(
-                ErrorCode.SESSION_FAILED_NOT_CONTINUABLE,
-                "failed session can not be continued"
-            );
+            throw new AgentRuntimeException(ErrorCode.SESSION_FAILED_NOT_CONTINUABLE, "failed session can not be continued");
         }
     }
 }

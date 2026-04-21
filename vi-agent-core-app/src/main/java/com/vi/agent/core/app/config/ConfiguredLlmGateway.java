@@ -49,9 +49,7 @@ public class ConfiguredLlmGateway implements LlmGateway {
             case "deepseek" -> deepseekLlmGateway;
             case "doubao" -> doubaoLlmGateway;
             case "openai" -> openaiLlmGateway;
-            default -> throw new AgentRuntimeException(
-                ErrorCode.PROVIDER_CONFIG_INVALID_FAILED,
-                "unsupported provider: " + providerRoutingProperties.getDefaultProvider()
+            default -> throw new AgentRuntimeException(ErrorCode.PROVIDER_CONFIG_INVALID_FAILED, "unsupported provider: " + providerRoutingProperties.getDefaultProvider()
             );
         };
     }

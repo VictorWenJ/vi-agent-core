@@ -19,7 +19,7 @@ import java.util.Optional;
 public class RedisSessionStateRepository implements SessionStateRepository {
 
     @Resource
-    private StringRedisTemplate redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Resource
     private SessionRedisKeyBuilder keyBuilder;
@@ -29,7 +29,7 @@ public class RedisSessionStateRepository implements SessionStateRepository {
 
     @Override
     public Optional<SessionStateSnapshot> findBySessionId(String sessionId) {
-        String value = redisTemplate.opsForValue().get(keyBuilder.sessionStateKey(sessionId));
+        String value = stringRedisTemplate.opsForValue().get(keyBuilder.sessionStateKey(sessionId));
         if (value == null || value.isBlank()) {
             return Optional.empty();
         }
@@ -40,11 +40,11 @@ public class RedisSessionStateRepository implements SessionStateRepository {
     @Override
     public void save(SessionStateSnapshot snapshot) {
         SessionStateCacheDocument document = mapper.toDocument(snapshot);
-        redisTemplate.opsForValue().set(keyBuilder.sessionStateKey(snapshot.getSessionId()), JsonUtils.toJson(document));
+        stringRedisTemplate.opsForValue().set(keyBuilder.sessionStateKey(snapshot.getSessionId()), JsonUtils.toJson(document));
     }
 
     @Override
     public void evict(String sessionId) {
-        redisTemplate.delete(keyBuilder.sessionStateKey(sessionId));
+        stringRedisTemplate.delete(keyBuilder.sessionStateKey(sessionId));
     }
 }

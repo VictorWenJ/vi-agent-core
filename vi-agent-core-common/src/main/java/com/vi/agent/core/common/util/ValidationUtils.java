@@ -13,9 +13,7 @@ public final class ValidationUtils {
 
     public static void requireNonBlank(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new AgentRuntimeException(
-                ErrorCode.INVALID_ARGUMENT,
-                fieldName + " 不能为空"
+            throw new AgentRuntimeException(ErrorCode.INVALID_ARGUMENT, fieldName + " 不能为空"
             );
         }
     }
