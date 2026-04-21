@@ -12,6 +12,7 @@ import com.vi.agent.core.model.message.*;
 import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -19,6 +20,7 @@ import java.util.function.Consumer;
 /**
  * Shared OpenAI-compatible provider implementation.
  */
+@Slf4j
 public abstract class OpenAICompatibleChatProvider implements LlmGateway {
 
     @Resource
@@ -31,7 +33,9 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         String payload = JsonUtils.toJson(request);
 
         try {
+            log.info("OpenAICompatibleChatProvider generate payload={}", payload);
             String responseBody = httpExecutor.post(endpoint(), defaultHeaders(), payload, requestOptions());
+            log.info("OpenAICompatibleChatProvider generate responseBody={}", responseBody);
             return parseModelResponse(responseBody);
         } catch (AgentRuntimeException e) {
             throw e;
@@ -48,6 +52,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         request.getStreamOptions().setIncludeUsage(true);
 
         String payload = JsonUtils.toJson(request);
+        log.info("OpenAICompatibleChatProvider generateStreaming payload={}", payload);
 
         StringBuilder fullContent = new StringBuilder();
         Map<String, StreamingToolCallAccumulator> toolCallStateMap = new LinkedHashMap<>();

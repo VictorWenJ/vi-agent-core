@@ -19,7 +19,7 @@ COPY vi-agent-core-infra ./vi-agent-core-infra
 COPY vi-agent-core-app ./vi-agent-core-app
 
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -o -pl vi-agent-core-app -am -DskipTests package
+    mvn -B -pl vi-agent-core-app -am -DskipTests package
 
 FROM m.daocloud.io/docker.io/library/eclipse-temurin:17-jre-alpine
 

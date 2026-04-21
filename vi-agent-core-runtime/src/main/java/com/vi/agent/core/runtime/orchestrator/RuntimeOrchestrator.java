@@ -144,7 +144,7 @@ public class RuntimeOrchestrator {
                 .state(AgentRunState.STARTED)
                 .iteration(0)
                 .build();
-            log.info("RuntimeOrchestrator executeInternal historyMassages={}", JsonUtils.toJson(historyMassages));
+            log.info("RuntimeOrchestrator executeInternal runContext={}", JsonUtils.toJson(runContext));
 
             emit(eventConsumer, RuntimeEvent.builder()
                 .eventType(RuntimeEventType.RUN_STARTED)

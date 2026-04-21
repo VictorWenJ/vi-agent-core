@@ -24,7 +24,7 @@ public class DefaultToolGateway implements ToolGateway {
 
     @Override
     public ToolResult execute(ToolCall toolCall) {
-        log.info("DefaultToolGateway execute modelRequest={}", JsonUtils.toJson(toolCall));
+        log.info("DefaultToolGateway execute toolCall={}", JsonUtils.toJson(toolCall));
         ToolExecutor toolExecutor = toolRegistry.find(toolCall.getToolName())
             .orElseThrow(() -> new AgentRuntimeException(
                 ErrorCode.TOOL_NOT_FOUND,

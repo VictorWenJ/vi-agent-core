@@ -1,10 +1,13 @@
 package com.vi.agent.core.model.message;
 
+import lombok.Getter;
+
 import java.time.Instant;
 
 /**
  * Tool call message fact.
  */
+@Getter
 public final class ToolCallMessage extends AbstractMessage {
 
     private final String toolCallId;
@@ -51,15 +54,4 @@ public final class ToolCallMessage extends AbstractMessage {
         return new ToolCallMessage(messageId, turnId, sequenceNo, toolCallId, toolName, argumentsJson, createdAt);
     }
 
-    public String getToolCallId() {
-        return toolCallId;
-    }
-
-    public String getToolName() {
-        return toolName;
-    }
-
-    public String getArgumentsJson() {
-        return argumentsJson;
-    }
 }
