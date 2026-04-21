@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Assistant message.
@@ -23,7 +24,7 @@ public final class AssistantMessage extends AbstractMessage {
         Instant createdAt
     ) {
         super(messageId, turnId, MessageRole.ASSISTANT, MessageType.ASSISTANT_OUTPUT, sequenceNo, content, createdAt);
-        this.toolCalls = toolCalls == null ? new ArrayList<>() : new ArrayList<>(toolCalls);
+        this.toolCalls = Optional.ofNullable(toolCalls).orElse(Collections.emptyList());
     }
 
     public static AssistantMessage create(

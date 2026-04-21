@@ -26,30 +26,15 @@ public class TurnLifecycleService {
     private MessageRepository messageRepository;
 
     public TurnDedupResult findAndBuildByRequestId(String requestId) {
-        Optional<Turn> existingTurn = turnRepository.findByRequestId(requestId);
-        if (existingTurn.isEmpty()) {
-            return null;
-        }
-
-        Turn turn = existingTurn.get();
-        Message userMessage = messageRepository.findByMessageId(turn.getUserMessageId()).orElse(null);
-        Message assistantMessage = null;
-        if (turn.getAssistantMessageId() != null) {
-            assistantMessage = messageRepository.findByMessageId(turn.getAssistantMessageId()).orElse(null);
-        }
-
-        TurnReuseStatus status = switch (turn.getStatus()) {
-            case COMPLETED -> TurnReuseStatus.COMPLETED;
-            case RUNNING -> TurnReuseStatus.RUNNING;
-            case FAILED, CANCELLED -> TurnReuseStatus.FAILED;
-        };
-
-        return TurnDedupResult.builder()
-            .status(status)
-            .turn(turn)
-            .userMessage(userMessage)
-            .assistantMessage(assistantMessage)
-            .build();
+        return Optional.ofNullable(turnRepository.findByRequestId(requestId))
+            .map(turn -> TurnDedupResult.builder()
+                .status(turn.getStatus())
+                .turn(turn)
+                .userMessage(messageRepository.findByMessageId(turn.getUserMessageId()))
+                .assistantMessage(Optional.ofNullable(turn.getAssistantMessageId())
+                    .map(assistantMessageId -> messageRepository.findByMessageId(turn.getAssistantMessageId()))
+                    .orElse(null))
+                .build()).orElse(null);
     }
 
     public Turn createRunningTurn(String turnId, String conversationId, String sessionId, String requestId, String runId, String userMessageId) {

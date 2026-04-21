@@ -17,7 +17,7 @@ vi:
   agent:
     runtime:
       max-iterations: 6
-      session-state-window: 200
+      session-state-window: 5
 
     provider:
       routing:

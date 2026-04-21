@@ -15,8 +15,4 @@ public class RunMetadata {
     private final String runId;
 
     private final String turnId;
-
-    private final String userMessageId;
-
-    private final String assistantMessageId;
 }

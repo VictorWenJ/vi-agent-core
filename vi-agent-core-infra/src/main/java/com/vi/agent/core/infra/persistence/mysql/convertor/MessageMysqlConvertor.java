@@ -1,16 +1,20 @@
 package com.vi.agent.core.infra.persistence.mysql.convertor;
 
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.model.message.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
 
+@Slf4j
 @Component
 public class MessageMysqlConvertor {
 
     public AgentMessageEntity toEntity(String conversationId, String sessionId, Message message) {
+        log.info("MessageMysqlConvertor toEntity message:{}", JsonUtils.toJson(message));
         AgentMessageEntity entity = new AgentMessageEntity();
         entity.setMessageId(message.getMessageId());
         entity.setConversationId(conversationId);
@@ -21,6 +25,7 @@ public class MessageMysqlConvertor {
         entity.setSequenceNo(message.getSequenceNo());
         entity.setContent(message.getContent());
         entity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
+        log.info("MessageMysqlConvertor toEntity entity:{}", JsonUtils.toJson(entity));
         return entity;
     }
 

@@ -9,16 +9,16 @@ import com.vi.agent.core.model.session.Session;
 import com.vi.agent.core.model.session.SessionStateSnapshot;
 import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.model.turn.TurnStatus;
-import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import jakarta.annotation.Resource;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Coordinates persistence writes for one turn.
@@ -44,9 +44,6 @@ public class PersistenceCoordinator {
     @Resource
     private SessionStateRepository sessionStateRepository;
 
-    @Resource
-    private ModelContextMessageFilter modelContextMessageFilter;
-
     @Value("${vi.agent.runtime.session-state-window:200}")
     private int maxWindow;
 
@@ -55,19 +52,31 @@ public class PersistenceCoordinator {
             .map(SessionStateSnapshot::getMessages)
             .orElseGet(() -> reloadFromMysql(conversationId, sessionId));
         List<Message> completedTurnMessages = filterCompletedTurnMessages(messages);
-        List<Message> modelContextMessages = modelContextMessageFilter.filter(completedTurnMessages);
-        if (modelContextMessages.size() != messages.size()) {
-            refresh(conversationId, sessionId, modelContextMessages);
+        if (completedTurnMessages.size() != messages.size()) {
+            refresh(conversationId, sessionId, completedTurnMessages);
         }
-        return new ArrayList<>(modelContextMessages);
+        return buildCompleteData(completedTurnMessages);;
+    }
+
+    private List<Message> buildCompleteData(List<Message> messages) {
+        return messages.stream()
+            .map(message -> {
+              switch (message.getMessageType()) {
+                  case USER_INPUT:
+                  case TOOL_CALL:
+                  case TOOL_RESULT:
+                  case SYSTEM_MESSAGE:
+                  case SUMMARY_MESSAGE:
+                  case ASSISTANT_OUTPUT:
+              }
+            }).toList();
     }
 
     public void refresh(String conversationId, String sessionId, List<Message> messages) {
-        List<Message> modelContextMessages = modelContextMessageFilter.filter(messages);
         sessionStateRepository.save(SessionStateSnapshot.builder()
             .sessionId(sessionId)
             .conversationId(conversationId)
-            .messages(new ArrayList<>(modelContextMessages))
+            .messages(new ArrayList<>(messages))
             .updatedAt(Instant.now())
             .build());
     }
@@ -75,28 +84,18 @@ public class PersistenceCoordinator {
     private List<Message> reloadFromMysql(String conversationId, String sessionId) {
         List<Message> messages = messageRepository.findBySessionIdOrderBySequence(sessionId, maxWindow);
         List<Message> completedTurnMessages = filterCompletedTurnMessages(messages);
-        List<Message> modelContextMessages = modelContextMessageFilter.filter(completedTurnMessages);
-        refresh(conversationId, sessionId, modelContextMessages);
-        return modelContextMessages;
+        refresh(conversationId, sessionId, completedTurnMessages);
+        return completedTurnMessages;
     }
 
     private List<Message> filterCompletedTurnMessages(List<Message> messages) {
-        if (messages == null || messages.isEmpty()) {
+        if (CollectionUtils.isEmpty(messages)) {
             return new ArrayList<>();
         }
-        Map<String, Boolean> completedTurnCache = new HashMap<>();
-        return messages.stream()
-            .filter(message -> completedTurnCache.computeIfAbsent(message.getTurnId(), this::isCompletedTurn))
-            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-    }
 
-    private boolean isCompletedTurn(String turnId) {
-        if (turnId == null || turnId.isBlank()) {
-            return false;
-        }
-        return turnRepository.findByTurnId(turnId)
-            .map(turn -> turn.getStatus() == TurnStatus.COMPLETED)
-            .orElse(false);
+        return messages.stream()
+            .filter(message -> turnRepository.findByTurnId(message.getTurnId()).getStatus() == TurnStatus.COMPLETED)
+            .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public void persistUserMessage(String conversationId, String sessionId, Message userMessage) {
@@ -128,12 +127,10 @@ public class PersistenceCoordinator {
         conversation.touchLastMessageAt(Instant.now());
         conversationRepository.update(conversation);
 
-        var modelContextMessages = modelContextMessageFilter.filter(runContext.getWorkingMessages());
-
         sessionStateRepository.save(SessionStateSnapshot.builder()
             .sessionId(session.getSessionId())
             .conversationId(conversation.getConversationId())
-            .messages(modelContextMessages)
+            .messages(runContext.getWorkingMessages())
             .updatedAt(Instant.now())
             .build());
     }

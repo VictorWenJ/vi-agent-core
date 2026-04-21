@@ -27,13 +27,13 @@ public class MysqlMessageRepository implements MessageRepository {
     }
 
     @Override
-    public Optional<Message> findByMessageId(String messageId) {
+    public Message findByMessageId(String messageId) {
         AgentMessageEntity entity = mapper.selectOne(
             Wrappers.lambdaQuery(AgentMessageEntity.class)
                 .eq(AgentMessageEntity::getMessageId, messageId)
                 .last("limit 1")
         );
-        return Optional.ofNullable(entity).map(convertor::toModel);
+        return Optional.ofNullable(entity).map(convertor::toModel).orElse(null);
     }
 
     @Override

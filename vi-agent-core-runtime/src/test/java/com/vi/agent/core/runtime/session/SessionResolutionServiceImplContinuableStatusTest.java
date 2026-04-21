@@ -21,11 +21,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class DefaultSessionResolutionServiceContinuableStatusTest {
+class SessionResolutionServiceImplContinuableStatusTest {
 
     @Test
     void continueExactShouldRejectArchivedSession() throws Exception {
-        DefaultSessionResolutionService service = new DefaultSessionResolutionService();
+        SessionResolutionServiceImpl service = new SessionResolutionServiceImpl();
         StubConversationRepository conversationRepository = new StubConversationRepository();
         StubSessionRepository sessionRepository = new StubSessionRepository();
         setField(service, "conversationRepository", conversationRepository);
@@ -42,13 +42,13 @@ class DefaultSessionResolutionServiceContinuableStatusTest {
             .message("hello")
             .build();
 
-        AgentRuntimeException ex = assertThrows(AgentRuntimeException.class, () -> service.resolve(command));
+        AgentRuntimeException ex = assertThrows(AgentRuntimeException.class, () -> service.judgeSessionResolutionMode(command));
         assertEquals(ErrorCode.SESSION_ARCHIVED_NOT_CONTINUABLE, ex.getErrorCode());
     }
 
     @Test
     void continueExactShouldRejectFailedSession() throws Exception {
-        DefaultSessionResolutionService service = new DefaultSessionResolutionService();
+        SessionResolutionServiceImpl service = new SessionResolutionServiceImpl();
         StubConversationRepository conversationRepository = new StubConversationRepository();
         StubSessionRepository sessionRepository = new StubSessionRepository();
         setField(service, "conversationRepository", conversationRepository);
@@ -65,13 +65,13 @@ class DefaultSessionResolutionServiceContinuableStatusTest {
             .message("hello")
             .build();
 
-        AgentRuntimeException ex = assertThrows(AgentRuntimeException.class, () -> service.resolve(command));
+        AgentRuntimeException ex = assertThrows(AgentRuntimeException.class, () -> service.judgeSessionResolutionMode(command));
         assertEquals(ErrorCode.SESSION_FAILED_NOT_CONTINUABLE, ex.getErrorCode());
     }
 
     @Test
     void continueExactShouldAllowActiveSession() throws Exception {
-        DefaultSessionResolutionService service = new DefaultSessionResolutionService();
+        SessionResolutionServiceImpl service = new SessionResolutionServiceImpl();
         StubConversationRepository conversationRepository = new StubConversationRepository();
         StubSessionRepository sessionRepository = new StubSessionRepository();
         setField(service, "conversationRepository", conversationRepository);
@@ -88,7 +88,7 @@ class DefaultSessionResolutionServiceContinuableStatusTest {
             .message("hello")
             .build();
 
-        SessionResolutionResult result = service.resolve(command);
+        SessionResolutionResult result = service.judgeSessionResolutionMode(command);
         assertNotNull(result);
         assertEquals("sess-1", result.getSession().getSessionId());
         assertEquals(SessionStatus.ACTIVE, result.getSession().getStatus());
@@ -117,7 +117,7 @@ class DefaultSessionResolutionServiceContinuableStatusTest {
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {
-        Field field = DefaultSessionResolutionService.class.getDeclaredField(fieldName);
+        Field field = SessionResolutionServiceImpl.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
     }

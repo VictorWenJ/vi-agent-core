@@ -1,10 +1,13 @@
 package com.vi.agent.core.model.message;
 
+import lombok.Getter;
+
 import java.time.Instant;
 
 /**
  * Deprecated compatibility message for tool output.
  */
+@Getter
 @Deprecated
 public final class ToolExecutionMessage extends AbstractMessage {
 
@@ -52,15 +55,4 @@ public final class ToolExecutionMessage extends AbstractMessage {
         return new ToolExecutionMessage(messageId, turnId, sequenceNo, toolCallId, toolName, toolOutput, createdAt);
     }
 
-    public String getToolCallId() {
-        return toolCallId;
-    }
-
-    public String getToolName() {
-        return toolName;
-    }
-
-    public String getToolOutput() {
-        return toolOutput;
-    }
 }

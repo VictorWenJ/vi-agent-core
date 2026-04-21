@@ -20,7 +20,7 @@ import java.util.Objects;
  * Default session resolution service.
  */
 @Service
-public class DefaultSessionResolutionService implements SessionResolutionService {
+public class SessionResolutionServiceImpl implements SessionResolutionService {
 
     @Resource
     private ConversationRepository conversationRepository;
@@ -32,10 +32,7 @@ public class DefaultSessionResolutionService implements SessionResolutionService
     private RunIdentityFactory runIdentityFactory;
 
     @Override
-    public SessionResolutionResult resolve(RuntimeExecuteCommand command) {
-        if (command.getSessionMode() == null) {
-            throw new AgentRuntimeException(ErrorCode.SESSION_MODE_INVALID, "sessionMode is required");
-        }
+    public SessionResolutionResult judgeSessionResolutionMode(RuntimeExecuteCommand command) {
         return switch (command.getSessionMode()) {
             case NEW_CONVERSATION -> resolveNewConversation(command);
             case CONTINUE_ACTIVE_SESSION -> resolveContinueActive(command);
@@ -108,8 +105,7 @@ public class DefaultSessionResolutionService implements SessionResolutionService
 
     private SessionResolutionResult resolveContinueExact(RuntimeExecuteCommand command) {
         if (StringUtils.isBlank(command.getConversationId()) || StringUtils.isBlank(command.getSessionId())) {
-            throw new AgentRuntimeException(ErrorCode.SESSION_MODE_INVALID,
-                "CONTINUE_EXACT_SESSION requires conversationId and sessionId");
+            throw new AgentRuntimeException(ErrorCode.SESSION_MODE_INVALID, "CONTINUE_EXACT_SESSION requires conversationId and sessionId");
         }
 
         Conversation conversation = conversationRepository.findByConversationId(command.getConversationId())

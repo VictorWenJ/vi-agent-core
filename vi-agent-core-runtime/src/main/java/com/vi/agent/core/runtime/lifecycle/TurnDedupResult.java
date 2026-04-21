@@ -2,6 +2,7 @@ package com.vi.agent.core.runtime.lifecycle;
 
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.turn.Turn;
+import com.vi.agent.core.model.turn.TurnStatus;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -12,7 +13,7 @@ import lombok.Getter;
 @Builder
 public class TurnDedupResult {
 
-    private final TurnReuseStatus status;
+    private final TurnStatus status;
 
     private final Turn turn;
 

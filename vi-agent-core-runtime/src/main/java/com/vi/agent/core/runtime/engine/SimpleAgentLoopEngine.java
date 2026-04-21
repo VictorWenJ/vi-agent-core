@@ -11,7 +11,6 @@ import com.vi.agent.core.model.message.ToolResultMessage;
 import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
-import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolCallRecord;
 import com.vi.agent.core.model.tool.ToolResult;
@@ -23,9 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Default loop engine with llm-tool iterations.
@@ -42,9 +39,6 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     @Resource
     private MessageFactory messageFactory;
-
-    @Resource
-    private ModelContextMessageFilter modelContextMessageFilter;
 
     @Value("${vi.agent.runtime.max-iterations:6}")
     private int maxIterations;
@@ -77,10 +71,10 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 .conversationId(runContext.getConversation().getConversationId())
                 .sessionId(runContext.getSession().getSessionId())
                 .turnId(runContext.getTurn().getTurnId())
-                .messages(modelContextMessageFilter.filter(runContext.getWorkingMessages()))
+                .messages(runContext.getWorkingMessages())
                 .tools(runContext.getAvailableTools())
                 .build();
-            log.info("SimpleAgentLoopEngine execute modelRequest={}", JsonUtils.toJson(modelRequest));
+            log.info("SimpleAgentLoopEngine execute iteration={} modelRequest={}", i, JsonUtils.toJson(modelRequest));
 
             String assistantMessageId = messageFactory.nextAssistantMessageId();
             if (streamListener != null) {
@@ -90,14 +84,14 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             ModelResponse modelResponse = streamListener == null
                 ? llmGateway.generate(modelRequest)
                 : llmGateway.generateStreaming(modelRequest, delta -> streamListener.onMessageDelta(assistantMessageId, delta));
-            log.info("SimpleAgentLoopEngine execute modelResponse={}", JsonUtils.toJson(modelResponse));
+            log.info("SimpleAgentLoopEngine execute iteration={} modelResponse={}", i, JsonUtils.toJson(modelResponse));
 
             if (modelResponse == null) {
                 throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "model response is null");
             }
             totalUsage = UsageInfo.sum(totalUsage, modelResponse.getUsage());
 
-            List<ModelToolCall> modelToolCalls = modelResponse.getToolCalls() == null ? List.of() : modelResponse.getToolCalls();
+            List<ModelToolCall> modelToolCalls = Optional.ofNullable(modelResponse.getToolCalls()).orElse(Collections.emptyList());
             AssistantMessage assistantMessage = messageFactory.createAssistantMessage(
                 runContext.getSession().getSessionId(),
                 runContext.getTurn().getTurnId(),
@@ -105,6 +99,8 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 modelResponse.getContent(),
                 modelToolCalls
             );
+            log.info("SimpleAgentLoopEngine execute iteration={} assistantMessage={}", i, JsonUtils.toJson(assistantMessage));
+
             runContext.appendWorkingMessage(assistantMessage);
             appendedMessages.add(assistantMessage);
             finalAssistant = assistantMessage;

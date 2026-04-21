@@ -1,48 +1,42 @@
 package com.vi.agent.core.runtime.orchestrator;
 
-import com.vi.agent.core.common.exception.AgentRuntimeException;
-import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
-import com.vi.agent.core.model.llm.FinishReason;
-import com.vi.agent.core.model.message.AssistantMessage;
-import com.vi.agent.core.model.message.Message;
-import com.vi.agent.core.model.message.UserMessage;
-import com.vi.agent.core.model.runtime.*;
-import com.vi.agent.core.model.session.SessionResolutionResult;
-import com.vi.agent.core.model.turn.Turn;
+import com.vi.agent.core.model.runtime.AgentRunContext;
+import com.vi.agent.core.model.runtime.LoopExecutionResult;
+import com.vi.agent.core.model.runtime.RunMetadata;
 import com.vi.agent.core.runtime.command.RuntimeExecuteCommand;
-import com.vi.agent.core.runtime.engine.AssistantStreamListener;
-import com.vi.agent.core.runtime.engine.AgentLoopEngine;
+import com.vi.agent.core.runtime.completion.RuntimeCompletionHandler;
+import com.vi.agent.core.runtime.dedup.RuntimeDeduplicationHandler;
 import com.vi.agent.core.runtime.event.RuntimeEvent;
-import com.vi.agent.core.runtime.event.RuntimeEventType;
-import com.vi.agent.core.runtime.factory.MessageFactory;
+import com.vi.agent.core.runtime.event.RuntimeEventSink;
+import com.vi.agent.core.runtime.event.RuntimeEventSinkFactory;
+import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
+import com.vi.agent.core.runtime.factory.AgentRunContextFactory;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
-import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
-import com.vi.agent.core.runtime.lifecycle.TurnDedupResult;
-import com.vi.agent.core.runtime.mdc.MdcScope;
-import com.vi.agent.core.runtime.mdc.RuntimeMdcManager;
-import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
+import com.vi.agent.core.runtime.failure.RuntimeFailureHandler;
+import com.vi.agent.core.runtime.lifecycle.TurnInitializationService;
+import com.vi.agent.core.runtime.lifecycle.TurnStartResult;
+import com.vi.agent.core.runtime.loop.LoopInvocationService;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
+import com.vi.agent.core.runtime.scope.RuntimeRunScope;
+import com.vi.agent.core.runtime.scope.RuntimeRunScopeManager;
 import com.vi.agent.core.runtime.session.SessionResolutionService;
-import com.vi.agent.core.runtime.tool.ToolGateway;
-import com.vi.agent.core.model.port.SessionLockRepository;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Runtime run-level orchestrator.
+ * Runtime run 级主编排器。
  */
 @Slf4j
 @Component
 public class RuntimeOrchestrator {
 
-    private static final Duration DEFAULT_LOCK_TTL = Duration.ofSeconds(60);
+    @Resource
+    private RuntimeDeduplicationHandler deduplicationHandler;
 
     @Resource
     private SessionResolutionService sessionResolutionService;
@@ -51,25 +45,25 @@ public class RuntimeOrchestrator {
     private RunIdentityFactory runIdentityFactory;
 
     @Resource
-    private TurnLifecycleService turnLifecycleService;
+    private RuntimeRunScopeManager runScopeManager;
 
     @Resource
-    private MessageFactory messageFactory;
+    private TurnInitializationService turnInitializationService;
 
     @Resource
-    private PersistenceCoordinator persistenceCoordinator;
+    private AgentRunContextFactory agentRunContextFactory;
 
     @Resource
-    private RuntimeMdcManager runtimeMdcManager;
+    private RuntimeEventSinkFactory eventSinkFactory;
 
     @Resource
-    private AgentLoopEngine agentLoopEngine;
+    private LoopInvocationService loopInvocationService;
 
     @Resource
-    private ToolGateway toolGateway;
+    private RuntimeCompletionHandler completionHandler;
 
     @Resource
-    private SessionLockRepository sessionLockRepository;
+    private RuntimeFailureHandler failureHandler;
 
     public AgentExecutionResult execute(RuntimeExecuteCommand command) {
         return executeInternal(command, null, false);
@@ -80,338 +74,47 @@ public class RuntimeOrchestrator {
     }
 
     private AgentExecutionResult executeInternal(RuntimeExecuteCommand command, Consumer<RuntimeEvent> eventConsumer, boolean streaming) {
-        // 1.找到上一轮运行结果，如果request重复，就将上一轮运行结果返回
-        TurnDedupResult turnDedupResult = turnLifecycleService.findAndBuildByRequestId(command.getRequestId());
-        log.info("RuntimeOrchestrator executeInternal turnDedupResult={}", JsonUtils.toJson(turnDedupResult));
-        if (turnDedupResult != null) {
-            return handleDedupResult(command, turnDedupResult, eventConsumer);
+        RuntimeExecutionContext context = RuntimeExecutionContext.create(command, eventConsumer, streaming);
+        log.info("RuntimeOrchestrator executeInternal context:{}", JsonUtils.toJson(context));
+
+        AgentExecutionResult dedupAgentExecution = deduplicationHandler.checkAndBuildDedupAgentExecution(context);
+        log.info("RuntimeOrchestrator executeInternal dedupAgentExecution:{}", JsonUtils.toJson(dedupAgentExecution));
+        if (Objects.nonNull(dedupAgentExecution)) {
+            return dedupAgentExecution;
         }
 
-        // 2.找到在活动的runtime session，如果没有就创建
-        SessionResolutionResult sessionResolutionResult = sessionResolutionService.resolve(command);
-        log.info("RuntimeOrchestrator executeInternal sessionResolutionResult={}", JsonUtils.toJson(sessionResolutionResult));
-
-        // 3.创建运行需要的信息
+        context.setResolution(sessionResolutionService.judgeSessionResolutionMode(command));
         RunMetadata runMetadata = runIdentityFactory.createRunMetadata();
-        String sessionId = sessionResolutionResult.getSession().getSessionId();
+        context.setRunMetadata(runMetadata);
 
-        // 4.加锁处理
-        handleLock(sessionId, runMetadata);
+        RuntimeEventSink runtimeEventSink = eventSinkFactory.create(context);
+        log.info("RuntimeOrchestrator executeInternal runtimeEventSink:{}", JsonUtils.toJson(runtimeEventSink));
 
-        Turn turn = null;
-        AgentRunContext runContext = null;
-        try (MdcScope ignored = runtimeMdcManager.open(command.getRequestId(), sessionResolutionResult.getConversation().getConversationId(), sessionId, runMetadata)) {
-            // 5.创建用户消息信息
-            UserMessage userMessage = messageFactory.createUserMessage(sessionId, runMetadata.getTurnId(), command.getMessage());
-            log.info("RuntimeOrchestrator executeInternal userMessage={}", JsonUtils.toJson(userMessage));
+        try (RuntimeRunScope ignored = runScopeManager.open(context)) {
+            TurnStartResult turnStartResult = turnInitializationService.start(context);
+            log.info("RuntimeOrchestrator executeInternal turnStartResult:{}", JsonUtils.toJson(turnStartResult));
 
-            // 6.创建当前轮次信息并保存
-            turn = turnLifecycleService.createRunningTurn(
-                runMetadata.getTurnId(),
-                sessionResolutionResult.getConversation().getConversationId(),
-                sessionId,
-                command.getRequestId(),
-                runMetadata.getRunId(),
-                userMessage.getMessageId());
-            log.info("RuntimeOrchestrator executeInternal turn={}", JsonUtils.toJson(turn));
+            context.setTurn(turnStartResult.getTurn());
+            context.setUserMessage(turnStartResult.getUserMessage());
 
-            persistenceCoordinator.persistUserMessage(
-                sessionResolutionResult.getConversation().getConversationId(),
-                sessionId,
-                userMessage
-            );
+            runtimeEventSink.runStarted();
 
-            // 7.加载历史消息
-            List<Message> historyMessages = persistenceCoordinator.load(sessionResolutionResult.getConversation().getConversationId(), sessionId);
-            log.info("RuntimeOrchestrator executeInternal historyMassages={}", JsonUtils.toJson(historyMessages));
+            AgentRunContext agentRunContext = agentRunContextFactory.create(context);
+            log.info("RuntimeOrchestrator executeInternal agentRunContext:{}", JsonUtils.toJson(agentRunContext));
 
-            historyMessages.add(userMessage);
+            context.setRunContext(agentRunContext);
 
-            // 8.构建当前上下文
-            runContext = AgentRunContext.builder()
-                .runMetadata(runMetadata)
-                .conversation(sessionResolutionResult.getConversation())
-                .session(sessionResolutionResult.getSession())
-                .turn(turn)
-                .userInput(command.getMessage())
-                .workingMessages(historyMessages)
-                .availableTools(toolGateway.listDefinitions())
-                .state(AgentRunState.STARTED)
-                .iteration(0)
-                .build();
-            log.info("RuntimeOrchestrator executeInternal runContext={}", JsonUtils.toJson(runContext));
+            LoopExecutionResult loopExecutionResult = loopInvocationService.process(context, runtimeEventSink);
+            log.info("RuntimeOrchestrator executeInternal loopExecutionResult:{}", JsonUtils.toJson(loopExecutionResult));
 
-            emit(eventConsumer, RuntimeEvent.builder()
-                .eventType(RuntimeEventType.RUN_STARTED)
-                .runStatus(RunStatus.RUNNING)
-                .requestId(command.getRequestId())
-                .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                .sessionId(sessionId)
-                .turnId(turn.getTurnId())
-                .runId(runMetadata.getRunId())
-                .build());
+            context.setLoopResult(loopExecutionResult);
+            log.info("RuntimeOrchestrator executeInternal context:{}", JsonUtils.toJson(context));
 
-            // 9.loop engine处理
-            final String streamingTurnId = turn.getTurnId();
-            final String streamingRunId = runMetadata.getRunId();
-            final String streamingConversationId = sessionResolutionResult.getConversation().getConversationId();
-            LoopExecutionResult loopResult = streaming
-                ? agentLoopEngine.runStreaming(runContext, new AssistantStreamListener() {
-                    @Override
-                    public void onMessageStarted(String assistantMessageId) {
-                        emit(eventConsumer, RuntimeEvent.builder()
-                            .eventType(RuntimeEventType.MESSAGE_STARTED)
-                            .runStatus(RunStatus.RUNNING)
-                            .requestId(command.getRequestId())
-                            .conversationId(streamingConversationId)
-                            .sessionId(sessionId)
-                            .turnId(streamingTurnId)
-                            .runId(streamingRunId)
-                            .messageId(assistantMessageId)
-                            .build());
-                    }
-
-                    @Override
-                    public void onMessageDelta(String assistantMessageId, String delta) {
-                        emit(eventConsumer, RuntimeEvent.builder()
-                            .eventType(RuntimeEventType.MESSAGE_DELTA)
-                            .runStatus(RunStatus.RUNNING)
-                            .requestId(command.getRequestId())
-                            .conversationId(streamingConversationId)
-                            .sessionId(sessionId)
-                            .turnId(streamingTurnId)
-                            .runId(streamingRunId)
-                            .messageId(assistantMessageId)
-                            .delta(delta)
-                            .build());
-                    }
-
-                    @Override
-                    public void onMessageCompleted(AssistantMessage assistantMessage, FinishReason finishReason) {
-                        emit(eventConsumer, RuntimeEvent.builder()
-                            .eventType(RuntimeEventType.MESSAGE_COMPLETED)
-                            .runStatus(RunStatus.RUNNING)
-                            .requestId(command.getRequestId())
-                            .conversationId(streamingConversationId)
-                            .sessionId(sessionId)
-                            .turnId(streamingTurnId)
-                            .runId(streamingRunId)
-                            .messageId(assistantMessage.getMessageId())
-                            .content(assistantMessage.getContent())
-                            .finishReason(finishReason)
-                            .build());
-                    }
-                })
-                : agentLoopEngine.run(runContext);
-            log.info("RuntimeOrchestrator executeInternal loopResult={}", JsonUtils.toJson(loopResult));
-
-            for (var toolCall : loopResult.getToolCalls()) {
-                emit(eventConsumer, RuntimeEvent.builder()
-                    .eventType(RuntimeEventType.TOOL_CALL)
-                    .runStatus(RunStatus.RUNNING)
-                    .requestId(command.getRequestId())
-                    .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                    .sessionId(sessionId)
-                    .turnId(turn.getTurnId())
-                    .runId(runMetadata.getRunId())
-                    .messageId(toolCall.getMessageId())
-                    .toolCall(toolCall)
-                    .build());
-            }
-            for (var toolResult : loopResult.getToolResults()) {
-                emit(eventConsumer, RuntimeEvent.builder()
-                    .eventType(RuntimeEventType.TOOL_RESULT)
-                    .runStatus(RunStatus.RUNNING)
-                    .requestId(command.getRequestId())
-                    .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                    .sessionId(sessionId)
-                    .turnId(turn.getTurnId())
-                    .runId(runMetadata.getRunId())
-                    .messageId(toolResult.getMessageId())
-                    .toolResult(toolResult)
-                    .build());
-            }
-
-            runContext.markCompleted();
-            persistenceCoordinator.persistSuccess(runContext, loopResult);
-
-            emit(eventConsumer, RuntimeEvent.builder()
-                .eventType(RuntimeEventType.RUN_COMPLETED)
-                .runStatus(RunStatus.COMPLETED)
-                .requestId(command.getRequestId())
-                .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                .sessionId(sessionId)
-                .turnId(turn.getTurnId())
-                .runId(runMetadata.getRunId())
-                .finishReason(loopResult.getFinishReason())
-                .usage(loopResult.getUsage())
-                .content(loopResult.getAssistantMessage().getContent())
-                .build());
-
-            return AgentExecutionResult.builder()
-                .requestId(command.getRequestId())
-                .runStatus(RunStatus.COMPLETED)
-                .conversationId(sessionResolutionResult.getConversation().getConversationId())
-                .sessionId(sessionId)
-                .turnId(turn.getTurnId())
-                .userMessageId(userMessage.getMessageId())
-                .assistantMessageId(loopResult.getAssistantMessage().getMessageId())
-                .runId(runMetadata.getRunId())
-                .finalAssistantMessage(loopResult.getAssistantMessage())
-                .finishReason(loopResult.getFinishReason())
-                .usage(loopResult.getUsage())
-                .createdAt(Instant.now())
-                .build();
-        } catch (AgentRuntimeException e) {
-            if (runContext != null) {
-                runContext.markFailed();
-            }
-            if (turn != null) {
-                if (runContext != null) {
-                    persistenceCoordinator.persistFailure(runContext, e.getErrorCode().getCode(), e.getMessage());
-                } else {
-                    turnLifecycleService.failTurn(turn, e.getErrorCode().getCode(), e.getMessage());
-                }
-            }
-            emitFailed(eventConsumer, command, sessionResolutionResult, runMetadata, turn, e.getErrorCode().getCode(), e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            if (runContext != null) {
-                runContext.markFailed();
-            }
-            if (turn != null) {
-                if (runContext != null) {
-                    persistenceCoordinator.persistFailure(runContext, ErrorCode.RUNTIME_EXECUTION_FAILED.getCode(), e.getMessage());
-                } else {
-                    turnLifecycleService.failTurn(turn, ErrorCode.RUNTIME_EXECUTION_FAILED.getCode(), e.getMessage());
-                }
-            }
-            emitFailed(eventConsumer, command, sessionResolutionResult, runMetadata, turn, ErrorCode.RUNTIME_EXECUTION_FAILED.getCode(), e.getMessage());
-            throw new AgentRuntimeException(ErrorCode.RUNTIME_EXECUTION_FAILED, "runtime execution failed", e);
-        } finally {
-            sessionLockRepository.unlock(sessionId, runMetadata.getRunId());
-            messageFactory.clearSessionSequenceCursor(sessionId);
+            AgentExecutionResult agentExecutionResult = completionHandler.complete(context, runtimeEventSink);
+            log.info("RuntimeOrchestrator executeInternal agentExecutionResult:{}", JsonUtils.toJson(agentExecutionResult));
+            return agentExecutionResult;
+        } catch (Throwable throwable) {
+            throw failureHandler.handle(context, throwable, runtimeEventSink);
         }
-    }
-
-    private void handleLock(String sessionId, RunMetadata runMetadata) {
-        // 锁住当前runtime session和轮次
-        if (!sessionLockRepository.tryLock(sessionId, runMetadata.getRunId(), DEFAULT_LOCK_TTL)) {
-            throw new AgentRuntimeException(ErrorCode.SESSION_CONCURRENT_REQUEST, "session has another running request");
-        }
-
-        // 如果有在活动的轮次，说明冲突，就把刚才加的锁释放
-        if (turnLifecycleService.existsRunningTurn(sessionId)) {
-            sessionLockRepository.unlock(sessionId, runMetadata.getRunId());
-            throw new AgentRuntimeException(ErrorCode.SESSION_CONCURRENT_REQUEST, "session has another running request");
-        }
-    }
-
-    private AgentExecutionResult handleDedupResult(RuntimeExecuteCommand command, TurnDedupResult turnDedupResult, Consumer<RuntimeEvent> eventConsumer) {
-        Turn turn = turnDedupResult.getTurn();
-        switch (turnDedupResult.getStatus()){
-            case COMPLETED -> {
-                AssistantMessage assistantMessage = buildAssistantMessage(turnDedupResult.getAssistantMessage(), turn.getTurnId());
-                return AgentExecutionResult.builder()
-                    .requestId(command.getRequestId())
-                    .runStatus(RunStatus.COMPLETED)
-                    .conversationId(turn.getConversationId())
-                    .sessionId(turn.getSessionId())
-                    .turnId(turn.getTurnId())
-                    .userMessageId(turn.getUserMessageId())
-                    .assistantMessageId(turn.getAssistantMessageId())
-                    .runId(turn.getRunId())
-                    .finalAssistantMessage(assistantMessage)
-                    .finishReason(turn.getFinishReason())
-                    .usage(turn.getUsage())
-                    .createdAt(Instant.now())
-                    .build();
-            }
-            case RUNNING -> {
-                emit(eventConsumer, RuntimeEvent.builder()
-                    .eventType(RuntimeEventType.RUN_STARTED)
-                    .runStatus(RunStatus.RUNNING)
-                    .requestId(command.getRequestId())
-                    .conversationId(turn.getConversationId())
-                    .sessionId(turn.getSessionId())
-                    .turnId(turn.getTurnId())
-                    .runId(turn.getRunId())
-                    .content("processing")
-                    .build());
-
-                return AgentExecutionResult.builder()
-                    .requestId(command.getRequestId())
-                    .runStatus(RunStatus.RUNNING)
-                    .conversationId(turn.getConversationId())
-                    .sessionId(turn.getSessionId())
-                    .turnId(turn.getTurnId())
-                    .userMessageId(turn.getUserMessageId())
-                    .assistantMessageId(turn.getAssistantMessageId())
-                    .runId(turn.getRunId())
-                    .createdAt(Instant.now())
-                    .build();
-            }
-            default -> {
-                return AgentExecutionResult.builder()
-                    .requestId(command.getRequestId())
-                    .runStatus(RunStatus.FAILED)
-                    .conversationId(turn.getConversationId())
-                    .sessionId(turn.getSessionId())
-                    .turnId(turn.getTurnId())
-                    .userMessageId(turn.getUserMessageId())
-                    .assistantMessageId(turn.getAssistantMessageId())
-                    .runId(turn.getRunId())
-                    .finishReason(FinishReason.ERROR)
-                    .createdAt(Instant.now())
-                    .build();
-            }
-        }
-    }
-
-    private AssistantMessage buildAssistantMessage(Message message, String turnId) {
-        if (message instanceof AssistantMessage assistantMessage) {
-            return assistantMessage;
-        }
-        if (message == null) {
-            return AssistantMessage.create(null, turnId, 0L, "", List.of());
-        }
-        return AssistantMessage.create(
-            message.getMessageId(),
-            message.getTurnId(),
-            message.getSequenceNo(),
-            message.getContent(),
-            List.of()
-        );
-    }
-
-    private void emitFailed(
-        Consumer<RuntimeEvent> eventConsumer,
-        RuntimeExecuteCommand command,
-        SessionResolutionResult resolution,
-        RunMetadata runMetadata,
-        Turn turn,
-        String errorCode,
-        String errorMessage
-    ) {
-        emit(eventConsumer, RuntimeEvent.builder()
-            .eventType(RuntimeEventType.RUN_FAILED)
-            .runStatus(RunStatus.FAILED)
-            .requestId(command.getRequestId())
-            .conversationId(resolution.getConversation().getConversationId())
-            .sessionId(resolution.getSession().getSessionId())
-            .turnId(turn == null ? runMetadata.getTurnId() : turn.getTurnId())
-            .runId(runMetadata.getRunId())
-            .errorCode(errorCode)
-            .errorMessage(errorMessage)
-            .errorType("SYSTEM")
-            .retryable(false)
-            .build());
-    }
-
-    private void emit(Consumer<RuntimeEvent> eventConsumer, RuntimeEvent event) {
-        if (eventConsumer == null || event == null) {
-            return;
-        }
-        eventConsumer.accept(event);
     }
 }

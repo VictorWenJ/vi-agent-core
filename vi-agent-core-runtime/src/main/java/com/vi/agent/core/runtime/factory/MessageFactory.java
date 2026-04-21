@@ -11,6 +11,7 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -47,7 +48,7 @@ public class MessageFactory {
         String turnId,
         String assistantMessageId,
         String content,
-        java.util.List<ModelToolCall> toolCalls
+        List<ModelToolCall> toolCalls
     ) {
         long sequence = nextSequenceNo(sessionId);
         return AssistantMessage.create(assistantMessageId, turnId, sequence, content, toolCalls);

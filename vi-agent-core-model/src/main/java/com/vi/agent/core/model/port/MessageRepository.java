@@ -12,7 +12,7 @@ public interface MessageRepository {
 
     void save(String conversationId, String sessionId, Message message);
 
-    Optional<Message> findByMessageId(String messageId);
+    Message findByMessageId(String messageId);
 
     List<Message> findBySessionIdOrderBySequence(String sessionId, int limit);
 

@@ -8,5 +8,5 @@ import com.vi.agent.core.model.session.SessionResolutionResult;
  */
 public interface SessionResolutionService {
 
-    SessionResolutionResult resolve(RuntimeExecuteCommand command);
+    SessionResolutionResult judgeSessionResolutionMode(RuntimeExecuteCommand command);
 }

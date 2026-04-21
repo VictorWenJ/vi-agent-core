@@ -1,10 +1,13 @@
 package com.vi.agent.core.model.message;
 
+import lombok.Getter;
+
 import java.time.Instant;
 
 /**
  * Tool result message fact.
  */
+@Getter
 public final class ToolResultMessage extends AbstractMessage {
 
     private final String toolCallId;
@@ -96,27 +99,4 @@ public final class ToolResultMessage extends AbstractMessage {
         );
     }
 
-    public String getToolCallId() {
-        return toolCallId;
-    }
-
-    public String getToolName() {
-        return toolName;
-    }
-
-    public boolean isSuccess() {
-        return success;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public Long getDurationMs() {
-        return durationMs;
-    }
 }
