@@ -55,7 +55,7 @@ public class PersistenceCoordinator {
         if (completedTurnMessages.size() != messages.size()) {
             refresh(conversationId, sessionId, completedTurnMessages);
         }
-        return buildCompleteData(completedTurnMessages);;
+        return buildCompleteData(completedTurnMessages);
     }
 
     private List<Message> buildCompleteData(List<Message> messages) {
