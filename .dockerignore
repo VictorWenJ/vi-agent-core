@@ -1,0 +1,9 @@
+.git
+.idea
+**/.idea
+**/*.iml
+**/target
+**/out
+**/.DS_Store
+**/Thumbs.db
+docker/mysql_data

@@ -9,7 +9,8 @@ COPY vi-agent-core-runtime/pom.xml ./vi-agent-core-runtime/pom.xml
 COPY vi-agent-core-infra/pom.xml ./vi-agent-core-infra/pom.xml
 COPY vi-agent-core-app/pom.xml ./vi-agent-core-app/pom.xml
 
-RUN mvn -pl vi-agent-core-app -am -DskipTests dependency:go-offline
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -pl vi-agent-core-app -am -DskipTests dependency:go-offline
 
 COPY vi-agent-core-common ./vi-agent-core-common
 COPY vi-agent-core-model ./vi-agent-core-model
@@ -17,7 +18,8 @@ COPY vi-agent-core-runtime ./vi-agent-core-runtime
 COPY vi-agent-core-infra ./vi-agent-core-infra
 COPY vi-agent-core-app ./vi-agent-core-app
 
-RUN mvn -pl vi-agent-core-app -am -DskipTests package
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -o -pl vi-agent-core-app -am -DskipTests package
 
 FROM m.daocloud.io/docker.io/library/eclipse-temurin:17-jre-alpine
 
