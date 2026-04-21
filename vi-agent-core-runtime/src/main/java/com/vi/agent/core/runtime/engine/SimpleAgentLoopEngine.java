@@ -11,6 +11,7 @@ import com.vi.agent.core.model.message.ToolResultMessage;
 import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
+import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolCallRecord;
 import com.vi.agent.core.model.tool.ToolResult;
@@ -41,6 +42,9 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     @Resource
     private MessageFactory messageFactory;
+
+    @Resource
+    private ModelContextMessageFilter modelContextMessageFilter;
 
     @Value("${vi.agent.runtime.max-iterations:6}")
     private int maxIterations;
@@ -73,7 +77,7 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 .conversationId(runContext.getConversation().getConversationId())
                 .sessionId(runContext.getSession().getSessionId())
                 .turnId(runContext.getTurn().getTurnId())
-                .messages(runContext.getWorkingMessages())
+                .messages(modelContextMessageFilter.filter(runContext.getWorkingMessages()))
                 .tools(runContext.getAvailableTools())
                 .build();
             log.info("SimpleAgentLoopEngine execute modelRequest={}", JsonUtils.toJson(modelRequest));
@@ -129,7 +133,6 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                     modelToolCall.getArgumentsJson()
                 );
 
-                runContext.appendWorkingMessage(toolCallMessage);
                 appendedMessages.add(toolCallMessage);
 
                 ToolCallRecord toolCallRecord = messageFactory.createToolCallRecord(

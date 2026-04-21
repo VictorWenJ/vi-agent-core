@@ -13,6 +13,7 @@ import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -111,7 +112,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         request.setStream(stream);
 
         List<ChatCompletionsMessage> apiMessages = new ArrayList<>();
-        if (modelRequest.getMessages() != null) {
+        if (CollectionUtils.isNotEmpty(modelRequest.getMessages())) {
             for (Message message : modelRequest.getMessages()) {
                 ChatCompletionsMessage apiMessage = toApiMessage(message);
                 if (apiMessage != null) {
@@ -121,7 +122,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         }
         request.setMessages(apiMessages);
 
-        if (modelRequest.getTools() != null && !modelRequest.getTools().isEmpty()) {
+        if (CollectionUtils.isNotEmpty(modelRequest.getTools())) {
             List<ChatCompletionsToolDefinition> tools = new ArrayList<>();
             for (ToolDefinition definition : modelRequest.getTools()) {
                 ChatCompletionsToolDefinition tool = toApiToolDefinition(definition);
@@ -152,6 +153,10 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             return api;
         }
 
+        if (message instanceof ToolCallMessage) {
+            throw new AgentRuntimeException(ErrorCode.INVALID_MODEL_CONTEXT_MESSAGE, "ToolCallMessage is an internal fact and must not be sent to provider");
+        }
+
         ChatCompletionsMessage api = new ChatCompletionsMessage();
         api.setRole(toApiRole(message.getRole()));
         api.setContent(message.getContent());
@@ -171,21 +176,6 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
                 toolCalls.add(apiToolCall);
             }
             api.setToolCalls(toolCalls);
-        }
-
-        if (message instanceof ToolCallMessage toolCallMessage) {
-            List<ChatCompletionsToolCall> toolCalls = new ArrayList<>();
-            ChatCompletionsToolCall apiToolCall = new ChatCompletionsToolCall();
-            apiToolCall.setId(toolCallMessage.getToolCallId());
-            apiToolCall.setType("function");
-            ChatCompletionsFunction function = new ChatCompletionsFunction();
-            function.setName(toolCallMessage.getToolName());
-            function.setArguments(toolCallMessage.getArgumentsJson());
-            apiToolCall.setFunction(function);
-            toolCalls.add(apiToolCall);
-            api.setRole("assistant");
-            api.setToolCalls(toolCalls);
-            api.setContent(null);
         }
 
         return api;
@@ -361,7 +351,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             toolCalls.add(ModelToolCall.builder()
                 .toolCallId(value.toolCallId)
                 .toolName(value.toolName)
-                .argumentsJson(value.argumentsBuilder.length() == 0 ? "{}" : value.argumentsBuilder.toString())
+                .argumentsJson(value.argumentsBuilder.isEmpty() ? "{}" : value.argumentsBuilder.toString())
                 .build());
         }
         return toolCalls;

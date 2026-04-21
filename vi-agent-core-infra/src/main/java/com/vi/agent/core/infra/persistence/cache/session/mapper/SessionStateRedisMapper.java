@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Mapper between session snapshot and redis document.
@@ -16,53 +18,63 @@ import java.util.List;
 public class SessionStateRedisMapper {
 
     public SessionStateCacheDocument toDocument(SessionStateSnapshot snapshot) {
-        List<SessionStateMessageDocument> messages = snapshot.getMessages().stream()
-            .map(this::toMessageDocument)
-            .toList();
-        return new SessionStateCacheDocument(
-            snapshot.getSessionId(),
-            snapshot.getConversationId(),
-            messages,
-            null,
-            null,
-            null,
-            snapshot.getUpdatedAt()
-        );
-    }
+        List<SessionStateMessageDocument> documents = Optional.ofNullable(snapshot.getMessages())
+            .map(messages ->
+                messages.stream()
+                    .filter(document -> Objects.nonNull(document) && MessageType.TOOL_CALL != document.getMessageType())
+                    .map(message -> SessionStateMessageDocument.builder()
+                        .messageId(message.getMessageId())
+                        .turnId(message.getTurnId())
+                        .role(message.getRole().name())
+                        .messageType(message.getMessageType().name())
+                        .sequenceNo(message.getSequenceNo())
+                        .content(message.getContent())
+                        .createdAt(message.getCreatedAt())
+                        .build())
+                    .toList())
+            .orElse(List.of());
 
-    public SessionStateSnapshot toModel(SessionStateCacheDocument document) {
-        List<Message> messages = document.getMessages() == null
-            ? List.of()
-            : document.getMessages().stream().map(this::toMessage).toList();
-        return SessionStateSnapshot.builder()
-            .sessionId(document.getSessionId())
-            .conversationId(document.getConversationId())
-            .messages(messages)
-            .updatedAt(document.getUpdatedAt())
+        return SessionStateCacheDocument.builder()
+            .sessionId(snapshot.getSessionId())
+            .conversationId(snapshot.getConversationId())
+            .messageDocuments(documents)
+            .transcriptCache(null)
+            .recentWindowCache(null)
+            .summaryCheckpoint(null)
+            .updatedAt(snapshot.getUpdatedAt())
             .build();
     }
 
-    private SessionStateMessageDocument toMessageDocument(Message message) {
-        return new SessionStateMessageDocument(
-            message.getMessageId(),
-            message.getTurnId(),
-            message.getRole().name(),
-            message.getMessageType().name(),
-            message.getSequenceNo(),
-            message.getContent(),
-            message.getCreatedAt()
-        );
+    public SessionStateSnapshot toModel(SessionStateCacheDocument cacheDocument) {
+        List<Message> messages = Optional.ofNullable(cacheDocument.getMessageDocuments())
+            .map(documents ->
+                documents.stream()
+                    .filter(messageDocument -> Objects.nonNull(messageDocument) && MessageType.TOOL_CALL.name().equals(messageDocument.getMessageType()))
+                    .map(this::toMessage)
+                    .filter(Objects::nonNull)
+                    .toList())
+            .orElse(List.of());
+
+        return SessionStateSnapshot.builder()
+            .sessionId(cacheDocument.getSessionId())
+            .conversationId(cacheDocument.getConversationId())
+            .messages(messages)
+            .updatedAt(cacheDocument.getUpdatedAt())
+            .build();
     }
 
     private Message toMessage(SessionStateMessageDocument document) {
         MessageType messageType = MessageType.valueOf(document.getMessageType());
         Instant createdAt = document.getCreatedAt();
         return switch (messageType) {
-            case USER_INPUT -> UserMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getContent(), createdAt);
-            case ASSISTANT_OUTPUT -> AssistantMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getContent(), List.of(), createdAt);
-            case TOOL_CALL -> ToolCallMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getMessageId(), "tool", document.getContent(), createdAt);
+            case USER_INPUT ->
+                UserMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getContent(), createdAt);
+            case ASSISTANT_OUTPUT ->
+                AssistantMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getContent(), List.of(), createdAt);
+            case TOOL_CALL -> null;
             case TOOL_RESULT -> ToolResultMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getMessageId(), "tool", true, document.getContent(), null, null, null, createdAt);
-            case SYSTEM_MESSAGE, SUMMARY_MESSAGE -> AssistantMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getContent(), List.of(), createdAt);
+            case SYSTEM_MESSAGE, SUMMARY_MESSAGE ->
+                AssistantMessage.restore(document.getMessageId(), document.getTurnId(), document.getSequenceNo(), document.getContent(), List.of(), createdAt);
         };
     }
 }

@@ -64,6 +64,7 @@ public class GlobalExceptionHandler {
 
             case RUNTIME_EXECUTION_FAILED,
                  PROVIDER_CONFIG_INVALID_FAILED,
+                 INVALID_MODEL_CONTEXT_MESSAGE,
                  TRANSCRIPT_STORE_FAILED,
                  JSON_SERIALIZATION_FAILED -> HttpStatus.INTERNAL_SERVER_ERROR;
         };

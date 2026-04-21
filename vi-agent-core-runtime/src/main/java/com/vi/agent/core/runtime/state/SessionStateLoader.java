@@ -6,6 +6,7 @@ import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.session.SessionStateSnapshot;
 import com.vi.agent.core.model.turn.TurnStatus;
+import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,9 @@ public class SessionStateLoader {
     @Resource
     private TurnRepository turnRepository;
 
+    @Resource
+    private ModelContextMessageFilter modelContextMessageFilter;
+
     @Value("${vi.agent.runtime.session-state-window:200}")
     private int maxWindow;
 
@@ -38,27 +42,30 @@ public class SessionStateLoader {
         List<Message> messages = sessionStateRepository.findBySessionId(sessionId)
             .map(SessionStateSnapshot::getMessages)
             .orElseGet(() -> reloadFromMysql(conversationId, sessionId));
-        List<Message> filteredMessages = filterCompletedTurnMessages(messages);
-        if (filteredMessages.size() != messages.size()) {
-            refresh(conversationId, sessionId, filteredMessages);
+        List<Message> completedTurnMessages = filterCompletedTurnMessages(messages);
+        List<Message> modelContextMessages = modelContextMessageFilter.filter(completedTurnMessages);
+        if (modelContextMessages.size() != messages.size()) {
+            refresh(conversationId, sessionId, modelContextMessages);
         }
-        return filteredMessages;
+        return new ArrayList<>(modelContextMessages);
     }
 
     public void refresh(String conversationId, String sessionId, List<Message> messages) {
+        List<Message> modelContextMessages = modelContextMessageFilter.filter(messages);
         sessionStateRepository.save(SessionStateSnapshot.builder()
             .sessionId(sessionId)
             .conversationId(conversationId)
-            .messages(new ArrayList<>(messages))
+            .messages(new ArrayList<>(modelContextMessages))
             .updatedAt(Instant.now())
             .build());
     }
 
     private List<Message> reloadFromMysql(String conversationId, String sessionId) {
         List<Message> messages = messageRepository.findBySessionIdOrderBySequence(sessionId, maxWindow);
-        List<Message> filteredMessages = filterCompletedTurnMessages(messages);
-        refresh(conversationId, sessionId, filteredMessages);
-        return filteredMessages;
+        List<Message> completedTurnMessages = filterCompletedTurnMessages(messages);
+        List<Message> modelContextMessages = modelContextMessageFilter.filter(completedTurnMessages);
+        refresh(conversationId, sessionId, modelContextMessages);
+        return modelContextMessages;
     }
 
     private List<Message> filterCompletedTurnMessages(List<Message> messages) {

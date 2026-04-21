@@ -1,6 +1,7 @@
 package com.vi.agent.core.infra.persistence.cache.session.document;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -10,6 +11,7 @@ import java.time.Instant;
  * Message payload stored in session state cache.
  */
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SessionStateMessageDocument {

@@ -1,6 +1,10 @@
 package com.vi.agent.core.runtime.state;
 
+import com.vi.agent.core.model.llm.ModelToolCall;
+import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.ToolCallMessage;
+import com.vi.agent.core.model.message.ToolResultMessage;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
@@ -17,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SessionStateLoaderCompletedTurnFilterTest {
 
@@ -31,6 +36,7 @@ class SessionStateLoaderCompletedTurnFilterTest {
         setField(loader, "messageRepository", messageRepository);
         setField(loader, "turnRepository", turnRepository);
         setField(loader, "maxWindow", 200);
+        setField(loader, "modelContextMessageFilter", new com.vi.agent.core.runtime.context.ModelContextMessageFilter());
 
         Message completedTurnMessage = UserMessage.restore("msg-1", "turn-completed", 1L, "ok", Instant.now());
         Message failedTurnMessage = UserMessage.restore("msg-2", "turn-failed", 2L, "bad", Instant.now());
@@ -47,6 +53,71 @@ class SessionStateLoaderCompletedTurnFilterTest {
         assertEquals("msg-1", sessionStateRepository.savedSnapshot.getMessages().get(0).getMessageId());
     }
 
+    @Test
+    void loadShouldExcludeToolCallMessageFromCachedSnapshot() throws Exception {
+        SessionStateLoader loader = new SessionStateLoader();
+        CapturingSessionStateRepository sessionStateRepository = new CapturingSessionStateRepository();
+        StubMessageRepository messageRepository = new StubMessageRepository();
+        StubTurnRepository turnRepository = new StubTurnRepository();
+
+        setField(loader, "sessionStateRepository", sessionStateRepository);
+        setField(loader, "messageRepository", messageRepository);
+        setField(loader, "turnRepository", turnRepository);
+        setField(loader, "maxWindow", 200);
+        setField(loader, "modelContextMessageFilter", new com.vi.agent.core.runtime.context.ModelContextMessageFilter());
+
+        UserMessage userMessage = UserMessage.restore("msg-user", "turn-completed", 1L, "几点了", Instant.now());
+        AssistantMessage assistantMessage = AssistantMessage.restore(
+            "msg-assistant",
+            "turn-completed",
+            2L,
+            "我来查询时间",
+            List.of(ModelToolCall.builder().toolCallId("call-1").toolName("get_time").argumentsJson("{}").build()),
+            Instant.now()
+        );
+        ToolCallMessage toolCallMessage = ToolCallMessage.restore(
+            "msg-tool-call",
+            "turn-completed",
+            3L,
+            "call-1",
+            "get_time",
+            "{}",
+            Instant.now()
+        );
+        ToolResultMessage toolResultMessage = ToolResultMessage.restore(
+            "msg-tool-result",
+            "turn-completed",
+            4L,
+            "call-1",
+            "get_time",
+            true,
+            "2026-04-21T16:00:00+08:00",
+            null,
+            null,
+            1L,
+            Instant.now()
+        );
+
+        sessionStateRepository.existingSnapshot = SessionStateSnapshot.builder()
+            .sessionId("sess-1")
+            .conversationId("conv-1")
+            .messages(List.of(userMessage, assistantMessage, toolCallMessage, toolResultMessage))
+            .updatedAt(Instant.now())
+            .build();
+        turnRepository.completedTurnIds.add("turn-completed");
+
+        List<Message> loaded = loader.load("conv-1", "sess-1");
+
+        assertEquals(3, loaded.size());
+        assertTrue(loaded.stream().noneMatch(message -> message instanceof ToolCallMessage));
+        assertTrue(loaded.stream().anyMatch(AssistantMessage.class::isInstance));
+        assertTrue(loaded.stream().anyMatch(ToolResultMessage.class::isInstance));
+
+        assertEquals(3, sessionStateRepository.savedSnapshot.getMessages().size());
+        assertTrue(sessionStateRepository.savedSnapshot.getMessages().stream()
+            .noneMatch(message -> message instanceof ToolCallMessage));
+    }
+
     private static void setField(Object target, String fieldName, Object value) throws Exception {
         Field field = SessionStateLoader.class.getDeclaredField(fieldName);
         field.setAccessible(true);
@@ -54,11 +125,12 @@ class SessionStateLoaderCompletedTurnFilterTest {
     }
 
     private static final class CapturingSessionStateRepository implements SessionStateRepository {
+        private SessionStateSnapshot existingSnapshot;
         private SessionStateSnapshot savedSnapshot;
 
         @Override
         public Optional<SessionStateSnapshot> findBySessionId(String sessionId) {
-            return Optional.empty();
+            return Optional.ofNullable(existingSnapshot);
         }
 
         @Override
@@ -150,4 +222,3 @@ class SessionStateLoaderCompletedTurnFilterTest {
         }
     }
 }
-

@@ -31,6 +31,9 @@ public enum ErrorCode {
     /** 模型提供方配置非法。 */
     PROVIDER_CONFIG_INVALID_FAILED("PROVIDER-0002", "Model provider configuration invalid"),
 
+    /** 模型上下文中包含非法消息类型。 */
+    INVALID_MODEL_CONTEXT_MESSAGE("PROVIDER-0003", "Invalid model context message"),
+
     /** 对话转录持久化失败。 */
     TRANSCRIPT_STORE_FAILED("PERSIST-0001", "Transcript persistence failed"),
 

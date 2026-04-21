@@ -1,6 +1,7 @@
 package com.vi.agent.core.infra.persistence.cache.session.document;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -11,6 +12,7 @@ import java.util.List;
  * Session state cache document.
  */
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SessionStateCacheDocument {
@@ -19,7 +21,7 @@ public class SessionStateCacheDocument {
 
     private String conversationId;
 
-    private List<SessionStateMessageDocument> messages;
+    private List<SessionStateMessageDocument> messageDocuments;
 
     private String transcriptCache;
 

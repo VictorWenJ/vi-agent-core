@@ -7,6 +7,7 @@ import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.session.Session;
 import com.vi.agent.core.model.turn.Turn;
+import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +36,9 @@ public class PersistenceCoordinator {
 
     @Resource
     private SessionStateRepository sessionStateRepository;
+
+    @Resource
+    private ModelContextMessageFilter modelContextMessageFilter;
 
     public void persistUserMessage(String conversationId, String sessionId, Message userMessage) {
         messageRepository.save(conversationId, sessionId, userMessage);
@@ -69,10 +73,11 @@ public class PersistenceCoordinator {
         conversation.touchLastMessageAt(Instant.now());
         conversationRepository.update(conversation);
 
+        var modelContextMessages = modelContextMessageFilter.filter(runContext.getWorkingMessages());
         sessionStateRepository.save(com.vi.agent.core.model.session.SessionStateSnapshot.builder()
             .sessionId(session.getSessionId())
             .conversationId(conversation.getConversationId())
-            .messages(runContext.getWorkingMessages())
+            .messages(modelContextMessages)
             .updatedAt(Instant.now())
             .build());
     }
