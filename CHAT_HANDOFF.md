@@ -38,6 +38,17 @@
 - 当用户判断基础不足时，应主动承担更强的架构判断职责，不把决策责任推回给用户。
 - 对 Claude Code、OpenClaw、Hermes Agent 的设计思想，要说明“借鉴了什么、为什么借鉴、如何改造后复用”；不能只提名称，不给落地方式。
 
+### 3.5固定架构参考基线
+
+后续所有系统设计、类定义、表设计、流程设计、逻辑设计，必须优先借鉴并对齐：
+
+1. Vercel AI SDK 的 ModelMessage / content parts / tool call / tool result 设计；
+2. Claude Code 的 agent loop、tool boundary、context management、subagent、hooks、checkpoint / compaction 思想；
+3. OpenClaw 的 gateway / channels / tools / skills / self-hosted assistant runtime 思想，并吸收其安全边界经验；
+4. Hermes Agent 的 persistent agent、skills、memory、profiles、learning loop 思想。
+
+设计时应先查阅这些来源的最新文档或开源实现，再给出结论。用户不希望并列多个模糊选项；应由 ChatGPT 直接拍板最标准、最合理、最可长期扩展的方案。
+
 ---
 
 ## 4. 核心协作原则
