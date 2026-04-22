@@ -41,8 +41,8 @@ public class LoopInvocationService {
         if (!CollectionUtils.isEmpty(loopExecutionResult.getToolCalls())) {
             loopExecutionResult.getToolCalls().forEach(eventSink::toolCall);
         }
-        if (!CollectionUtils.isEmpty(loopExecutionResult.getToolResults())) {
-            loopExecutionResult.getToolResults().forEach(eventSink::toolResult);
+        if (!CollectionUtils.isEmpty(loopExecutionResult.getToolExecutions())) {
+            loopExecutionResult.getToolExecutions().forEach(eventSink::toolResult);
         }
     }
 
@@ -53,9 +53,8 @@ public class LoopInvocationService {
         if (!CollectionUtils.isEmpty(loopExecutionResult.getToolCalls())) {
             loopExecutionResult.getToolCalls().forEach(streamObserver::onToolCall);
         }
-        if (!CollectionUtils.isEmpty(loopExecutionResult.getToolResults())) {
-            loopExecutionResult.getToolResults().forEach(streamObserver::onToolResult);
+        if (!CollectionUtils.isEmpty(loopExecutionResult.getToolExecutions())) {
+            loopExecutionResult.getToolExecutions().forEach(streamObserver::onToolResult);
         }
     }
 }
-

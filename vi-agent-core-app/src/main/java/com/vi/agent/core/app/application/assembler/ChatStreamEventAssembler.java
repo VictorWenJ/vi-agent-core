@@ -1,6 +1,11 @@
 package com.vi.agent.core.app.application.assembler;
 
-import com.vi.agent.core.app.api.dto.response.*;
+import com.vi.agent.core.app.api.dto.response.ChatStreamEvent;
+import com.vi.agent.core.app.api.dto.response.ErrorPayload;
+import com.vi.agent.core.app.api.dto.response.StreamEventType;
+import com.vi.agent.core.app.api.dto.response.ToolCallPayload;
+import com.vi.agent.core.app.api.dto.response.ToolResultPayload;
+import com.vi.agent.core.app.api.dto.response.UsageInfo;
 import com.vi.agent.core.runtime.event.RuntimeEvent;
 import com.vi.agent.core.runtime.event.RuntimeEventType;
 import org.springframework.stereotype.Component;
@@ -8,7 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 
 /**
- * Assembles API stream event from runtime event.
+ * 组装流式响应事件。
  */
 @Component
 public class ChatStreamEventAssembler {
@@ -34,20 +39,30 @@ public class ChatStreamEventAssembler {
                 .model(runtimeEvent.getUsage().getModel())
                 .build())
             .toolCall(runtimeEvent.getToolCall() == null ? null : ToolCallPayload.builder()
+                .toolCallRecordId(runtimeEvent.getToolCall().getToolCallRecordId())
                 .toolCallId(runtimeEvent.getToolCall().getToolCallId())
+                .assistantMessageId(runtimeEvent.getToolCall().getAssistantMessageId())
                 .toolName(runtimeEvent.getToolCall().getToolName())
                 .argumentsJson(runtimeEvent.getToolCall().getArgumentsJson())
-                .sequence(runtimeEvent.getToolCall().getSequenceNo())
+                .callIndex(runtimeEvent.getToolCall().getCallIndex())
+                .status(runtimeEvent.getToolCall().getStatus() == null ? null : runtimeEvent.getToolCall().getStatus().name())
                 .createdAt(runtimeEvent.getToolCall().getCreatedAt())
                 .build())
             .toolResult(runtimeEvent.getToolResult() == null ? null : ToolResultPayload.builder()
+                .toolExecutionId(runtimeEvent.getToolResult().getToolExecutionId())
+                .toolCallRecordId(runtimeEvent.getToolResult().getToolCallRecordId())
                 .toolCallId(runtimeEvent.getToolResult().getToolCallId())
+                .toolResultMessageId(runtimeEvent.getToolResult().getToolResultMessageId())
                 .toolName(runtimeEvent.getToolResult().getToolName())
-                .success(runtimeEvent.getToolResult().isSuccess())
+                .argumentsJson(runtimeEvent.getToolResult().getArgumentsJson())
+                .outputText(runtimeEvent.getToolResult().getOutputText())
                 .outputJson(runtimeEvent.getToolResult().getOutputJson())
+                .status(runtimeEvent.getToolResult().getStatus() == null ? null : runtimeEvent.getToolResult().getStatus().name())
                 .errorCode(runtimeEvent.getToolResult().getErrorCode())
                 .errorMessage(runtimeEvent.getToolResult().getErrorMessage())
                 .durationMs(runtimeEvent.getToolResult().getDurationMs())
+                .startedAt(runtimeEvent.getToolResult().getStartedAt())
+                .completedAt(runtimeEvent.getToolResult().getCompletedAt())
                 .createdAt(runtimeEvent.getToolResult().getCreatedAt())
                 .build())
             .error(runtimeEvent.getErrorCode() == null ? null : ErrorPayload.builder()

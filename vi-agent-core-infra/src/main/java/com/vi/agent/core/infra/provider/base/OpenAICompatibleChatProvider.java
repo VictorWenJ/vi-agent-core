@@ -5,10 +5,10 @@ import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
 import com.vi.agent.core.infra.provider.http.HttpRequestOptions;
+import com.vi.agent.core.infra.provider.openai.OpenAICompatibleMessageProjector;
 import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
 import com.vi.agent.core.infra.provider.protocol.openai.*;
 import com.vi.agent.core.model.llm.*;
-import com.vi.agent.core.model.message.*;
 import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import jakarta.annotation.Resource;
@@ -26,6 +26,9 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
 
     @Resource
     protected LlmHttpExecutor httpExecutor;
+
+    @Resource
+    protected OpenAICompatibleMessageProjector messageProjector;
 
     @Override
     public ModelResponse generate(ModelRequest modelRequest) {
@@ -111,15 +114,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         request.setModel(model());
         request.setStream(stream);
 
-        List<ChatCompletionsMessage> apiMessages = new ArrayList<>();
-        if (CollectionUtils.isNotEmpty(modelRequest.getMessages())) {
-            for (Message message : modelRequest.getMessages()) {
-                ChatCompletionsMessage apiMessage = toApiMessage(message);
-                if (apiMessage != null) {
-                    apiMessages.add(apiMessage);
-                }
-            }
-        }
+        List<ChatCompletionsMessage> apiMessages = messageProjector.project(modelRequest.getMessages());
         request.setMessages(apiMessages);
 
         if (CollectionUtils.isNotEmpty(modelRequest.getTools())) {
@@ -137,48 +132,6 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         }
 
         return request;
-    }
-
-    protected ChatCompletionsMessage toApiMessage(Message message) {
-        if (message == null) {
-            return null;
-        }
-
-        if (message instanceof ToolResultMessage toolResultMessage) {
-            ChatCompletionsMessage api = new ChatCompletionsMessage();
-            api.setRole("tool");
-            api.setContent(toolResultMessage.getContent());
-            api.setToolCallId(toolResultMessage.getToolCallId());
-            api.setName(toolResultMessage.getToolName());
-            return api;
-        }
-
-        if (message instanceof ToolCallMessage) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_MODEL_CONTEXT_MESSAGE, "ToolCallMessage is an internal fact and must not be sent to provider");
-        }
-
-        ChatCompletionsMessage api = new ChatCompletionsMessage();
-        api.setRole(toApiRole(message.getRole()));
-        api.setContent(message.getContent());
-
-        if (message instanceof AssistantMessage assistantMessage
-            && assistantMessage.getToolCalls() != null
-            && !assistantMessage.getToolCalls().isEmpty()) {
-            List<ChatCompletionsToolCall> toolCalls = new ArrayList<>();
-            for (ModelToolCall toolCall : assistantMessage.getToolCalls()) {
-                ChatCompletionsToolCall apiToolCall = new ChatCompletionsToolCall();
-                apiToolCall.setId(toolCall.getToolCallId());
-                apiToolCall.setType("function");
-                ChatCompletionsFunction function = new ChatCompletionsFunction();
-                function.setName(toolCall.getToolName());
-                function.setArguments(toolCall.getArgumentsJson());
-                apiToolCall.setFunction(function);
-                toolCalls.add(apiToolCall);
-            }
-            api.setToolCalls(toolCalls);
-        }
-
-        return api;
     }
 
     protected ChatCompletionsToolDefinition toApiToolDefinition(ToolDefinition definition) {
@@ -380,16 +333,6 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             case "error" -> FinishReason.ERROR;
             case "cancelled" -> FinishReason.CANCELLED;
             default -> FinishReason.STOP;
-        };
-    }
-
-    protected String toApiRole(MessageRole role) {
-        return switch (role) {
-            case USER -> "user";
-            case ASSISTANT -> "assistant";
-            case TOOL -> "tool";
-            case SYSTEM -> "system";
-            case SUMMARY -> "system";
         };
     }
 

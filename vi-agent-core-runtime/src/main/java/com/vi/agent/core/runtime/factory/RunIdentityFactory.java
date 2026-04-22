@@ -5,6 +5,8 @@ import com.vi.agent.core.model.runtime.RunMetadata;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 /**
  * Unified identity factory for run/session/message ids.
  */
@@ -46,6 +48,18 @@ public class RunIdentityFactory {
 
     public String nextToolCallId() {
         return toolCallIdGenerator.nextId();
+    }
+
+    public String nextToolCallRecordId() {
+        return "tcr-" + UUID.randomUUID();
+    }
+
+    public String nextToolExecutionId() {
+        return "tex-" + UUID.randomUUID();
+    }
+
+    public String nextRunEventId() {
+        return "evt-" + UUID.randomUUID();
     }
 
     public String nextConversationId() {

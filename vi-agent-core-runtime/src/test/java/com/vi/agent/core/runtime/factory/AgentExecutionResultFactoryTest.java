@@ -33,7 +33,18 @@ class AgentExecutionResultFactoryTest {
     @Test
     void completedShouldBuildFullResult() {
         RuntimeExecutionContext context = buildContext();
-        AssistantMessage assistantMessage = AssistantMessage.create("msg-assistant-1", "turn-1", 2L, "done", List.of());
+        AssistantMessage assistantMessage = AssistantMessage.create(
+            "msg-assistant-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            2L,
+            "done",
+            List.of(),
+            FinishReason.STOP,
+            UsageInfo.empty()
+        );
         LoopExecutionResult loopExecutionResult = LoopExecutionResult.builder()
             .assistantMessage(assistantMessage)
             .finishReason(FinishReason.STOP)
@@ -100,7 +111,18 @@ class AgentExecutionResultFactoryTest {
             .createdAt(Instant.now())
             .build();
         turn.markCompleted(FinishReason.STOP, UsageInfo.empty(), Instant.now(), "msg-assistant-3");
-        AssistantMessage assistantMessage = AssistantMessage.create("msg-assistant-3", "turn-3", 2L, "ok", List.of());
+        AssistantMessage assistantMessage = AssistantMessage.create(
+            "msg-assistant-3",
+            "conv-3",
+            "sess-3",
+            "turn-3",
+            "run-3",
+            2L,
+            "ok",
+            List.of(),
+            FinishReason.STOP,
+            UsageInfo.empty()
+        );
 
         AgentExecutionResult result = factory.completedFromTurn(command, turn, assistantMessage);
 
@@ -158,7 +180,7 @@ class AgentExecutionResultFactoryTest {
             .userMessageId("msg-user-1")
             .createdAt(Instant.now())
             .build());
-        context.setUserMessage(UserMessage.create("msg-user-1", "turn-1", 1L, "hello"));
+        context.setUserMessage(UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "hello"));
         return context;
     }
 }

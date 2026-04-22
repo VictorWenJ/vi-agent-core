@@ -149,7 +149,15 @@ class RuntimeFailureHandlerTest {
                 .session(session)
                 .turn(turn)
                 .userInput("hello")
-                .workingMessages(new ArrayList<>(List.of(UserMessage.create("msg-user-1", "turn-1", 1L, "hello"))))
+                .workingMessages(new ArrayList<>(List.of(UserMessage.create(
+                    "msg-user-1",
+                    "conv-1",
+                    "sess-1",
+                    "turn-1",
+                    "run-1",
+                    1L,
+                    "hello"
+                ))))
                 .availableTools(List.of())
                 .state(AgentRunState.STARTED)
                 .iteration(0)

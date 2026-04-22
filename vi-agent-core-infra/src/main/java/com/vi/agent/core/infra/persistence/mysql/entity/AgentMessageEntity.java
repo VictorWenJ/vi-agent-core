@@ -3,65 +3,79 @@ package com.vi.agent.core.infra.persistence.mysql.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.vi.agent.core.model.llm.FinishReason;
+import com.vi.agent.core.model.message.MessageRole;
+import com.vi.agent.core.model.message.MessageStatus;
+import com.vi.agent.core.model.message.MessageType;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 /**
- * conversation/session/turn 时间线消息事实的 MySQL 实体。
+ * 消息事实持久化实体。
  */
 @Data
 @TableName("agent_message")
 public class AgentMessageEntity {
 
-    /**
-     * MySQL 自增主键。
-     */
+    /** 自增主键。 */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /**
-     * 全局唯一消息标识。
-     */
+    /** 消息ID。 */
     private String messageId;
 
-    /**
-     * 归属的 conversation 标识。
-     */
+    /** 会话窗口ID。 */
     private String conversationId;
 
-    /**
-     * 归属的 session 标识。
-     */
+    /** Session ID。 */
     private String sessionId;
 
-    /**
-     * 归属的 turn 标识。
-     */
+    /** Turn ID。 */
     private String turnId;
 
-    /**
-     * 消息角色编码，例如 USER/ASSISTANT/TOOL/SYSTEM。
-     */
-    private String role;
+    /** Run ID。 */
+    private String runId;
 
-    /**
-     * 运行时协议中的消息类型编码。
-     */
-    private String messageType;
+    /** 消息角色。 */
+    private MessageRole role;
 
-    /**
-     * 用于 session 内稳定排序的序号。
-     */
+    /** 消息类型。 */
+    private MessageType messageType;
+
+    /** Session内序号。 */
     private Long sequenceNo;
 
-    /**
-     * 消息正文内容。
-     */
-    private String content;
+    /** 消息状态。 */
+    private MessageStatus status;
 
-    /**
-     * 创建时间。
-     */
+    /** 文本内容。 */
+    private String contentText;
+
+    /** 工具调用记录ID。 */
+    private String toolCallRecordId;
+
+    /** provider tool_call_id。 */
+    private String toolCallId;
+
+    /** 工具名称。 */
+    private String toolName;
+
+    /** provider 名称。 */
+    private String provider;
+
+    /** model 名称。 */
+    private String model;
+
+    /** 完成原因。 */
+    private FinishReason finishReason;
+
+    /** 元数据JSON。 */
+    private String metadataJson;
+
+    /** 创建时间。 */
     private LocalDateTime createdAt;
+
+    /** 更新时间。 */
+    private LocalDateTime updatedAt;
 }

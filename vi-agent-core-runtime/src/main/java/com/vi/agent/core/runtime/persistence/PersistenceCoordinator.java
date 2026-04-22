@@ -1,48 +1,49 @@
 package com.vi.agent.core.runtime.persistence;
 
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.conversation.Conversation;
-import com.vi.agent.core.model.llm.ModelToolCall;
-import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
-import com.vi.agent.core.model.message.MessageType;
-import com.vi.agent.core.model.message.ToolCallMessage;
-import com.vi.agent.core.model.message.ToolResultMessage;
 import com.vi.agent.core.model.message.UserMessage;
-import com.vi.agent.core.model.port.*;
+import com.vi.agent.core.model.port.ConversationRepository;
+import com.vi.agent.core.model.port.MessageRepository;
+import com.vi.agent.core.model.port.RunEventRepository;
+import com.vi.agent.core.model.port.SessionRepository;
+import com.vi.agent.core.model.port.SessionStateRepository;
+import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
+import com.vi.agent.core.model.runtime.RunEventRecord;
+import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.session.Session;
 import com.vi.agent.core.model.session.SessionStateSnapshot;
-import com.vi.agent.core.model.tool.ToolCallRecord;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.model.tool.ToolExecution;
+import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.turn.Turn;
-import com.vi.agent.core.model.turn.TurnStatus;
+import com.vi.agent.core.runtime.factory.RunIdentityFactory;
 import jakarta.annotation.Resource;
-import org.apache.commons.lang3.StringUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
- * Coordinates persistence writes for one turn.
+ * 单次 turn 持久化协调器。
  */
+@Slf4j
 @Service
 public class PersistenceCoordinator {
 
     @Resource
     private MessageRepository messageRepository;
-
-    @Resource
-    private ToolExecutionRepository toolExecutionRepository;
 
     @Resource
     private TurnRepository turnRepository;
@@ -56,190 +57,19 @@ public class PersistenceCoordinator {
     @Resource
     private SessionStateRepository sessionStateRepository;
 
-    @Value("${vi.agent.runtime.session-state-window:200}")
-    private int maxWindow;
+    @Resource
+    private RunEventRepository runEventRepository;
+
+    @Resource
+    private RunIdentityFactory runIdentityFactory;
+
+    @Value("${vi.agent.runtime.session-context.max-messages:200}")
+    private int maxMessages;
 
     public List<Message> load(String conversationId, String sessionId) {
-        List<Message> messages = sessionStateRepository.findBySessionId(sessionId)
+        return sessionStateRepository.findBySessionId(sessionId)
             .map(SessionStateSnapshot::getMessages)
             .orElseGet(() -> reloadFromMysql(conversationId, sessionId));
-        List<Message> completedTurnMessages = filterCompletedTurnMessages(messages);
-        if (completedTurnMessages.size() != messages.size()) {
-            refresh(conversationId, sessionId, completedTurnMessages);
-        }
-        return buildCompleteData(completedTurnMessages);
-    }
-
-    private List<Message> buildCompleteData(List<Message> messages) {
-        if (CollectionUtils.isEmpty(messages)) {
-            return new ArrayList<>();
-        }
-
-        List<Message> orderedMessages = messages.stream()
-            .filter(Objects::nonNull)
-            .sorted(Comparator.comparingLong(Message::getSequenceNo))
-            .toList();
-        if (CollectionUtils.isEmpty(orderedMessages)) {
-            return new ArrayList<>();
-        }
-
-        Map<String, List<ToolCallContext>> turnToolCalls = buildToolCallContextMap(orderedMessages);
-        Map<String, ToolCallRecord> toolCallByMessageId = flattenToolCallByMessageId(turnToolCalls);
-        List<Message> completedMessages = new ArrayList<>(orderedMessages.size());
-
-        for (int index = 0; index < orderedMessages.size(); index++) {
-            Message message = orderedMessages.get(index);
-            if (message == null || message.getMessageType() == null) {
-                continue;
-            }
-            completedMessages.add(switch (message.getMessageType()) {
-                case USER_INPUT -> UserMessage.restore(
-                    message.getMessageId(),
-                    message.getTurnId(),
-                    message.getSequenceNo(),
-                    message.getContent(),
-                    message.getCreatedAt()
-                );
-                case ASSISTANT_OUTPUT -> AssistantMessage.restore(
-                    message.getMessageId(),
-                    message.getTurnId(),
-                    message.getSequenceNo(),
-                    message.getContent(),
-                    resolveAssistantToolCalls(message, index, orderedMessages, turnToolCalls),
-                    message.getCreatedAt()
-                );
-                case TOOL_CALL -> toCompletedToolCallMessage(message, toolCallByMessageId);
-                case TOOL_RESULT -> toCompletedToolResultMessage(message);
-                case SYSTEM_MESSAGE, SUMMARY_MESSAGE -> message;
-            });
-        }
-        return completedMessages;
-    }
-
-    private Map<String, List<ToolCallContext>> buildToolCallContextMap(List<Message> orderedMessages) {
-        Map<String, Message> messageById = orderedMessages.stream()
-            .collect(Collectors.toMap(Message::getMessageId, message -> message, (left, right) -> left));
-        Map<String, List<ToolCallContext>> turnToolCalls = new HashMap<>();
-        List<String> turnIds = orderedMessages.stream()
-            .map(Message::getTurnId)
-            .filter(StringUtils::isNotBlank)
-            .distinct()
-            .toList();
-
-        for (String turnId : turnIds) {
-            List<ToolCallRecord> toolCallRecords = toolExecutionRepository.findToolCallsByTurnId(turnId);
-            if (CollectionUtils.isEmpty(toolCallRecords)) {
-                continue;
-            }
-            List<ToolCallContext> contexts = toolCallRecords.stream()
-                .map(record -> toToolCallContext(record, messageById))
-                .filter(Objects::nonNull)
-                .sorted(Comparator.comparingLong(ToolCallContext::messageSequence))
-                .toList();
-            if (!CollectionUtils.isEmpty(contexts)) {
-                turnToolCalls.put(turnId, contexts);
-            }
-        }
-        return turnToolCalls;
-    }
-
-    private Map<String, ToolCallRecord> flattenToolCallByMessageId(Map<String, List<ToolCallContext>> turnToolCalls) {
-        Map<String, ToolCallRecord> result = new HashMap<>();
-        turnToolCalls.values().stream()
-            .flatMap(List::stream)
-            .forEach(context -> result.put(context.record().getMessageId(), context.record()));
-        return result;
-    }
-
-    private ToolCallContext toToolCallContext(ToolCallRecord record, Map<String, Message> messageById) {
-        if (record == null || StringUtils.isBlank(record.getMessageId())) {
-            return null;
-        }
-        Message toolCallMessage = messageById.get(record.getMessageId());
-        if (toolCallMessage == null) {
-            toolCallMessage = messageRepository.findByMessageId(record.getMessageId());
-        }
-        if (toolCallMessage == null) {
-            return null;
-        }
-        return new ToolCallContext(record, toolCallMessage.getSequenceNo());
-    }
-
-    private List<ModelToolCall> resolveAssistantToolCalls(
-        Message assistantMessage,
-        int assistantIndex,
-        List<Message> orderedMessages,
-        Map<String, List<ToolCallContext>> turnToolCalls
-    ) {
-        List<ToolCallContext> contexts = turnToolCalls.get(assistantMessage.getTurnId());
-        if (CollectionUtils.isEmpty(contexts)) {
-            return List.of();
-        }
-
-        long currentSequence = assistantMessage.getSequenceNo();
-        long nextAssistantSequence = Long.MAX_VALUE;
-        for (int index = assistantIndex + 1; index < orderedMessages.size(); index++) {
-            Message nextMessage = orderedMessages.get(index);
-            if (!StringUtils.equals(assistantMessage.getTurnId(), nextMessage.getTurnId())) {
-                continue;
-            }
-            if (nextMessage.getMessageType() == MessageType.ASSISTANT_OUTPUT) {
-                nextAssistantSequence = nextMessage.getSequenceNo();
-                break;
-            }
-        }
-        long nextAssistantSequenceBoundary = nextAssistantSequence;
-
-        return contexts.stream()
-            .filter(context -> context.messageSequence() > currentSequence && context.messageSequence() < nextAssistantSequenceBoundary)
-            .map(context -> ModelToolCall.builder()
-                .toolCallId(context.record().getToolCallId())
-                .toolName(context.record().getToolName())
-                .argumentsJson(context.record().getArgumentsJson())
-                .build())
-            .toList();
-    }
-
-    private Message toCompletedToolCallMessage(Message message, Map<String, ToolCallRecord> toolCallByMessageId) {
-        ToolCallRecord record = toolCallByMessageId.get(message.getMessageId());
-        if (record == null) {
-            record = toolExecutionRepository.findToolCallByMessageId(message.getMessageId());
-        }
-        if (record == null) {
-            return message;
-        }
-        return ToolCallMessage.restore(
-            message.getMessageId(),
-            message.getTurnId(),
-            message.getSequenceNo(),
-            record.getToolCallId(),
-            record.getToolName(),
-            record.getArgumentsJson(),
-            message.getCreatedAt()
-        );
-    }
-
-    private Message toCompletedToolResultMessage(Message message) {
-        ToolResultRecord record = toolExecutionRepository.findToolResultByMessageId(message.getMessageId());
-        if (record == null) {
-            return message;
-        }
-        return ToolResultMessage.restore(
-            message.getMessageId(),
-            message.getTurnId(),
-            message.getSequenceNo(),
-            record.getToolCallId(),
-            record.getToolName(),
-            record.isSuccess(),
-            record.getOutputJson(),
-            record.getErrorCode(),
-            record.getErrorMessage(),
-            record.getDurationMs(),
-            message.getCreatedAt()
-        );
-    }
-
-    private record ToolCallContext(ToolCallRecord record, long messageSequence) {
     }
 
     public void refresh(String conversationId, String sessionId, List<Message> messages) {
@@ -251,33 +81,15 @@ public class PersistenceCoordinator {
             .build());
     }
 
-    private List<Message> reloadFromMysql(String conversationId, String sessionId) {
-        List<Message> messages = messageRepository.findBySessionIdOrderBySequence(sessionId, maxWindow);
-        List<Message> completedTurnMessages = filterCompletedTurnMessages(messages);
-        refresh(conversationId, sessionId, completedTurnMessages);
-        return completedTurnMessages;
+    public void persistUserMessage(UserMessage userMessage) {
+        messageRepository.save(userMessage);
     }
 
-    private List<Message> filterCompletedTurnMessages(List<Message> messages) {
-        if (CollectionUtils.isEmpty(messages)) {
-            return new ArrayList<>();
-        }
-
-        return messages.stream()
-            .filter(message -> turnRepository.findByTurnId(message.getTurnId()).getStatus() == TurnStatus.COMPLETED)
-            .collect(Collectors.toCollection(ArrayList::new));
-    }
-
-    public void persistUserMessage(String conversationId, String sessionId, Message userMessage) {
-        messageRepository.save(conversationId, sessionId, userMessage);
-    }
-
+    @Transactional(rollbackFor = Exception.class)
     public void persistSuccess(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
-        loopExecutionResult.getAppendedMessages()
-            .forEach(message -> messageRepository.save(runContext.getConversation().getConversationId(), runContext.getSession().getSessionId(), message));
-
-        loopExecutionResult.getToolCalls().forEach(toolExecutionRepository::saveToolCall);
-        loopExecutionResult.getToolResults().forEach(toolExecutionRepository::saveToolResult);
+        if (!CollectionUtils.isEmpty(loopExecutionResult.getAppendedMessages())) {
+            messageRepository.saveBatch(loopExecutionResult.getAppendedMessages());
+        }
 
         Turn turn = runContext.getTurn();
         turn.markCompleted(
@@ -297,14 +109,22 @@ public class PersistenceCoordinator {
         conversation.touchLastMessageAt(Instant.now());
         conversationRepository.update(conversation);
 
-        sessionStateRepository.save(SessionStateSnapshot.builder()
-            .sessionId(session.getSessionId())
-            .conversationId(conversation.getConversationId())
-            .messages(runContext.getWorkingMessages())
-            .updatedAt(Instant.now())
-            .build());
+        runEventRepository.saveBatch(buildSuccessRunEvents(runContext, loopExecutionResult));
+
+        String conversationId = conversation.getConversationId();
+        String sessionId = session.getSessionId();
+        List<Message> workingMessages = new ArrayList<>(runContext.getWorkingMessages());
+        registerAfterCommit(() -> {
+            try {
+                refresh(conversationId, sessionId, workingMessages);
+            } catch (Exception ex) {
+                log.warn("Refresh redis session context failed, sessionId={}", sessionId, ex);
+                safeEvictSessionContext(sessionId);
+            }
+        });
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void persistFailure(AgentRunContext runContext, String errorCode, String errorMessage) {
         Turn turn = runContext.getTurn();
         turn.markFailed(errorCode, errorMessage, Instant.now());
@@ -314,6 +134,121 @@ public class PersistenceCoordinator {
         session.touch(Instant.now());
         sessionRepository.update(session);
 
-        sessionStateRepository.evict(session.getSessionId());
+        runEventRepository.saveBatch(List.of(buildRunFailedEvent(runContext, errorCode, errorMessage)));
+        registerAfterCommit(() -> safeEvictSessionContext(session.getSessionId()));
+    }
+
+    private List<Message> reloadFromMysql(String conversationId, String sessionId) {
+        List<Message> completedMessages = messageRepository.findCompletedContextBySessionId(sessionId, maxMessages);
+        refresh(conversationId, sessionId, completedMessages);
+        return completedMessages;
+    }
+
+    private List<RunEventRecord> buildSuccessRunEvents(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
+        List<RunEventRecord> runEvents = new ArrayList<>();
+        int eventIndex = 1;
+
+        if (loopExecutionResult != null && !CollectionUtils.isEmpty(loopExecutionResult.getToolCalls())) {
+            for (AssistantToolCall toolCall : loopExecutionResult.getToolCalls()) {
+                runEvents.add(RunEventRecord.builder()
+                    .eventId(runIdentityFactory.nextRunEventId())
+                    .conversationId(runContext.getConversation().getConversationId())
+                    .sessionId(runContext.getSession().getSessionId())
+                    .turnId(runContext.getTurn().getTurnId())
+                    .runId(runContext.getRunMetadata().getRunId())
+                    .eventIndex(eventIndex++)
+                    .eventType(RunEventType.TOOL_CALL_CREATED)
+                    .actorType("assistant")
+                    .actorId(toolCall == null ? null : toolCall.getAssistantMessageId())
+                    .payloadJson(toolCall == null ? "{}" : JsonUtils.toJson(toolCall))
+                    .createdAt(Instant.now())
+                    .build());
+            }
+        }
+
+        if (loopExecutionResult != null && !CollectionUtils.isEmpty(loopExecutionResult.getToolExecutions())) {
+            for (ToolExecution toolExecution : loopExecutionResult.getToolExecutions()) {
+                RunEventType runEventType = toolExecution != null && toolExecution.getStatus() == ToolExecutionStatus.SUCCESS
+                    ? RunEventType.TOOL_COMPLETED
+                    : RunEventType.TOOL_FAILED;
+                runEvents.add(RunEventRecord.builder()
+                    .eventId(runIdentityFactory.nextRunEventId())
+                    .conversationId(runContext.getConversation().getConversationId())
+                    .sessionId(runContext.getSession().getSessionId())
+                    .turnId(runContext.getTurn().getTurnId())
+                    .runId(runContext.getRunMetadata().getRunId())
+                    .eventIndex(eventIndex++)
+                    .eventType(runEventType)
+                    .actorType("tool")
+                    .actorId(toolExecution == null ? null : toolExecution.getToolExecutionId())
+                    .payloadJson(toolExecution == null ? "{}" : JsonUtils.toJson(toolExecution))
+                    .createdAt(Instant.now())
+                    .build());
+            }
+        }
+
+        runEvents.add(RunEventRecord.builder()
+            .eventId(runIdentityFactory.nextRunEventId())
+            .conversationId(runContext.getConversation().getConversationId())
+            .sessionId(runContext.getSession().getSessionId())
+            .turnId(runContext.getTurn().getTurnId())
+            .runId(runContext.getRunMetadata().getRunId())
+            .eventIndex(eventIndex)
+            .eventType(RunEventType.RUN_COMPLETED)
+            .actorType("runtime")
+            .actorId(runContext.getRunMetadata().getRunId())
+            .payloadJson(JsonUtils.toJson(Map.of(
+                "finishReason", loopExecutionResult == null || loopExecutionResult.getFinishReason() == null
+                    ? null : loopExecutionResult.getFinishReason().name(),
+                "usage", loopExecutionResult == null ? null : loopExecutionResult.getUsage()
+            )))
+            .createdAt(Instant.now())
+            .build());
+
+        return runEvents;
+    }
+
+    private RunEventRecord buildRunFailedEvent(AgentRunContext runContext, String errorCode, String errorMessage) {
+        return RunEventRecord.builder()
+            .eventId(runIdentityFactory.nextRunEventId())
+            .conversationId(runContext.getConversation().getConversationId())
+            .sessionId(runContext.getSession().getSessionId())
+            .turnId(runContext.getTurn().getTurnId())
+            .runId(runContext.getRunMetadata().getRunId())
+            .eventIndex(1)
+            .eventType(RunEventType.RUN_FAILED)
+            .actorType("runtime")
+            .actorId(runContext.getRunMetadata().getRunId())
+            .payloadJson(JsonUtils.toJson(Map.of(
+                "errorCode", errorCode,
+                "errorMessage", errorMessage
+            )))
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    private void registerAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    if (action != null) {
+                        action.run();
+                    }
+                }
+            });
+            return;
+        }
+        if (action != null) {
+            action.run();
+        }
+    }
+
+    private void safeEvictSessionContext(String sessionId) {
+        try {
+            sessionStateRepository.evict(sessionId);
+        } catch (Exception ex) {
+            log.warn("Evict redis session context failed, sessionId={}", sessionId, ex);
+        }
     }
 }

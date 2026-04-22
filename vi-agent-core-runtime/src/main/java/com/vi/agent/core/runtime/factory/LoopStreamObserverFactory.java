@@ -2,8 +2,8 @@ package com.vi.agent.core.runtime.factory;
 
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.message.AssistantMessage;
-import com.vi.agent.core.model.tool.ToolCallRecord;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.runtime.event.RuntimeEventSink;
 import com.vi.agent.core.runtime.loop.LoopStreamObserver;
 import org.springframework.stereotype.Component;
@@ -32,15 +32,14 @@ public class LoopStreamObserverFactory {
             }
 
             @Override
-            public void onToolCall(ToolCallRecord toolCallRecord) {
-                eventSink.toolCall(toolCallRecord);
+            public void onToolCall(AssistantToolCall toolCall) {
+                eventSink.toolCall(toolCall);
             }
 
             @Override
-            public void onToolResult(ToolResultRecord toolResultRecord) {
-                eventSink.toolResult(toolResultRecord);
+            public void onToolResult(ToolExecution toolExecution) {
+                eventSink.toolResult(toolExecution);
             }
         };
     }
 }
-

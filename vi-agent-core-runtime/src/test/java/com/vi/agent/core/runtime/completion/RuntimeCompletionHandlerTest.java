@@ -47,7 +47,18 @@ class RuntimeCompletionHandlerTest {
         TestFieldUtils.setField(handler, "agentExecutionResultFactory", resultFactory);
 
         RuntimeExecutionContext context = buildContext();
-        AssistantMessage assistantMessage = AssistantMessage.create("msg-assistant-1", "turn-1", 2L, "done", List.of());
+        AssistantMessage assistantMessage = AssistantMessage.create(
+            "msg-assistant-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            2L,
+            "done",
+            List.of(),
+            FinishReason.STOP,
+            UsageInfo.empty()
+        );
         LoopExecutionResult loopExecutionResult = LoopExecutionResult.builder()
             .assistantMessage(assistantMessage)
             .finishReason(FinishReason.STOP)
@@ -118,7 +129,7 @@ class RuntimeCompletionHandlerTest {
             .turnId("turn-1")
             .build());
         context.setTurn(turn);
-        context.setUserMessage(UserMessage.create("msg-user-1", "turn-1", 1L, "hello"));
+        context.setUserMessage(UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "hello"));
         context.setRunContext(AgentRunContext.builder()
             .runMetadata(context.getRunMetadata())
             .conversation(conversation)

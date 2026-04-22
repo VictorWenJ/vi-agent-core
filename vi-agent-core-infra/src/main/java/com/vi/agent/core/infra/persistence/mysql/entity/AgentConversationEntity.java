@@ -3,32 +3,32 @@ package com.vi.agent.core.infra.persistence.mysql.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.vi.agent.core.model.conversation.ConversationStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * 会话窗口持久化实体。
+ */
 @Data
 @TableName("agent_conversation")
-/**
- * conversation 聚合元数据的 MySQL 实体。
- * 该表存储 conversation 级属性以及当前活跃 session 指针。
- */
 public class AgentConversationEntity {
 
-    /** MySQL 自增主键。 */
+    /** 自增主键。 */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 对外暴露的全局唯一 conversation 标识。 */
+    /** 会话窗口ID。 */
     private String conversationId;
 
-    /** 人类可读的会话标题。 */
+    /** 会话窗口标题。 */
     private String title;
 
-    /** conversation 状态码。 */
-    private String status;
+    /** 会话窗口状态。 */
+    private ConversationStatus status;
 
-    /** 当前活跃 session 标识。 */
+    /** 当前活跃会话段ID。 */
     private String activeSessionId;
 
     /** 创建时间。 */
@@ -37,6 +37,6 @@ public class AgentConversationEntity {
     /** 更新时间。 */
     private LocalDateTime updatedAt;
 
-    /** 最近一条消息时间。 */
+    /** 最新消息时间。 */
     private LocalDateTime lastMessageAt;
 }

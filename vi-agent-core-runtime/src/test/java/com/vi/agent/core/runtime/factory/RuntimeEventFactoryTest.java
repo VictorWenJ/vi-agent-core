@@ -66,10 +66,15 @@ class RuntimeEventFactoryTest {
             .build();
         AssistantMessage assistantMessage = AssistantMessage.create(
             "msg-assistant-1",
+            "conv-1",
+            "sess-1",
             "turn-1",
+            "run-1",
             2L,
             "done",
-            List.of()
+            List.of(),
+            FinishReason.STOP,
+            usageInfo
         );
         LoopExecutionResult loopExecutionResult = LoopExecutionResult.builder()
             .assistantMessage(assistantMessage)

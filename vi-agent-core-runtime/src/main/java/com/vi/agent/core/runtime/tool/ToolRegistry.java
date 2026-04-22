@@ -111,6 +111,7 @@ public class ToolRegistry {
                 }
             }
             return ToolResult.builder()
+                .toolCallRecordId(toolCall.getToolCallRecordId())
                 .toolCallId(toolCall.getToolCallId())
                 .toolName(toolCall.getToolName())
                 .turnId(toolCall.getTurnId())
@@ -120,6 +121,7 @@ public class ToolRegistry {
                 .build();
         } catch (Exception e) {
             return ToolResult.builder()
+                .toolCallRecordId(toolCall.getToolCallRecordId())
                 .toolCallId(toolCall.getToolCallId())
                 .toolName(toolCall.getToolName())
                 .turnId(toolCall.getTurnId())

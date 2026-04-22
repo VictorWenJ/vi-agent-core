@@ -44,7 +44,7 @@ public class MysqlTurnRepository implements TurnRepository {
         Long count = mapper.selectCount(
             Wrappers.lambdaQuery(AgentTurnEntity.class)
                 .eq(AgentTurnEntity::getSessionId, sessionId)
-                .eq(AgentTurnEntity::getStatus, TurnStatus.RUNNING.name())
+                .eq(AgentTurnEntity::getStatus, TurnStatus.RUNNING)
         );
         return count != null && count > 0;
     }

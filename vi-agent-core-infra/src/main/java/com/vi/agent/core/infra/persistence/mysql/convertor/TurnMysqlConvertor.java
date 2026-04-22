@@ -1,10 +1,8 @@
 package com.vi.agent.core.infra.persistence.mysql.convertor;
 
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentTurnEntity;
-import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.turn.Turn;
-import com.vi.agent.core.model.turn.TurnStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -32,10 +30,10 @@ public class TurnMysqlConvertor {
             .sessionId(entity.getSessionId())
             .requestId(entity.getRequestId())
             .runId(entity.getRunId())
-            .status(TurnStatus.valueOf(entity.getStatus()))
+            .status(entity.getStatus())
             .userMessageId(entity.getUserMessageId())
             .assistantMessageId(entity.getAssistantMessageId())
-            .finishReason(entity.getFinishReason() == null ? null : FinishReason.valueOf(entity.getFinishReason()))
+            .finishReason(entity.getFinishReason())
             .usage(usage)
             .errorCode(entity.getErrorCode())
             .errorMessage(entity.getErrorMessage())
@@ -54,10 +52,10 @@ public class TurnMysqlConvertor {
         entity.setSessionId(turn.getSessionId());
         entity.setRequestId(turn.getRequestId());
         entity.setRunId(turn.getRunId());
-        entity.setStatus(turn.getStatus().name());
+        entity.setStatus(turn.getStatus());
         entity.setUserMessageId(turn.getUserMessageId());
         entity.setAssistantMessageId(turn.getAssistantMessageId());
-        entity.setFinishReason(turn.getFinishReason() == null ? null : turn.getFinishReason().name());
+        entity.setFinishReason(turn.getFinishReason());
         if (turn.getUsage() != null) {
             entity.setInputTokens(turn.getUsage().getInputTokens());
             entity.setOutputTokens(turn.getUsage().getOutputTokens());

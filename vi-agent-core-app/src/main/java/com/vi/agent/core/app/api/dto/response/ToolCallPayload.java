@@ -6,19 +6,25 @@ import lombok.Getter;
 import java.time.Instant;
 
 /**
- * Tool call event payload.
+ * 工具调用事件载荷。
  */
 @Getter
 @Builder
 public class ToolCallPayload {
 
+    private String toolCallRecordId;
+
     private String toolCallId;
+
+    private String assistantMessageId;
 
     private String toolName;
 
     private String argumentsJson;
 
-    private Integer sequence;
+    private Integer callIndex;
+
+    private String status;
 
     private Instant createdAt;
 }

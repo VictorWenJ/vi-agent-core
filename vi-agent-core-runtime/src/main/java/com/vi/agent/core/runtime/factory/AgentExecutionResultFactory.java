@@ -12,6 +12,7 @@ import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -71,6 +72,7 @@ public class AgentExecutionResultFactory {
     }
 
     public AgentExecutionResult failedFromTurn(RuntimeExecuteCommand command, Turn turn) {
+        FinishReason finishReason = turn.getFinishReason() == null ? FinishReason.ERROR : turn.getFinishReason();
         return AgentExecutionResult.builder()
             .requestId(command.getRequestId())
             .runStatus(RunStatus.FAILED)
@@ -80,7 +82,20 @@ public class AgentExecutionResultFactory {
             .userMessageId(turn.getUserMessageId())
             .assistantMessageId(turn.getAssistantMessageId())
             .runId(turn.getRunId())
-            .finishReason(FinishReason.ERROR)
+            .finalAssistantMessage(AssistantMessage.create(
+                turn.getAssistantMessageId(),
+                turn.getConversationId(),
+                turn.getSessionId(),
+                turn.getTurnId(),
+                turn.getRunId(),
+                0L,
+                "",
+                Collections.emptyList(),
+                finishReason,
+                turn.getUsage()
+            ))
+            .finishReason(finishReason)
+            .usage(turn.getUsage())
             .createdAt(Instant.now())
             .build();
     }
@@ -105,14 +120,30 @@ public class AgentExecutionResultFactory {
             return assistantMessage;
         }
         if (message == null) {
-            return AssistantMessage.create(null, turnId, 0L, "", List.of());
+            return AssistantMessage.create(
+                null,
+                null,
+                null,
+                turnId,
+                null,
+                0L,
+                "",
+                Collections.emptyList(),
+                null,
+                null
+            );
         }
         return AssistantMessage.create(
             message.getMessageId(),
+            message.getConversationId(),
+            message.getSessionId(),
             message.getTurnId(),
+            message.getRunId(),
             message.getSequenceNo(),
             message.getContent(),
-            List.of()
+            Collections.emptyList(),
+            null,
+            null
         );
     }
 }

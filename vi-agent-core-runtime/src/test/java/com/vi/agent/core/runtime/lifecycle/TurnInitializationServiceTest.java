@@ -43,8 +43,10 @@ class TurnInitializationServiceTest {
         assertSame(messageFactory.userMessageToReturn, turnStartResult.getUserMessage());
         assertSame(turnLifecycleService.turnToReturn, turnStartResult.getTurn());
 
+        assertEquals("conv-1", messageFactory.lastConversationId);
         assertEquals("sess-1", messageFactory.lastSessionId);
         assertEquals("turn-1", messageFactory.lastTurnId);
+        assertEquals("run-1", messageFactory.lastRunId);
         assertEquals("hello", messageFactory.lastContent);
 
         assertEquals("turn-1", turnLifecycleService.lastTurnId);
@@ -54,8 +56,6 @@ class TurnInitializationServiceTest {
         assertEquals("run-1", turnLifecycleService.lastRunId);
         assertEquals("msg-user-1", turnLifecycleService.lastUserMessageId);
 
-        assertEquals("conv-1", persistenceCoordinator.lastConversationId);
-        assertEquals("sess-1", persistenceCoordinator.lastSessionId);
         assertSame(messageFactory.userMessageToReturn, persistenceCoordinator.lastUserMessage);
     }
 
@@ -97,15 +97,27 @@ class TurnInitializationServiceTest {
     }
 
     private static final class StubMessageFactory extends MessageFactory {
-        private final UserMessage userMessageToReturn = UserMessage.create("msg-user-1", "turn-1", 1L, "hello");
+        private final UserMessage userMessageToReturn = UserMessage.create(
+            "msg-user-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            1L,
+            "hello"
+        );
+        private String lastConversationId;
         private String lastSessionId;
         private String lastTurnId;
+        private String lastRunId;
         private String lastContent;
 
         @Override
-        public UserMessage createUserMessage(String sessionId, String turnId, String content) {
+        public UserMessage createUserMessage(String conversationId, String sessionId, String turnId, String runId, String content) {
+            lastConversationId = conversationId;
             lastSessionId = sessionId;
             lastTurnId = turnId;
+            lastRunId = runId;
             lastContent = content;
             return userMessageToReturn;
         }
@@ -150,15 +162,11 @@ class TurnInitializationServiceTest {
     }
 
     private static final class StubPersistenceCoordinator extends PersistenceCoordinator {
-        private String lastConversationId;
-        private String lastSessionId;
         private UserMessage lastUserMessage;
 
         @Override
-        public void persistUserMessage(String conversationId, String sessionId, com.vi.agent.core.model.message.Message userMessage) {
-            lastConversationId = conversationId;
-            lastSessionId = sessionId;
-            lastUserMessage = (UserMessage) userMessage;
+        public void persistUserMessage(UserMessage userMessage) {
+            lastUserMessage = userMessage;
         }
     }
 }

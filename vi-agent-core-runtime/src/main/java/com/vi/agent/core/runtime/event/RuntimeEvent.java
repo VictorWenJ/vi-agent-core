@@ -2,14 +2,16 @@ package com.vi.agent.core.runtime.event;
 
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.UsageInfo;
+import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.runtime.RunStatus;
-import com.vi.agent.core.model.tool.ToolCallRecord;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.model.tool.ToolExecution;
 import lombok.Builder;
 import lombok.Getter;
 
 /**
- * Runtime event object.
+ * Runtime 事件对象。
  */
 @Getter
 @Builder
@@ -39,9 +41,9 @@ public class RuntimeEvent {
 
     private UsageInfo usage;
 
-    private ToolCallRecord toolCall;
+    private AssistantToolCall toolCall;
 
-    private ToolResultRecord toolResult;
+    private ToolExecution toolResult;
 
     private String errorCode;
 

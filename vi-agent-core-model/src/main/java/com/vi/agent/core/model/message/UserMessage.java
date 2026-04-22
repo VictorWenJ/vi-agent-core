@@ -3,19 +3,79 @@ package com.vi.agent.core.model.message;
 import java.time.Instant;
 
 /**
- * User message.
+ * 用户输入消息。
  */
 public final class UserMessage extends AbstractMessage {
 
-    private UserMessage(String messageId, String turnId, long sequenceNo, String content, Instant createdAt) {
-        super(messageId, turnId, MessageRole.USER, MessageType.USER_INPUT, sequenceNo, content, createdAt);
+    private UserMessage(
+        String messageId,
+        String conversationId,
+        String sessionId,
+        String turnId,
+        String runId,
+        long sequenceNo,
+        MessageStatus status,
+        String contentText,
+        Instant createdAt
+    ) {
+        super(
+            messageId,
+            conversationId,
+            sessionId,
+            turnId,
+            runId,
+            MessageRole.USER,
+            MessageType.USER_INPUT,
+            sequenceNo,
+            status,
+            contentText,
+            createdAt
+        );
     }
 
-    public static UserMessage create(String messageId, String turnId, long sequenceNo, String content) {
-        return new UserMessage(messageId, turnId, sequenceNo, content, Instant.now());
+    public static UserMessage create(
+        String messageId,
+        String conversationId,
+        String sessionId,
+        String turnId,
+        String runId,
+        long sequenceNo,
+        String contentText
+    ) {
+        return new UserMessage(
+            messageId,
+            conversationId,
+            sessionId,
+            turnId,
+            runId,
+            sequenceNo,
+            MessageStatus.COMPLETED,
+            contentText,
+            Instant.now()
+        );
     }
 
-    public static UserMessage restore(String messageId, String turnId, long sequenceNo, String content, Instant createdAt) {
-        return new UserMessage(messageId, turnId, sequenceNo, content, createdAt);
+    public static UserMessage restore(
+        String messageId,
+        String conversationId,
+        String sessionId,
+        String turnId,
+        String runId,
+        long sequenceNo,
+        MessageStatus status,
+        String contentText,
+        Instant createdAt
+    ) {
+        return new UserMessage(
+            messageId,
+            conversationId,
+            sessionId,
+            turnId,
+            runId,
+            sequenceNo,
+            status,
+            contentText,
+            createdAt
+        );
     }
 }

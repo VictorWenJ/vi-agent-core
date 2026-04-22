@@ -3,32 +3,33 @@ package com.vi.agent.core.infra.persistence.mysql.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.vi.agent.core.model.session.SessionStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * Session 持久化实体。
+ */
 @Data
 @TableName("agent_session")
-/**
- * conversation 下 session 生命周期元数据的 MySQL 实体。
- */
 public class AgentSessionEntity {
 
-    /** MySQL 自增主键。 */
+    /** 自增主键。 */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 全局唯一 session 标识。 */
+    /** Session ID。 */
     private String sessionId;
 
-    /** 归属的 conversation 标识。 */
+    /** 所属会话窗口ID。 */
     private String conversationId;
 
-    /** 由已有 session 派生时的父 session 标识。 */
+    /** 父Session ID。 */
     private String parentSessionId;
 
-    /** session 状态码，例如 ACTIVE/ARCHIVED/FAILED。 */
-    private String status;
+    /** Session状态。 */
+    private SessionStatus status;
 
     /** 归档原因。 */
     private String archiveReason;
@@ -39,6 +40,6 @@ public class AgentSessionEntity {
     /** 更新时间。 */
     private LocalDateTime updatedAt;
 
-    /** 归档完成时间。 */
+    /** 归档时间。 */
     private LocalDateTime archivedAt;
 }

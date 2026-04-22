@@ -10,24 +10,22 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum MessageRole {
 
-    /** 终端用户输入消息。 */
-    USER("user", "终端用户输入消息"),
+    /** 用户消息角色。 */
+    USER("user", "用户消息角色"),
 
-    /** 模型生成的助手输出消息。 */
-    ASSISTANT("assistant", "模型生成的助手输出消息"),
+    /** 助手消息角色。 */
+    ASSISTANT("assistant", "助手消息角色"),
 
-    /** 工具侧输出消息。 */
-    TOOL("tool", "工具侧输出消息"),
+    /** 工具消息角色。 */
+    TOOL("tool", "工具消息角色"),
 
-    /** 系统指令消息。 */
-    SYSTEM("system", "系统指令消息"),
+    /** 系统消息角色。 */
+    SYSTEM("system", "系统消息角色"),
 
-    /** 记忆压缩摘要消息；对外协议按 system 角色发送。 */
-    SUMMARY("system", "用于记忆压缩的摘要消息");
+    /** 摘要消息角色。 */
+    SUMMARY("summary", "摘要消息角色");
 
-    /** 对外模型 API 使用的角色值。 */
-    private final String apiValue;
+    private final String value;
 
-    /** 角色描述。 */
     private final String desc;
 }

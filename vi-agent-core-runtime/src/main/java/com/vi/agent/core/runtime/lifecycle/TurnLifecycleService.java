@@ -32,7 +32,7 @@ public class TurnLifecycleService {
                 .turn(turn)
                 .userMessage(messageRepository.findByMessageId(turn.getUserMessageId()))
                 .assistantMessage(Optional.ofNullable(turn.getAssistantMessageId())
-                    .map(assistantMessageId -> messageRepository.findByMessageId(turn.getAssistantMessageId()))
+                    .map(assistantMessageId -> messageRepository.findByMessageId(assistantMessageId))
                     .orElse(null))
                 .build()).orElse(null);
     }

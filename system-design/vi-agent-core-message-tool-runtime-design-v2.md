@@ -310,6 +310,16 @@
 | `checkpointId` | checkpoint ID；本轮不使用 | 后端 | 否 |
 | `traceId` | 内部观测链路 | 后端 | 否，仅日志/MDC |
 
+### 5.2.1 `toolCallRecordId` 生成规则
+
+```text
+1. 由后端统一 ID 工厂生成（建议归口 RunIdentityFactory / IdGenerator）。
+2. 格式：tcr-<uuid>，总长度 <= 64。
+3. 生成时机：AgentLoopEngine 接收 ModelToolCall 并创建 AssistantToolCall 时立即生成。
+4. 落库冲突：若命中 uk_tool_call_record_id，重新生成并重试，最多 3 次。
+5. 超过重试上限：按运行失败收口（turn=FAILED、写 RUN_FAILED、session 保持 ACTIVE）。
+```
+
 ### 5.3 显式语义枚举（统一规则）
 
 #### 5.3.1 enum 统一结构
@@ -626,7 +636,7 @@ class ChatResponse {
 不抛业务错误。
 不重新执行。
 content 为空字符串或历史失败结果内容；当前阶段统一为空字符串。
-finishReason 使用 ERROR / FAILED，如 enum 支持；否则为 null。
+finishReason 固定为 ERROR（若当前枚举尚无 ERROR，则本轮补齐，不允许返回 null）。
 ```
 
 ### 6.3 流式事件契约（按需）
@@ -698,6 +708,27 @@ event.error 从 agent_turn 错误字段恢复。
 | `MessageAggregateRows` | MySQL 聚合行对象 | `infra.persistence.mysql.message` | 新增 |
 | `MessageWritePlan` | MySQL 写入计划 | `infra.persistence.mysql.message` | 新增 |
 | `OpenAICompatibleMessageProjector` | domain message -> OpenAI-compatible protocol | `infra.provider.openai` | 新增 |
+
+### 7.1.1 `MessageTypeHandler` 契约（实现级约束）
+
+```java
+public interface MessageTypeHandler<T extends Message> {
+
+    MessageRole supportRole();
+
+    MessageType supportMessageType();
+
+    T assemble(MessageAggregateRows rows);
+
+    MessageWritePlan decompose(T message);
+}
+```
+
+```text
+1. Registry 必须按 role + messageType 精确命中 handler。
+2. 不允许默认兜底 handler；未命中直接 fail fast。
+3. assemble/decompose 只做 message 组装与拆解，不做跨库补查。
+```
 
 ### 7.2 关键领域对象
 
@@ -1561,9 +1592,25 @@ turn 不得标记为 COMPLETED。
 ```text
 1. agent_turn 状态更新为 FAILED
 2. agent_run_event 写 RUN_FAILED
-3. 必要的失败 message / error metadata 写入
-4. agent_session 保持 ACTIVE，只 touch 更新时间
+3. agent_turn.error_code / error_message / completed_at 更新
+4. agent_run_event.payload_json 写入 errorCode / errorMessage / errorType / retryable
+5. 若本轮已产生失败 ToolMessage：写入 agent_message(role=TOOL) 与 agent_tool_execution 失败字段
+6. agent_session 保持 ACTIVE，只 touch 更新时间
 ```
+
+失败路径字段映射（最小必填）：
+
+| 表 | 字段 | 规则 |
+|---|---|---|
+| `agent_turn` | `status` | 固定 `FAILED` |
+| `agent_turn` | `error_code` | 运行时失败错误码 |
+| `agent_turn` | `error_message` | 运行时失败错误信息 |
+| `agent_turn` | `completed_at` | 当前时间 |
+| `agent_run_event` | `event_type` | 固定 `RUN_FAILED` |
+| `agent_run_event` | `payload_json` | 至少包含 `errorCode/errorMessage/errorType/retryable` |
+| `agent_session` | `status` | 保持 `ACTIVE` |
+| `agent_message` | `role/message_type/content_text/tool_call_record_id/tool_call_id/tool_name` | 仅当本轮已生成失败 `ToolMessage` 时写入 |
+| `agent_tool_execution` | `status/error_code/error_message/duration_ms/completed_at` | 仅当本轮有工具执行事实时写入 |
 
 #### 8.4.3 Redis 写入策略
 
@@ -1920,7 +1967,7 @@ FAILED 返回细则：
 
 ```text
 同步接口：
-返回 ChatResponse，runStatus=FAILED，content=""，usage 如已记录则返回，否则 null。
+返回 ChatResponse，runStatus=FAILED，content=""，finishReason=ERROR，usage 如已记录则返回，否则 null。
 
 流式接口：
 发送 RUN_FAILED 事件，runStatus=FAILED，error 从 agent_turn 错误字段恢复，然后结束流。

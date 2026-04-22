@@ -3,10 +3,10 @@ package com.vi.agent.core.runtime.factory;
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.runtime.RunStatus;
-import com.vi.agent.core.model.tool.ToolCallRecord;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.runtime.command.RuntimeExecuteCommand;
 import com.vi.agent.core.runtime.event.RuntimeEvent;
@@ -74,13 +74,13 @@ public class RuntimeEventFactory {
             .turnId(context.turnId())
             .runId(context.runId())
             .messageId(assistantMessage == null ? null : assistantMessage.getMessageId())
-            .content(assistantMessage == null ? null : assistantMessage.getContent())
+            .content(assistantMessage == null ? null : assistantMessage.getContentText())
             .finishReason(finishReason)
             .usage(usage)
             .build();
     }
 
-    public RuntimeEvent toolCall(RuntimeExecutionContext context, ToolCallRecord toolCallRecord) {
+    public RuntimeEvent toolCall(RuntimeExecutionContext context, AssistantToolCall toolCall) {
         return RuntimeEvent.builder()
             .eventType(RuntimeEventType.TOOL_CALL)
             .runStatus(RunStatus.RUNNING)
@@ -89,12 +89,12 @@ public class RuntimeEventFactory {
             .sessionId(context.sessionId())
             .turnId(context.turnId())
             .runId(context.runId())
-            .messageId(toolCallRecord == null ? null : toolCallRecord.getMessageId())
-            .toolCall(toolCallRecord)
+            .messageId(toolCall == null ? null : toolCall.getAssistantMessageId())
+            .toolCall(toolCall)
             .build();
     }
 
-    public RuntimeEvent toolResult(RuntimeExecutionContext context, ToolResultRecord toolResultRecord) {
+    public RuntimeEvent toolResult(RuntimeExecutionContext context, ToolExecution toolExecution) {
         return RuntimeEvent.builder()
             .eventType(RuntimeEventType.TOOL_RESULT)
             .runStatus(RunStatus.RUNNING)
@@ -103,8 +103,8 @@ public class RuntimeEventFactory {
             .sessionId(context.sessionId())
             .turnId(context.turnId())
             .runId(context.runId())
-            .messageId(toolResultRecord == null ? null : toolResultRecord.getMessageId())
-            .toolResult(toolResultRecord)
+            .messageId(toolExecution == null ? null : toolExecution.getToolResultMessageId())
+            .toolResult(toolExecution)
             .build();
     }
 
@@ -120,7 +120,7 @@ public class RuntimeEventFactory {
             .finishReason(loopExecutionResult == null ? null : loopExecutionResult.getFinishReason())
             .usage(loopExecutionResult == null ? null : loopExecutionResult.getUsage())
             .content(loopExecutionResult == null || loopExecutionResult.getAssistantMessage() == null
-                ? null : loopExecutionResult.getAssistantMessage().getContent())
+                ? null : loopExecutionResult.getAssistantMessage().getContentText())
             .build();
     }
 
@@ -159,4 +159,3 @@ public class RuntimeEventFactory {
             .build();
     }
 }
-

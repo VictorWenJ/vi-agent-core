@@ -1,13 +1,25 @@
 package com.vi.agent.core.model.session;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
 /**
  * Session 状态枚举。
  */
+@Getter
+@AllArgsConstructor
 public enum SessionStatus {
-    /** 活跃状态，可继续接收新 turn。 */
-    ACTIVE,
-    /** 已归档状态，不再接收新 turn。 */
-    ARCHIVED,
-    /** 因执行或持久化问题进入失败状态。 */
-    FAILED
+
+    /** 活跃状态。 */
+    ACTIVE("active", "活跃状态"),
+
+    /** 已归档状态。 */
+    ARCHIVED("archived", "已归档状态"),
+
+    /** 已失败状态。 */
+    FAILED("failed", "已失败状态");
+
+    private final String value;
+
+    private final String desc;
 }

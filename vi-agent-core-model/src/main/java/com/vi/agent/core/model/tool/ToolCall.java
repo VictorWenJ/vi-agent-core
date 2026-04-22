@@ -4,11 +4,13 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * Tool execution input.
+ * 工具执行输入。
  */
 @Getter
 @Builder
 public class ToolCall {
+
+    private final String toolCallRecordId;
 
     private final String toolCallId;
 

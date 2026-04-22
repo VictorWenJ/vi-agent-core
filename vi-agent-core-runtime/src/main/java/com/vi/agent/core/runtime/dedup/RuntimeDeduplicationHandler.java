@@ -10,6 +10,7 @@ import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,12 +41,27 @@ public class RuntimeDeduplicationHandler {
             case COMPLETED ->
                 agentExecutionResultFactory.completedFromTurn(command, turnDedupResult.getTurn(), turnDedupResult.getAssistantMessage());
             case RUNNING -> {
-                context.getEventConsumer().accept(runtimeEventFactory.processing(command, turnDedupResult.getTurn()));
+                emitIfPresent(context, runtimeEventFactory.processing(command, turnDedupResult.getTurn()));
                 yield agentExecutionResultFactory.processing(command, turnDedupResult.getTurn());
             }
-            case FAILED -> agentExecutionResultFactory.failedFromTurn(command, turnDedupResult.getTurn());
+            case FAILED -> {
+                emitIfPresent(context, runtimeEventFactory.runFailed(
+                    context,
+                    StringUtils.defaultIfBlank(turnDedupResult.getTurn().getErrorCode(), "TURN_FAILED"),
+                    StringUtils.defaultIfBlank(turnDedupResult.getTurn().getErrorMessage(), "turn already failed"),
+                    "BUSINESS",
+                    false
+                ));
+                yield agentExecutionResultFactory.failedFromTurn(command, turnDedupResult.getTurn());
+            }
             case CANCELLED -> agentExecutionResultFactory.cancelledFromTurn(command, turnDedupResult.getTurn());
         };
     }
-}
 
+    private void emitIfPresent(RuntimeExecutionContext context, com.vi.agent.core.runtime.event.RuntimeEvent runtimeEvent) {
+        if (context.getEventConsumer() == null || runtimeEvent == null) {
+            return;
+        }
+        context.getEventConsumer().accept(runtimeEvent);
+    }
+}

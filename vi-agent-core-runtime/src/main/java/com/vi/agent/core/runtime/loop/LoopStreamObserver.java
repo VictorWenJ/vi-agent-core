@@ -1,7 +1,7 @@
 package com.vi.agent.core.runtime.loop;
 
-import com.vi.agent.core.model.tool.ToolCallRecord;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.runtime.engine.AssistantStreamListener;
 
 /**
@@ -9,8 +9,7 @@ import com.vi.agent.core.runtime.engine.AssistantStreamListener;
  */
 public interface LoopStreamObserver extends AssistantStreamListener {
 
-    void onToolCall(ToolCallRecord toolCallRecord);
+    void onToolCall(AssistantToolCall toolCall);
 
-    void onToolResult(ToolResultRecord toolResultRecord);
+    void onToolResult(ToolExecution toolExecution);
 }
-

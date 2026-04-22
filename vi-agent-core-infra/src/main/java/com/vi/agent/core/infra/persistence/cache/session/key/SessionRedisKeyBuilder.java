@@ -3,17 +3,23 @@ package com.vi.agent.core.infra.persistence.cache.session.key;
 import org.springframework.stereotype.Component;
 
 /**
- * Redis key builder for session cache and lock.
+ * Redis key 构建器。
  */
 @Component
 public class SessionRedisKeyBuilder {
 
-    private static final String SESSION_STATE_PREFIX = "agent:session:state:";
+    private static final String SESSION_CONTEXT_PREFIX = "agent:session:context:";
+
+    private static final String REQUEST_CACHE_PREFIX = "agent:request:";
 
     private static final String SESSION_LOCK_PREFIX = "agent:session:lock:";
 
-    public String sessionStateKey(String sessionId) {
-        return SESSION_STATE_PREFIX + sessionId;
+    public String sessionContextKey(String sessionId) {
+        return SESSION_CONTEXT_PREFIX + sessionId;
+    }
+
+    public String requestCacheKey(String requestId) {
+        return REQUEST_CACHE_PREFIX + requestId;
     }
 
     public String sessionLockKey(String sessionId) {

@@ -2,7 +2,6 @@ package com.vi.agent.core.infra.persistence.mysql.convertor;
 
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentSessionEntity;
 import com.vi.agent.core.model.session.Session;
-import com.vi.agent.core.model.session.SessionStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -18,7 +17,7 @@ public class SessionMysqlConvertor {
             .sessionId(entity.getSessionId())
             .conversationId(entity.getConversationId())
             .parentSessionId(entity.getParentSessionId())
-            .status(SessionStatus.valueOf(entity.getStatus()))
+            .status(entity.getStatus())
             .archiveReason(entity.getArchiveReason())
             .createdAt(MysqlTimeConvertor.toInstant(entity.getCreatedAt()))
             .updatedAt(MysqlTimeConvertor.toInstant(entity.getUpdatedAt()))
@@ -34,7 +33,7 @@ public class SessionMysqlConvertor {
         entity.setSessionId(session.getSessionId());
         entity.setConversationId(session.getConversationId());
         entity.setParentSessionId(session.getParentSessionId());
-        entity.setStatus(session.getStatus().name());
+        entity.setStatus(session.getStatus());
         entity.setArchiveReason(session.getArchiveReason());
         entity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(session.getCreatedAt())));
         entity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(session.getUpdatedAt())));

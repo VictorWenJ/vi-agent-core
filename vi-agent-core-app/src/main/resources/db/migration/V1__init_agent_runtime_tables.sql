@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS agent_turn (
   UNIQUE KEY uk_agent_turn_turn_id (turn_id),
   UNIQUE KEY uk_agent_turn_request_id (request_id),
   KEY idx_agent_turn_session_id (session_id),
+  KEY idx_agent_turn_session_status (session_id, status),
   KEY idx_agent_turn_conversation_id (conversation_id),
   KEY idx_agent_turn_run_id (run_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='single request execution turn';
@@ -60,49 +61,95 @@ CREATE TABLE IF NOT EXISTS agent_message (
   conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
   session_id VARCHAR(64) NOT NULL COMMENT 'session id',
   turn_id VARCHAR(64) NOT NULL COMMENT 'turn id',
+  run_id VARCHAR(64) NOT NULL COMMENT 'run id',
   role VARCHAR(32) NOT NULL COMMENT 'USER/ASSISTANT/TOOL/SYSTEM/SUMMARY',
-  message_type VARCHAR(32) NOT NULL COMMENT 'USER_INPUT/ASSISTANT_OUTPUT/TOOL_CALL/TOOL_RESULT',
+  message_type VARCHAR(32) NOT NULL COMMENT 'USER_INPUT/ASSISTANT_OUTPUT/TOOL_RESULT/SYSTEM_PROMPT/SUMMARY_CONTEXT',
   sequence_no BIGINT NOT NULL COMMENT 'sequence in session',
-  content MEDIUMTEXT COMMENT 'message content',
+  status VARCHAR(32) NOT NULL COMMENT 'COMPLETED/RUNNING/FAILED/CANCELLED',
+  content_text MEDIUMTEXT COMMENT 'message content text',
+  tool_call_record_id VARCHAR(64) DEFAULT NULL COMMENT 'internal tool call record id',
+  tool_call_id VARCHAR(128) DEFAULT NULL COMMENT 'provider tool_call_id',
+  tool_name VARCHAR(128) DEFAULT NULL COMMENT 'tool name',
+  provider VARCHAR(64) DEFAULT NULL COMMENT 'provider name',
+  model VARCHAR(128) DEFAULT NULL COMMENT 'model name',
+  finish_reason VARCHAR(32) DEFAULT NULL COMMENT 'finish reason',
+  metadata_json MEDIUMTEXT DEFAULT NULL COMMENT 'message metadata json',
   created_at DATETIME NOT NULL COMMENT 'created time',
+  updated_at DATETIME NOT NULL COMMENT 'updated time',
   UNIQUE KEY uk_agent_message_message_id (message_id),
   UNIQUE KEY uk_agent_message_session_sequence (session_id, sequence_no),
   KEY idx_agent_message_turn_id (turn_id),
-  KEY idx_agent_message_session_id (session_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='append-only message fact';
+  KEY idx_agent_message_session_id (session_id),
+  KEY idx_agent_message_tool_call_record_id (tool_call_record_id),
+  KEY idx_agent_message_tool_call_id (tool_call_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='append-only transcript messages';
 
-CREATE TABLE IF NOT EXISTS agent_tool_call (
+CREATE TABLE IF NOT EXISTS agent_message_tool_call (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'autoincrement primary key',
-  tool_call_id VARCHAR(64) NOT NULL COMMENT 'tool call id',
+  tool_call_record_id VARCHAR(64) NOT NULL COMMENT 'internal global tool call record id',
+  tool_call_id VARCHAR(128) NOT NULL COMMENT 'provider tool_call_id',
+  assistant_message_id VARCHAR(64) NOT NULL COMMENT 'assistant message id',
   conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
   session_id VARCHAR(64) NOT NULL COMMENT 'session id',
   turn_id VARCHAR(64) NOT NULL COMMENT 'turn id',
-  message_id VARCHAR(64) NOT NULL COMMENT 'tool call message id',
+  run_id VARCHAR(64) NOT NULL COMMENT 'run id',
   tool_name VARCHAR(128) NOT NULL COMMENT 'tool name',
   arguments_json MEDIUMTEXT NOT NULL COMMENT 'tool arguments json',
-  sequence_no INT NOT NULL COMMENT 'tool call sequence in run',
-  status VARCHAR(32) NOT NULL COMMENT 'REQUESTED/EXECUTED/FAILED',
+  call_index INT NOT NULL COMMENT 'tool call order in assistant message',
+  status VARCHAR(32) NOT NULL COMMENT 'CREATED/DISPATCHED/COMPLETED/FAILED',
   created_at DATETIME NOT NULL COMMENT 'created time',
-  UNIQUE KEY uk_agent_tool_call_tool_call_id (tool_call_id),
-  KEY idx_agent_tool_call_turn_id (turn_id),
-  KEY idx_agent_tool_call_session_id (session_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='tool call fact';
+  updated_at DATETIME NOT NULL COMMENT 'updated time',
+  UNIQUE KEY uk_agent_message_tool_call_record_id (tool_call_record_id),
+  UNIQUE KEY uk_agent_message_tool_call_assistant_call_id (assistant_message_id, tool_call_id),
+  KEY idx_agent_message_tool_call_turn_id (turn_id),
+  KEY idx_agent_message_tool_call_session_id (session_id),
+  KEY idx_agent_message_tool_call_tool_call_id (tool_call_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='assistant tool_call sub-structure table';
 
-CREATE TABLE IF NOT EXISTS agent_tool_result (
+CREATE TABLE IF NOT EXISTS agent_tool_execution (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'autoincrement primary key',
-  tool_call_id VARCHAR(64) NOT NULL COMMENT 'tool call id',
+  tool_execution_id VARCHAR(64) NOT NULL COMMENT 'tool execution id',
+  tool_call_record_id VARCHAR(64) NOT NULL COMMENT 'internal tool call record id',
+  tool_call_id VARCHAR(128) NOT NULL COMMENT 'provider tool_call_id',
+  tool_result_message_id VARCHAR(64) NOT NULL COMMENT 'tool result message id',
   conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
   session_id VARCHAR(64) NOT NULL COMMENT 'session id',
   turn_id VARCHAR(64) NOT NULL COMMENT 'turn id',
-  message_id VARCHAR(64) NOT NULL COMMENT 'tool result message id',
+  run_id VARCHAR(64) NOT NULL COMMENT 'run id',
   tool_name VARCHAR(128) NOT NULL COMMENT 'tool name',
-  success TINYINT(1) NOT NULL COMMENT 'success or not',
-  output_json MEDIUMTEXT COMMENT 'tool output json',
-  error_code VARCHAR(64) DEFAULT NULL COMMENT 'error code',
-  error_message VARCHAR(1024) DEFAULT NULL COMMENT 'error message',
-  duration_ms BIGINT DEFAULT NULL COMMENT 'tool duration ms',
+  arguments_json MEDIUMTEXT DEFAULT NULL COMMENT 'tool arguments json',
+  output_text MEDIUMTEXT DEFAULT NULL COMMENT 'tool output text',
+  output_json MEDIUMTEXT DEFAULT NULL COMMENT 'tool output json',
+  status VARCHAR(32) NOT NULL COMMENT 'SUCCESS/FAILED',
+  error_code VARCHAR(64) DEFAULT NULL COMMENT 'tool error code',
+  error_message VARCHAR(1024) DEFAULT NULL COMMENT 'tool error message',
+  duration_ms BIGINT DEFAULT NULL COMMENT 'execution duration in ms',
+  started_at DATETIME DEFAULT NULL COMMENT 'execution start time',
+  completed_at DATETIME DEFAULT NULL COMMENT 'execution completed time',
   created_at DATETIME NOT NULL COMMENT 'created time',
-  KEY idx_agent_tool_result_tool_call_id (tool_call_id),
-  KEY idx_agent_tool_result_turn_id (turn_id),
-  KEY idx_agent_tool_result_session_id (session_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='tool result fact';
+  UNIQUE KEY uk_agent_tool_execution_id (tool_execution_id),
+  KEY idx_agent_tool_execution_tool_call_record_id (tool_call_record_id),
+  KEY idx_agent_tool_execution_tool_call_id (tool_call_id),
+  KEY idx_agent_tool_execution_tool_result_message_id (tool_result_message_id),
+  KEY idx_agent_tool_execution_turn_id (turn_id),
+  KEY idx_agent_tool_execution_session_id (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='tool execution facts';
+
+CREATE TABLE IF NOT EXISTS agent_run_event (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'autoincrement primary key',
+  event_id VARCHAR(64) NOT NULL COMMENT 'run event id',
+  conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
+  session_id VARCHAR(64) NOT NULL COMMENT 'session id',
+  turn_id VARCHAR(64) NOT NULL COMMENT 'turn id',
+  run_id VARCHAR(64) NOT NULL COMMENT 'run id',
+  event_index INT NOT NULL COMMENT 'event order within run',
+  event_type VARCHAR(64) NOT NULL COMMENT 'run event type',
+  actor_type VARCHAR(32) DEFAULT NULL COMMENT 'actor type',
+  actor_id VARCHAR(64) DEFAULT NULL COMMENT 'actor id',
+  payload_json MEDIUMTEXT DEFAULT NULL COMMENT 'event payload json',
+  created_at DATETIME NOT NULL COMMENT 'created time',
+  UNIQUE KEY uk_agent_run_event_event_id (event_id),
+  UNIQUE KEY uk_agent_run_event_run_index (run_id, event_index),
+  KEY idx_agent_run_event_turn_id (turn_id),
+  KEY idx_agent_run_event_session_id (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='runtime run events';

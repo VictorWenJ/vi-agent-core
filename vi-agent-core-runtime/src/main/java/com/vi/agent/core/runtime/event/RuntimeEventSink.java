@@ -4,8 +4,8 @@ import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
-import com.vi.agent.core.model.tool.ToolCallRecord;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.RuntimeEventFactory;
 import org.springframework.util.ObjectUtils;
@@ -45,12 +45,12 @@ public class RuntimeEventSink {
         emit(runtimeEventFactory.messageCompleted(context, assistantMessage, finishReason, usage));
     }
 
-    public void toolCall(ToolCallRecord toolCallRecord) {
-        emit(runtimeEventFactory.toolCall(context, toolCallRecord));
+    public void toolCall(AssistantToolCall toolCall) {
+        emit(runtimeEventFactory.toolCall(context, toolCall));
     }
 
-    public void toolResult(ToolResultRecord toolResultRecord) {
-        emit(runtimeEventFactory.toolResult(context, toolResultRecord));
+    public void toolResult(ToolExecution toolExecution) {
+        emit(runtimeEventFactory.toolResult(context, toolExecution));
     }
 
     public void runCompleted(LoopExecutionResult loopExecutionResult) {
@@ -68,4 +68,3 @@ public class RuntimeEventSink {
         eventConsumer.accept(event);
     }
 }
-

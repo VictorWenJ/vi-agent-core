@@ -4,11 +4,13 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * Tool execution output.
+ * 工具执行输出。
  */
 @Getter
 @Builder
 public class ToolResult {
+
+    private final String toolCallRecordId;
 
     private final String toolCallId;
 

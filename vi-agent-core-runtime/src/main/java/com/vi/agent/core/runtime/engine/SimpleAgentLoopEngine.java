@@ -3,29 +3,37 @@ package com.vi.agent.core.runtime.engine;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
-import com.vi.agent.core.model.llm.*;
+import com.vi.agent.core.model.llm.FinishReason;
+import com.vi.agent.core.model.llm.ModelRequest;
+import com.vi.agent.core.model.llm.ModelResponse;
+import com.vi.agent.core.model.llm.ModelToolCall;
+import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
-import com.vi.agent.core.model.message.ToolCallMessage;
-import com.vi.agent.core.model.message.ToolResultMessage;
+import com.vi.agent.core.model.message.ToolMessage;
 import com.vi.agent.core.model.port.LlmGateway;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.tool.ToolCall;
-import com.vi.agent.core.model.tool.ToolCallRecord;
+import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolResult;
-import com.vi.agent.core.model.tool.ToolResultRecord;
+import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import com.vi.agent.core.runtime.factory.MessageFactory;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
-import java.util.*;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 /**
- * Default loop engine with llm-tool iterations.
+ * 默认 LLM-Tool 循环引擎。
  */
 @Slf4j
 @Component
@@ -39,6 +47,9 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     @Resource
     private MessageFactory messageFactory;
+
+    @Resource
+    private ModelContextMessageFilter modelContextMessageFilter;
 
     @Value("${vi.agent.runtime.max-iterations:6}")
     private int maxIterations;
@@ -55,26 +66,25 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     private LoopExecutionResult execute(AgentRunContext runContext, AssistantStreamListener streamListener) {
         List<Message> appendedMessages = new ArrayList<>();
-        List<ToolCallRecord> toolCallRecords = new ArrayList<>();
-        List<ToolResultRecord> toolResultRecords = new ArrayList<>();
+        List<AssistantToolCall> toolCalls = new ArrayList<>();
+        List<ToolExecution> toolExecutions = new ArrayList<>();
         UsageInfo totalUsage = UsageInfo.empty();
 
         AssistantMessage finalAssistant = null;
         FinishReason finalFinishReason = FinishReason.ERROR;
 
-        for (int i = 0; i < maxIterations; i++) {
-            log.info("SimpleAgentLoopEngine execute start iteration={}", i);
-
+        for (int iteration = 0; iteration < maxIterations; iteration++) {
             runContext.nextIteration();
+
             ModelRequest modelRequest = ModelRequest.builder()
                 .runId(runContext.getRunMetadata().getRunId())
                 .conversationId(runContext.getConversation().getConversationId())
                 .sessionId(runContext.getSession().getSessionId())
                 .turnId(runContext.getTurn().getTurnId())
-                .messages(runContext.getWorkingMessages())
+                .messages(modelContextMessageFilter.filter(runContext.getWorkingMessages()))
                 .tools(runContext.getAvailableTools())
                 .build();
-            log.info("SimpleAgentLoopEngine execute iteration={} modelRequest={}", i, JsonUtils.toJson(modelRequest));
+            log.info("SimpleAgentLoopEngine iteration={} modelRequest={}", iteration, JsonUtils.toJson(modelRequest));
 
             String assistantMessageId = messageFactory.nextAssistantMessageId();
             if (streamListener != null) {
@@ -84,83 +94,95 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             ModelResponse modelResponse = streamListener == null
                 ? llmGateway.generate(modelRequest)
                 : llmGateway.generateStreaming(modelRequest, delta -> streamListener.onMessageDelta(assistantMessageId, delta));
-            log.info("SimpleAgentLoopEngine execute iteration={} modelResponse={}", i, JsonUtils.toJson(modelResponse));
+            log.info("SimpleAgentLoopEngine iteration={} modelResponse={}", iteration, JsonUtils.toJson(modelResponse));
 
             if (modelResponse == null) {
                 throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "model response is null");
             }
-            totalUsage = UsageInfo.sum(totalUsage, modelResponse.getUsage());
 
-            List<ModelToolCall> modelToolCalls = Optional.ofNullable(modelResponse.getToolCalls()).orElse(Collections.emptyList());
+            totalUsage = UsageInfo.sum(totalUsage, modelResponse.getUsage());
+            FinishReason currentFinishReason = modelResponse.getFinishReason() == null ? FinishReason.STOP : modelResponse.getFinishReason();
+            List<ModelToolCall> modelToolCalls = modelResponse.getToolCalls() == null ? List.of() : modelResponse.getToolCalls();
+
+            List<AssistantToolCall> assistantToolCalls = new ArrayList<>();
+            if (!CollectionUtils.isEmpty(modelToolCalls)) {
+                int callIndex = 0;
+                for (ModelToolCall modelToolCall : modelToolCalls) {
+                    if (modelToolCall == null) {
+                        continue;
+                    }
+                    AssistantToolCall assistantToolCall = messageFactory.createAssistantToolCall(
+                        runContext.getConversation().getConversationId(),
+                        runContext.getSession().getSessionId(),
+                        runContext.getTurn().getTurnId(),
+                        runContext.getRunMetadata().getRunId(),
+                        assistantMessageId,
+                        modelToolCall,
+                        callIndex++
+                    );
+                    assistantToolCalls.add(assistantToolCall);
+                }
+            }
+
             AssistantMessage assistantMessage = messageFactory.createAssistantMessage(
+                runContext.getConversation().getConversationId(),
                 runContext.getSession().getSessionId(),
                 runContext.getTurn().getTurnId(),
+                runContext.getRunMetadata().getRunId(),
                 assistantMessageId,
                 modelResponse.getContent(),
-                modelToolCalls
+                assistantToolCalls,
+                currentFinishReason,
+                modelResponse.getUsage()
             );
-            log.info("SimpleAgentLoopEngine execute iteration={} assistantMessage={}", i, JsonUtils.toJson(assistantMessage));
 
             runContext.appendWorkingMessage(assistantMessage);
             appendedMessages.add(assistantMessage);
             finalAssistant = assistantMessage;
-            FinishReason currentFinishReason = modelResponse.getFinishReason() == null ? FinishReason.STOP : modelResponse.getFinishReason();
             finalFinishReason = currentFinishReason;
 
             if (streamListener != null) {
                 streamListener.onMessageCompleted(assistantMessage, currentFinishReason);
             }
 
-            if (modelToolCalls.isEmpty()) {
+            if (CollectionUtils.isEmpty(assistantToolCalls)) {
                 break;
             }
 
-            int toolCallSequence = 1;
-            for (ModelToolCall modelToolCall : modelToolCalls) {
-                log.info("SimpleAgentLoopEngine execute toolCall start iteration={} toolCallSequence={} current modelToolCall={}",
-                    i, toolCallSequence, JsonUtils.toJson(modelToolCall));
+            for (AssistantToolCall assistantToolCall : assistantToolCalls) {
+                toolCalls.add(assistantToolCall);
 
-                String toolCallId = messageFactory.resolveToolCallId(modelToolCall);
-                ToolCallMessage toolCallMessage = messageFactory.createToolCallMessage(
-                    runContext.getSession().getSessionId(),
-                    runContext.getTurn().getTurnId(),
-                    toolCallId,
-                    modelToolCall.getToolName(),
-                    modelToolCall.getArgumentsJson()
-                );
-
-                appendedMessages.add(toolCallMessage);
-
-                ToolCallRecord toolCallRecord = messageFactory.createToolCallRecord(
-                    runContext.getConversation().getConversationId(),
-                    runContext.getSession().getSessionId(),
-                    runContext.getTurn().getTurnId(),
-                    toolCallMessage,
-                    toolCallSequence++
-                );
-
-                toolCallRecords.add(toolCallRecord);
-
-                ToolCall toolCall = messageFactory.toToolCall(runContext.getTurn().getTurnId(), toolCallId, modelToolCall);
+                ToolCall toolCall = messageFactory.toToolCall(runContext.getTurn().getTurnId(), assistantToolCall);
+                Instant startedAt = Instant.now();
                 ToolResult toolResult = toolGateway.execute(toolCall);
-                log.info("SimpleAgentLoopEngine execute toolCall start iteration={} toolCallSequence={} current toolCall ={} toolResult={}",
-                    i, toolCallSequence, JsonUtils.toJson(toolCall), JsonUtils.toJson(toolResult));
+                Instant completedAt = Instant.now();
 
-                ToolResultMessage toolResultMessage = messageFactory.createToolResultMessage(
-                    runContext.getSession().getSessionId(),
-                    runContext.getTurn().getTurnId(),
-                    toolResult
-                );
-                runContext.appendWorkingMessage(toolResultMessage);
-                appendedMessages.add(toolResultMessage);
+                ToolResult normalizedToolResult = normalizeToolResult(toolResult, assistantToolCall, runContext.getTurn().getTurnId());
 
-                ToolResultRecord toolResultRecord = messageFactory.createToolResultRecord(
+                ToolMessage toolMessage = messageFactory.createToolMessage(
                     runContext.getConversation().getConversationId(),
                     runContext.getSession().getSessionId(),
                     runContext.getTurn().getTurnId(),
-                    toolResultMessage
+                    runContext.getRunMetadata().getRunId(),
+                    normalizedToolResult,
+                    assistantToolCall.getArgumentsJson()
                 );
-                toolResultRecords.add(toolResultRecord);
+
+                runContext.appendWorkingMessage(toolMessage);
+                appendedMessages.add(toolMessage);
+
+                ToolExecution toolExecution = messageFactory.createToolExecution(
+                    runContext.getConversation().getConversationId(),
+                    runContext.getSession().getSessionId(),
+                    runContext.getTurn().getTurnId(),
+                    runContext.getRunMetadata().getRunId(),
+                    normalizedToolResult,
+                    toolMessage,
+                    assistantToolCall.getArgumentsJson(),
+                    startedAt,
+                    completedAt
+                );
+                toolExecutions.add(toolExecution);
             }
         }
 
@@ -171,10 +193,37 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
         return LoopExecutionResult.builder()
             .assistantMessage(finalAssistant)
             .appendedMessages(appendedMessages)
-            .toolCalls(toolCallRecords)
-            .toolResults(toolResultRecords)
+            .toolCalls(toolCalls)
+            .toolExecutions(toolExecutions)
             .finishReason(finalFinishReason)
             .usage(totalUsage)
+            .build();
+    }
+
+    private ToolResult normalizeToolResult(ToolResult toolResult, AssistantToolCall assistantToolCall, String turnId) {
+        if (toolResult == null) {
+            return ToolResult.builder()
+                .toolCallRecordId(assistantToolCall.getToolCallRecordId())
+                .toolCallId(assistantToolCall.getToolCallId())
+                .toolName(assistantToolCall.getToolName())
+                .turnId(turnId)
+                .success(false)
+                .output("")
+                .errorCode(ErrorCode.TOOL_EXECUTION_FAILED.getCode())
+                .errorMessage("tool result is null")
+                .durationMs(0L)
+                .build();
+        }
+        return ToolResult.builder()
+            .toolCallRecordId(assistantToolCall.getToolCallRecordId())
+            .toolCallId(assistantToolCall.getToolCallId())
+            .toolName(assistantToolCall.getToolName())
+            .turnId(turnId)
+            .success(toolResult.isSuccess())
+            .output(toolResult.getOutput())
+            .errorCode(toolResult.getErrorCode())
+            .errorMessage(toolResult.getErrorMessage())
+            .durationMs(toolResult.getDurationMs())
             .build();
     }
 }

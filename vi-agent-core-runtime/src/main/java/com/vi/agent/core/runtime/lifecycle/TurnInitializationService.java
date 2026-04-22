@@ -25,8 +25,10 @@ public class TurnInitializationService {
 
     public TurnStartResult start(RuntimeExecutionContext context) {
         UserMessage userMessage = messageFactory.createUserMessage(
+            context.conversationId(),
             context.sessionId(),
             context.getRunMetadata().getTurnId(),
+            context.runId(),
             context.getCommand().getMessage()
         );
 
@@ -39,13 +41,8 @@ public class TurnInitializationService {
             userMessage.getMessageId()
         );
 
-        persistenceCoordinator.persistUserMessage(
-            context.conversationId(),
-            context.sessionId(),
-            userMessage
-        );
+        persistenceCoordinator.persistUserMessage(userMessage);
 
         return new TurnStartResult(turn, userMessage);
     }
 }
-

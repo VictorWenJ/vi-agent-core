@@ -17,6 +17,10 @@ spring:
       database: ${REDIS_DB:0}
       timeout: 3s
 
+mybatis-plus:
+  configuration:
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -32,6 +36,12 @@ logging:
 
 vi:
   agent:
+    redis:
+      ttl:
+        session-context-seconds: ${SESSION_CONTEXT_TTL_SECONDS:1800}
+        request-cache-seconds: ${REQUEST_CACHE_TTL_SECONDS:3600}
+        session-lock-seconds: ${SESSION_LOCK_TTL_SECONDS:60}
+
     runtime:
       max-iterations: 6
       session-state-window: 5

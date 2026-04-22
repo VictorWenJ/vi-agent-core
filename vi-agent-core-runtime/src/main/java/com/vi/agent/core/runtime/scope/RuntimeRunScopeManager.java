@@ -9,6 +9,7 @@ import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.mdc.MdcScope;
 import com.vi.agent.core.runtime.mdc.RuntimeMdcManager;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -19,7 +20,8 @@ import java.time.Duration;
 @Service
 public class RuntimeRunScopeManager {
 
-    private static final Duration DEFAULT_LOCK_TTL = Duration.ofSeconds(60);
+    @Value("${vi.agent.redis.ttl.session-lock-seconds:60}")
+    private long sessionLockTtlSeconds;
 
     @Resource
     private SessionLockRepository sessionLockRepository;
@@ -36,8 +38,9 @@ public class RuntimeRunScopeManager {
     public RuntimeRunScope open(RuntimeExecutionContext context) {
         String sessionId = context.sessionId();
         String runId = context.runId();
+        Duration lockTtl = Duration.ofSeconds(Math.max(1L, sessionLockTtlSeconds));
 
-        if (!sessionLockRepository.tryLock(sessionId, runId, DEFAULT_LOCK_TTL)) {
+        if (!sessionLockRepository.tryLock(sessionId, runId, lockTtl)) {
             throw new AgentRuntimeException(ErrorCode.SESSION_CONCURRENT_REQUEST, "session has another running request");
         }
 
@@ -65,4 +68,3 @@ public class RuntimeRunScopeManager {
         }
     }
 }
-

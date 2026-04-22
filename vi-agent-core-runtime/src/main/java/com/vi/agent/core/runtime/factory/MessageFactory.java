@@ -1,13 +1,20 @@
 package com.vi.agent.core.runtime.factory;
 
+import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.ModelToolCall;
-import com.vi.agent.core.model.message.*;
+import com.vi.agent.core.model.llm.UsageInfo;
+import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.message.ToolMessage;
+import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.tool.ToolCall;
-import com.vi.agent.core.model.tool.ToolCallRecord;
+import com.vi.agent.core.model.tool.ToolCallStatus;
+import com.vi.agent.core.model.tool.ToolExecution;
+import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.tool.ToolResult;
-import com.vi.agent.core.model.tool.ToolResultRecord;
 import jakarta.annotation.Resource;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -16,7 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Factory for messages and tool records.
+ * 消息与工具事实工厂。
  */
 @Component
 public class MessageFactory {
@@ -28,65 +35,66 @@ public class MessageFactory {
     private RunIdentityFactory runIdentityFactory;
 
     /**
-     * Per-session in-memory sequence cursor to avoid duplicate sequence numbers
-     * before messages are flushed to mysql in batch.
+     * 每个 session 的本地序号游标，避免批量落库前重复序号。
      */
     private final Map<String, Long> sessionSequenceCursor = new ConcurrentHashMap<>();
 
-    public UserMessage createUserMessage(String sessionId, String turnId, String content) {
-        // 获取当前顺序
+    public UserMessage createUserMessage(String conversationId, String sessionId, String turnId, String runId, String content) {
         long sequence = nextSequenceNo(sessionId);
-        return UserMessage.create(runIdentityFactory.nextMessageId(), turnId, sequence, content);
-    }
-
-    public AssistantMessage createAssistantMessage(String sessionId, String turnId, String content, java.util.List<ModelToolCall> toolCalls) {
-        return createAssistantMessage(sessionId, turnId, nextAssistantMessageId(), content, toolCalls);
+        return UserMessage.create(runIdentityFactory.nextMessageId(), conversationId, sessionId, turnId, runId, sequence, content);
     }
 
     public AssistantMessage createAssistantMessage(
+        String conversationId,
         String sessionId,
         String turnId,
+        String runId,
+        String content,
+        List<AssistantToolCall> toolCalls,
+        FinishReason finishReason,
+        UsageInfo usage
+    ) {
+        return createAssistantMessage(
+            conversationId,
+            sessionId,
+            turnId,
+            runId,
+            nextAssistantMessageId(),
+            content,
+            toolCalls,
+            finishReason,
+            usage
+        );
+    }
+
+    public AssistantMessage createAssistantMessage(
+        String conversationId,
+        String sessionId,
+        String turnId,
+        String runId,
         String assistantMessageId,
         String content,
-        List<ModelToolCall> toolCalls
+        List<AssistantToolCall> toolCalls,
+        FinishReason finishReason,
+        UsageInfo usage
     ) {
         long sequence = nextSequenceNo(sessionId);
-        return AssistantMessage.create(assistantMessageId, turnId, sequence, content, toolCalls);
-    }
-
-    public ToolCallMessage createToolCallMessage(
-        String sessionId,
-        String turnId,
-        String toolCallId,
-        String toolName,
-        String argumentsJson
-    ) {
-        long sequence = nextSequenceNo(sessionId);
-        return ToolCallMessage.create(runIdentityFactory.nextMessageId(), turnId, sequence, toolCallId, toolName, argumentsJson);
-    }
-
-    public ToolResultMessage createToolResultMessage(
-        String sessionId,
-        String turnId,
-        ToolResult toolResult
-    ) {
-        long sequence = nextSequenceNo(sessionId);
-        return ToolResultMessage.create(
-            runIdentityFactory.nextMessageId(),
+        return AssistantMessage.create(
+            assistantMessageId,
+            conversationId,
+            sessionId,
             turnId,
+            runId,
             sequence,
-            toolResult.getToolCallId(),
-            toolResult.getToolName(),
-            toolResult.isSuccess(),
-            toolResult.getOutput(),
-            toolResult.getErrorCode(),
-            toolResult.getErrorMessage(),
-            toolResult.getDurationMs()
+            content,
+            toolCalls,
+            finishReason,
+            usage
         );
     }
 
     public String resolveToolCallId(ModelToolCall modelToolCall) {
-        if (modelToolCall.getToolCallId() != null && !modelToolCall.getToolCallId().isBlank()) {
+        if (StringUtils.isNotBlank(modelToolCall.getToolCallId())) {
             return modelToolCall.getToolCallId();
         }
         return runIdentityFactory.nextToolCallId();
@@ -96,54 +104,100 @@ public class MessageFactory {
         return runIdentityFactory.nextMessageId();
     }
 
-    public ToolCall toToolCall(String turnId, String toolCallId, ModelToolCall modelToolCall) {
-        return ToolCall.builder()
-            .toolCallId(toolCallId)
-            .toolName(modelToolCall.getToolName())
-            .argumentsJson(modelToolCall.getArgumentsJson() == null ? "{}" : modelToolCall.getArgumentsJson())
-            .turnId(turnId)
-            .build();
-    }
-
-    public ToolCallRecord createToolCallRecord(
+    public AssistantToolCall createAssistantToolCall(
         String conversationId,
         String sessionId,
         String turnId,
-        ToolCallMessage message,
-        int sequence
+        String runId,
+        String assistantMessageId,
+        ModelToolCall modelToolCall,
+        int callIndex
     ) {
-        return ToolCallRecord.builder()
-            .toolCallId(message.getToolCallId())
+        String toolCallId = resolveToolCallId(modelToolCall);
+        return AssistantToolCall.builder()
+            .toolCallRecordId(runIdentityFactory.nextToolCallRecordId())
+            .toolCallId(toolCallId)
+            .assistantMessageId(assistantMessageId)
             .conversationId(conversationId)
             .sessionId(sessionId)
             .turnId(turnId)
-            .messageId(message.getMessageId())
-            .toolName(message.getToolName())
-            .argumentsJson(message.getArgumentsJson())
-            .sequenceNo(sequence)
-            .status("REQUESTED")
+            .runId(runId)
+            .toolName(modelToolCall.getToolName())
+            .argumentsJson(StringUtils.defaultIfBlank(modelToolCall.getArgumentsJson(), "{}"))
+            .callIndex(callIndex)
+            .status(ToolCallStatus.CREATED)
             .createdAt(Instant.now())
             .build();
     }
 
-    public ToolResultRecord createToolResultRecord(
+    public ToolCall toToolCall(String turnId, AssistantToolCall assistantToolCall) {
+        return ToolCall.builder()
+            .toolCallRecordId(assistantToolCall.getToolCallRecordId())
+            .toolCallId(assistantToolCall.getToolCallId())
+            .toolName(assistantToolCall.getToolName())
+            .argumentsJson(StringUtils.defaultIfBlank(assistantToolCall.getArgumentsJson(), "{}"))
+            .turnId(turnId)
+            .build();
+    }
+
+    public ToolMessage createToolMessage(
         String conversationId,
         String sessionId,
         String turnId,
-        ToolResultMessage message
+        String runId,
+        ToolResult toolResult,
+        String argumentsJson
     ) {
-        return ToolResultRecord.builder()
-            .toolCallId(message.getToolCallId())
+        long sequence = nextSequenceNo(sessionId);
+        return ToolMessage.create(
+            runIdentityFactory.nextMessageId(),
+            conversationId,
+            sessionId,
+            turnId,
+            runId,
+            sequence,
+            toolResult.getOutput(),
+            toolResult.getToolCallRecordId(),
+            toolResult.getToolCallId(),
+            toolResult.getToolName(),
+            toolResult.isSuccess() ? ToolExecutionStatus.SUCCESS : ToolExecutionStatus.FAILED,
+            toolResult.getErrorCode(),
+            toolResult.getErrorMessage(),
+            toolResult.getDurationMs(),
+            argumentsJson
+        );
+    }
+
+    public ToolExecution createToolExecution(
+        String conversationId,
+        String sessionId,
+        String turnId,
+        String runId,
+        ToolResult toolResult,
+        ToolMessage toolMessage,
+        String argumentsJson,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        return ToolExecution.builder()
+            .toolExecutionId(runIdentityFactory.nextToolExecutionId())
+            .toolCallRecordId(toolResult.getToolCallRecordId())
+            .toolCallId(toolResult.getToolCallId())
+            .toolResultMessageId(toolMessage.getMessageId())
             .conversationId(conversationId)
             .sessionId(sessionId)
             .turnId(turnId)
-            .messageId(message.getMessageId())
-            .toolName(message.getToolName())
-            .success(message.isSuccess())
-            .outputJson(message.getContent())
-            .errorCode(message.getErrorCode())
-            .errorMessage(message.getErrorMessage())
-            .durationMs(message.getDurationMs())
+            .runId(runId)
+            .toolName(toolResult.getToolName())
+            .argumentsJson(argumentsJson)
+            .outputText(toolResult.getOutput())
+            .outputJson(toolResult.getOutput())
+            .status(toolResult.isSuccess() ? ToolExecutionStatus.SUCCESS : ToolExecutionStatus.FAILED)
+            .errorCode(toolResult.getErrorCode())
+            .errorMessage(toolResult.getErrorMessage())
+            .durationMs(toolResult.getDurationMs())
+            .startedAt(startedAt)
+            .completedAt(completedAt)
             .createdAt(Instant.now())
             .build();
     }
