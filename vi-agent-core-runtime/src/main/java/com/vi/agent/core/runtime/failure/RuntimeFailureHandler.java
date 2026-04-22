@@ -54,9 +54,7 @@ public class RuntimeFailureHandler {
         if (throwable instanceof AgentRuntimeException runtimeException) {
             return runtimeException.getMessage();
         }
-        return StringUtils.defaultIfBlank(
-            throwable == null ? null : throwable.getMessage(),
-            "runtime execution failed"
+        return StringUtils.defaultIfBlank(throwable == null ? null : throwable.getMessage(), "runtime execution failed"
         );
     }
 }

@@ -1,4 +1,4 @@
-﻿package com.vi.agent.core.infra.persistence.cache.session.mapper;
+package com.vi.agent.core.infra.persistence.cache.session.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.vi.agent.core.common.util.JsonUtils;

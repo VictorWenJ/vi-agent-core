@@ -114,6 +114,7 @@ public class RuntimeOrchestrator {
             log.info("RuntimeOrchestrator executeInternal agentExecutionResult:{}", JsonUtils.toJson(agentExecutionResult));
             return agentExecutionResult;
         } catch (Throwable throwable) {
+            log.error("RuntimeOrchestrator executeInternal error", throwable);
             throw failureHandler.handle(context, throwable, runtimeEventSink);
         }
     }

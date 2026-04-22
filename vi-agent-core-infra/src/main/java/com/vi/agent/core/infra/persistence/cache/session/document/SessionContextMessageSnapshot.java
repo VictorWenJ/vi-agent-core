@@ -1,4 +1,4 @@
-﻿package com.vi.agent.core.infra.persistence.cache.session.document;
+package com.vi.agent.core.infra.persistence.cache.session.document;
 
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageStatus;

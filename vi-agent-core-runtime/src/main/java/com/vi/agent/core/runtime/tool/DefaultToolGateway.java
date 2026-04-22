@@ -33,10 +33,7 @@ public class DefaultToolGateway implements ToolGateway {
 
         ToolResult toolResult = toolExecutor.execute(toolCall);
         if (toolResult == null) {
-            throw new AgentRuntimeException(
-                ErrorCode.TOOL_EXECUTION_FAILED,
-                "Tool returned null: " + toolCall.getToolName()
-            );
+            throw new AgentRuntimeException(ErrorCode.TOOL_EXECUTION_FAILED, "Tool returned null: " + toolCall.getToolName());
         }
         log.info("DefaultToolGateway execute toolResult={}", JsonUtils.toJson(toolResult));
 

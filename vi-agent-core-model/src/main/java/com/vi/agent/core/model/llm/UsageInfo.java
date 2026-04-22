@@ -2,12 +2,14 @@ package com.vi.agent.core.model.llm;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 /**
  * LLM usage info.
  */
 @Getter
 @Builder
+@Jacksonized
 public class UsageInfo {
 
     private final Integer inputTokens;

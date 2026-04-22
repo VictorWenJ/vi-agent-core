@@ -25,8 +25,14 @@ public class AgentRunContextFactory {
     private ToolGateway toolGateway;
 
     public AgentRunContext create(RuntimeExecutionContext context) {
-        List<Message> workingMessages = persistenceCoordinator.load(context.conversationId(), context.sessionId());
-        workingMessages.add(context.getUserMessage());
+        List<Message> historyMessages = persistenceCoordinator.load(context.conversationId(), context.sessionId());
+        List<Message> workingMessages = new ArrayList<>();
+        if (historyMessages != null && !historyMessages.isEmpty()) {
+            workingMessages.addAll(historyMessages);
+        }
+        if (context.getUserMessage() != null) {
+            workingMessages.add(context.getUserMessage());
+        }
 
         return AgentRunContext.builder()
             .runMetadata(context.getRunMetadata())
@@ -41,4 +47,3 @@ public class AgentRunContextFactory {
             .build();
     }
 }
-

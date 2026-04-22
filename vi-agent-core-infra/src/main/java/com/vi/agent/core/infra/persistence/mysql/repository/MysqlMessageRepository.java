@@ -1,4 +1,4 @@
-﻿package com.vi.agent.core.infra.persistence.mysql.repository;
+package com.vi.agent.core.infra.persistence.mysql.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
