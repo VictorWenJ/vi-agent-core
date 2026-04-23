@@ -21,7 +21,7 @@ public class ChatResponseAssembler {
             .userMessageId(executionResult.getUserMessageId())
             .assistantMessageId(executionResult.getAssistantMessageId())
             .runId(executionResult.getRunId())
-            .content(executionResult.getFinalAssistantMessage() == null ? null : executionResult.getFinalAssistantMessage().getContent())
+            .content(executionResult.getFinalAssistantMessage() == null ?  "" : executionResult.getFinalAssistantMessage().getContent())
             .finishReason(executionResult.getFinishReason())
             .usage(toUsage(executionResult))
             .createdAt(executionResult.getCreatedAt())

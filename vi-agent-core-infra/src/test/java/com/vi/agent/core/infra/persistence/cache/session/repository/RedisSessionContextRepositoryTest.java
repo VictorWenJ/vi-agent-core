@@ -1,4 +1,4 @@
-﻿package com.vi.agent.core.infra.persistence.cache.session.repository;
+package com.vi.agent.core.infra.persistence.cache.session.repository;
 
 import com.vi.agent.core.infra.persistence.cache.session.key.SessionRedisKeyBuilder;
 import com.vi.agent.core.infra.persistence.cache.session.mapper.SessionContextRedisMapper;
@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -34,7 +35,7 @@ class RedisSessionContextRepositoryTest {
 
         setField(repository, "stringRedisTemplate", redisTemplate);
         setField(repository, "keyBuilder", new SessionRedisKeyBuilder());
-        setField(repository, "mapper", new SessionContextRedisMapper());
+        setField(repository, "sessionContextRedisMapper", new SessionContextRedisMapper());
         setField(repository, "sessionContextTtlSeconds", 60L);
 
         SessionStateSnapshot snapshot = SessionStateSnapshot.builder()
@@ -63,7 +64,7 @@ class RedisSessionContextRepositoryTest {
 
         setField(repository, "stringRedisTemplate", redisTemplate);
         setField(repository, "keyBuilder", new SessionRedisKeyBuilder());
-        setField(repository, "mapper", new SessionContextRedisMapper());
+        setField(repository, "sessionContextRedisMapper", new SessionContextRedisMapper());
 
         Map<Object, Object> hash = new HashMap<>();
         hash.put("sessionId", "sess-1");
@@ -72,8 +73,9 @@ class RedisSessionContextRepositoryTest {
         hash.put("messagesJson", "[]");
         when(hashOps.entries("agent:session:context:sess-1")).thenReturn(hash);
 
-        //repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
+        assertNull(result);
         verify(redisTemplate).delete("agent:session:context:sess-1");
     }
 

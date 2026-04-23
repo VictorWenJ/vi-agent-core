@@ -176,11 +176,12 @@ public class MessageFactory {
         Instant startedAt,
         Instant completedAt
     ) {
+        String toolExecutionId = runIdentityFactory.nextToolExecutionId();
         return ToolExecution.builder()
-            .toolExecutionId(runIdentityFactory.nextToolExecutionId())
+            .toolExecutionId(toolExecutionId)
             .toolCallRecordId(toolResult.getToolCallRecordId())
             .toolCallId(toolResult.getToolCallId())
-            .toolResultMessageId(toolMessage.getMessageId())
+            .toolResultMessageId(toolMessage == null ? toolExecutionId : toolMessage.getMessageId())
             .conversationId(conversationId)
             .sessionId(sessionId)
             .turnId(turnId)

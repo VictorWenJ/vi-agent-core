@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.vi.agent.core.infra.persistence.message.handler.MessageTypeHandlerRegistry;
 import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
 import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
+import com.vi.agent.core.infra.persistence.mysql.convertor.MysqlTimeConvertor;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageToolCallEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentToolExecutionEntity;
@@ -12,11 +13,13 @@ import com.vi.agent.core.infra.persistence.mysql.mapper.AgentMessageMapper;
 import com.vi.agent.core.infra.persistence.mysql.mapper.AgentMessageToolCallMapper;
 import com.vi.agent.core.infra.persistence.mysql.mapper.AgentToolExecutionMapper;
 import com.vi.agent.core.infra.persistence.mysql.mapper.AgentTurnMapper;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.tool.ToolCallStatus;
+import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.turn.TurnStatus;
 import jakarta.annotation.Resource;
@@ -196,6 +199,78 @@ public class MysqlMessageRepository implements MessageRepository {
         return entity.getSequenceNo() + 1;
     }
 
+    @Override
+    public void saveFailureToolFacts(List<AssistantToolCall> toolCalls, List<ToolExecution> toolExecutions) {
+        upsertFailedToolCalls(toolCalls);
+        upsertFailedToolExecutions(toolExecutions);
+    }
+
+    private void upsertFailedToolCalls(List<AssistantToolCall> toolCalls) {
+        if (CollectionUtils.isEmpty(toolCalls)) {
+            return;
+        }
+        Map<String, AssistantToolCall> uniqueByRecordId = toolCalls.stream()
+            .filter(Objects::nonNull)
+            .filter(toolCall -> StringUtils.isNotBlank(toolCall.getToolCallRecordId()))
+            .collect(Collectors.toMap(AssistantToolCall::getToolCallRecordId, toolCall -> toolCall, (left, right) -> right, LinkedHashMap::new));
+        if (uniqueByRecordId.isEmpty()) {
+            return;
+        }
+
+        List<AgentMessageToolCallEntity> existingEntities = messageToolCallMapper.selectList(
+            Wrappers.lambdaQuery(AgentMessageToolCallEntity.class)
+                .in(AgentMessageToolCallEntity::getToolCallRecordId, uniqueByRecordId.keySet())
+        );
+        Set<String> existingRecordIds = CollectionUtils.isEmpty(existingEntities)
+            ? Set.of()
+            : existingEntities.stream()
+                .map(AgentMessageToolCallEntity::getToolCallRecordId)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toSet());
+
+        for (AssistantToolCall toolCall : uniqueByRecordId.values()) {
+            String toolCallRecordId = toolCall.getToolCallRecordId();
+            if (existingRecordIds.contains(toolCallRecordId)) {
+                updateToolCallStatus(toolCallRecordId, ToolCallStatus.FAILED);
+                continue;
+            }
+            messageToolCallMapper.insert(toFailedToolCallEntity(toolCall));
+        }
+    }
+
+    private void upsertFailedToolExecutions(List<ToolExecution> toolExecutions) {
+        if (CollectionUtils.isEmpty(toolExecutions)) {
+            return;
+        }
+        Map<String, ToolExecution> uniqueByRecordId = toolExecutions.stream()
+            .filter(Objects::nonNull)
+            .filter(toolExecution -> StringUtils.isNotBlank(toolExecution.getToolCallRecordId()))
+            .collect(Collectors.toMap(ToolExecution::getToolCallRecordId, toolExecution -> toolExecution, (left, right) -> right, LinkedHashMap::new));
+        if (uniqueByRecordId.isEmpty()) {
+            return;
+        }
+
+        List<AgentToolExecutionEntity> existingEntities = toolExecutionMapper.selectList(
+            Wrappers.lambdaQuery(AgentToolExecutionEntity.class)
+                .in(AgentToolExecutionEntity::getToolCallRecordId, uniqueByRecordId.keySet())
+        );
+        Set<String> existingRecordIds = CollectionUtils.isEmpty(existingEntities)
+            ? Set.of()
+            : existingEntities.stream()
+                .map(AgentToolExecutionEntity::getToolCallRecordId)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toSet());
+
+        for (ToolExecution toolExecution : uniqueByRecordId.values()) {
+            String toolCallRecordId = toolExecution.getToolCallRecordId();
+            if (existingRecordIds.contains(toolCallRecordId)) {
+                updateFailedToolExecution(toolExecution);
+                continue;
+            }
+            toolExecutionMapper.insert(toFailedToolExecutionEntity(toolExecution));
+        }
+    }
+
     private void persistToolExecutionProgress(AgentToolExecutionEntity executionEntity) {
         String toolCallRecordId = executionEntity.getToolCallRecordId();
         if (StringUtils.isNotBlank(toolCallRecordId)) {
@@ -221,6 +296,7 @@ public class MysqlMessageRepository implements MessageRepository {
                 .set(AgentToolExecutionEntity::getErrorMessage, executionEntity.getErrorMessage())
                 .set(AgentToolExecutionEntity::getDurationMs, executionEntity.getDurationMs())
                 .set(AgentToolExecutionEntity::getCompletedAt, executionEntity.getCompletedAt())
+                .set(AgentToolExecutionEntity::getUpdatedAt, LocalDateTime.now())
         );
 
         if (StringUtils.isNotBlank(toolCallRecordId)) {
@@ -252,6 +328,7 @@ public class MysqlMessageRepository implements MessageRepository {
         target.setStartedAt(source.getStartedAt() == null ? LocalDateTime.now() : source.getStartedAt());
         target.setCompletedAt(null);
         target.setCreatedAt(source.getCreatedAt() == null ? LocalDateTime.now() : source.getCreatedAt());
+        target.setUpdatedAt(LocalDateTime.now());
         return target;
     }
 
@@ -263,6 +340,80 @@ public class MysqlMessageRepository implements MessageRepository {
                 .set(AgentMessageToolCallEntity::getStatus, status)
                 .set(AgentMessageToolCallEntity::getUpdatedAt, LocalDateTime.now())
         );
+    }
+
+    private void updateFailedToolExecution(ToolExecution toolExecution) {
+        toolExecutionMapper.update(
+            null,
+            Wrappers.lambdaUpdate(AgentToolExecutionEntity.class)
+                .eq(AgentToolExecutionEntity::getToolCallRecordId, toolExecution.getToolCallRecordId())
+                .set(AgentToolExecutionEntity::getStatus, ToolExecutionStatus.FAILED)
+                .set(AgentToolExecutionEntity::getErrorCode, StringUtils.defaultIfBlank(toolExecution.getErrorCode(), "TOOL_EXECUTION_FAILED"))
+                .set(AgentToolExecutionEntity::getErrorMessage, StringUtils.defaultIfBlank(toolExecution.getErrorMessage(), "tool execution failed"))
+                .set(AgentToolExecutionEntity::getDurationMs, toolExecution.getDurationMs())
+                .set(AgentToolExecutionEntity::getOutputText, toolExecution.getOutputText())
+                .set(AgentToolExecutionEntity::getOutputJson, toolExecution.getOutputJson())
+                .set(AgentToolExecutionEntity::getCompletedAt, defaultNow(toolExecution.getCompletedAt()))
+                .set(AgentToolExecutionEntity::getUpdatedAt, LocalDateTime.now())
+        );
+    }
+
+    private AgentMessageToolCallEntity toFailedToolCallEntity(AssistantToolCall toolCall) {
+        LocalDateTime now = LocalDateTime.now();
+        AgentMessageToolCallEntity entity = new AgentMessageToolCallEntity();
+        entity.setToolCallRecordId(toolCall.getToolCallRecordId());
+        entity.setToolCallId(toolCall.getToolCallId());
+        entity.setAssistantMessageId(toolCall.getAssistantMessageId());
+        entity.setConversationId(toolCall.getConversationId());
+        entity.setSessionId(toolCall.getSessionId());
+        entity.setTurnId(toolCall.getTurnId());
+        entity.setRunId(toolCall.getRunId());
+        entity.setToolName(toolCall.getToolName());
+        entity.setArgumentsJson(toolCall.getArgumentsJson());
+        entity.setCallIndex(toolCall.getCallIndex());
+        entity.setStatus(ToolCallStatus.FAILED);
+        entity.setCreatedAt(defaultNow(toolCall.getCreatedAt()));
+        entity.setUpdatedAt(now);
+        return entity;
+    }
+
+    private AgentToolExecutionEntity toFailedToolExecutionEntity(ToolExecution toolExecution) {
+        LocalDateTime now = LocalDateTime.now();
+        AgentToolExecutionEntity entity = new AgentToolExecutionEntity();
+        entity.setToolExecutionId(StringUtils.defaultIfBlank(toolExecution.getToolExecutionId(), "tex-" + UUID.randomUUID()));
+        entity.setToolCallRecordId(toolExecution.getToolCallRecordId());
+        entity.setToolCallId(toolExecution.getToolCallId());
+        entity.setToolResultMessageId(resolveToolResultMessageId(toolExecution));
+        entity.setConversationId(toolExecution.getConversationId());
+        entity.setSessionId(toolExecution.getSessionId());
+        entity.setTurnId(toolExecution.getTurnId());
+        entity.setRunId(toolExecution.getRunId());
+        entity.setToolName(toolExecution.getToolName());
+        entity.setArgumentsJson(toolExecution.getArgumentsJson());
+        entity.setOutputText(toolExecution.getOutputText());
+        entity.setOutputJson(toolExecution.getOutputJson());
+        entity.setStatus(ToolExecutionStatus.FAILED);
+        entity.setErrorCode(StringUtils.defaultIfBlank(toolExecution.getErrorCode(), "TOOL_EXECUTION_FAILED"));
+        entity.setErrorMessage(StringUtils.defaultIfBlank(toolExecution.getErrorMessage(), "tool execution failed"));
+        entity.setDurationMs(toolExecution.getDurationMs());
+        entity.setStartedAt(defaultNow(toolExecution.getStartedAt()));
+        entity.setCompletedAt(defaultNow(toolExecution.getCompletedAt()));
+        entity.setCreatedAt(defaultNow(toolExecution.getCreatedAt()));
+        entity.setUpdatedAt(now);
+        return entity;
+    }
+
+    private String resolveToolResultMessageId(ToolExecution toolExecution) {
+        if (StringUtils.isNotBlank(toolExecution.getToolResultMessageId())) {
+            return StringUtils.left(toolExecution.getToolResultMessageId(), 64);
+        }
+        String fallback = StringUtils.defaultIfBlank(toolExecution.getToolExecutionId(), toolExecution.getToolCallRecordId());
+        return StringUtils.left("failed-" + fallback, 64);
+    }
+
+    private LocalDateTime defaultNow(java.time.Instant instant) {
+        LocalDateTime converted = MysqlTimeConvertor.toLocalDateTime(instant);
+        return converted == null ? LocalDateTime.now() : converted;
     }
 
     private MessageAggregateRows buildAggregateRow(AgentMessageEntity messageEntity) {
@@ -322,4 +473,3 @@ public class MysqlMessageRepository implements MessageRepository {
         return result;
     }
 }
-

@@ -94,6 +94,7 @@ public class ToolMessageTypeHandler implements MessageTypeHandler<ToolMessage> {
         execution.setStartedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
         execution.setCompletedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
         execution.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
+        execution.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
 
         return MessageWritePlan.builder()
             .message(entity)

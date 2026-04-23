@@ -124,6 +124,8 @@ public class PersistenceCoordinator {
 
     @Transactional(rollbackFor = Exception.class)
     public void persistFailure(AgentRunContext runContext, String errorCode, String errorMessage) {
+        messageRepository.saveFailureToolFacts(runContext.getToolCalls(), runContext.getToolExecutions());
+
         Turn turn = runContext.getTurn();
         turn.markFailed(errorCode, errorMessage, Instant.now());
         turnRepository.update(turn);

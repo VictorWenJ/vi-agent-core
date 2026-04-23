@@ -1,6 +1,8 @@
 package com.vi.agent.core.model.port;
 
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.tool.ToolExecution;
 
 import java.util.List;
 
@@ -24,4 +26,8 @@ public interface MessageRepository {
     Message findFinalAssistantMessageByTurnId(String turnId);
 
     long nextSequenceNo(String sessionId);
+
+    default void saveFailureToolFacts(List<AssistantToolCall> toolCalls, List<ToolExecution> toolExecutions) {
+        // no-op by default
+    }
 }

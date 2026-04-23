@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_execution (
   started_at DATETIME DEFAULT NULL COMMENT 'execution start time',
   completed_at DATETIME DEFAULT NULL COMMENT 'execution completed time',
   created_at DATETIME NOT NULL COMMENT 'created time',
+  updated_at DATETIME NOT NULL COMMENT 'updated time',
   UNIQUE KEY uk_agent_tool_execution_id (tool_execution_id),
   UNIQUE KEY uk_agent_tool_execution_tool_call_record_id (tool_call_record_id),
   KEY idx_agent_tool_execution_tool_call_record_id (tool_call_record_id),

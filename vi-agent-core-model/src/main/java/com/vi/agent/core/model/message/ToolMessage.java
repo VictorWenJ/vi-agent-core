@@ -1,12 +1,14 @@
 package com.vi.agent.core.model.message;
 
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
+import lombok.Getter;
 
 import java.time.Instant;
 
 /**
  * 工具结果消息（provider role=tool）。
  */
+@Getter
 public final class ToolMessage extends AbstractMessage {
 
     private final String toolCallRecordId;
@@ -145,35 +147,4 @@ public final class ToolMessage extends AbstractMessage {
         );
     }
 
-    public String getToolCallRecordId() {
-        return toolCallRecordId;
-    }
-
-    public String getToolCallId() {
-        return toolCallId;
-    }
-
-    public String getToolName() {
-        return toolName;
-    }
-
-    public ToolExecutionStatus getExecutionStatus() {
-        return executionStatus;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public Long getDurationMs() {
-        return durationMs;
-    }
-
-    public String getArgumentsJson() {
-        return argumentsJson;
-    }
 }
