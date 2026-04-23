@@ -1,35 +1,37 @@
-package com.vi.agent.core.infra.persistence.mysql.message;
+package com.vi.agent.core.infra.persistence.message.handler;
 
+import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
+import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.infra.persistence.mysql.convertor.MysqlTimeConvertor;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
-import com.vi.agent.core.model.message.SummaryMessage;
+import com.vi.agent.core.model.message.SystemMessage;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
 
 /**
- * SummaryMessage 处理器。
+ * SystemMessage handler.
  */
 @Component
-public class SummaryMessageTypeHandler implements MessageTypeHandler<SummaryMessage> {
+public class SystemMessageTypeHandler implements MessageTypeHandler<SystemMessage> {
 
     @Override
     public MessageRole role() {
-        return MessageRole.SUMMARY;
+        return MessageRole.SYSTEM;
     }
 
     @Override
     public List<MessageType> supportedTypes() {
-        return List.of(MessageType.SUMMARY_CONTEXT);
+        return List.of(MessageType.SYSTEM_PROMPT);
     }
 
     @Override
-    public SummaryMessage assemble(MessageAggregateRows rows) {
+    public SystemMessage assemble(MessageAggregateRows rows) {
         AgentMessageEntity entity = rows.getMessage();
-        return SummaryMessage.restore(
+        return SystemMessage.restore(
             entity.getMessageId(),
             entity.getConversationId(),
             entity.getSessionId(),
@@ -43,7 +45,7 @@ public class SummaryMessageTypeHandler implements MessageTypeHandler<SummaryMess
     }
 
     @Override
-    public MessageWritePlan decompose(SummaryMessage message) {
+    public MessageWritePlan decompose(SystemMessage message) {
         AgentMessageEntity entity = new AgentMessageEntity();
         entity.setMessageId(message.getMessageId());
         entity.setConversationId(message.getConversationId());

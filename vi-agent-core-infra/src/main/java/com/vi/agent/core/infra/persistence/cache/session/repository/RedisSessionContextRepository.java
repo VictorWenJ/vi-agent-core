@@ -34,17 +34,17 @@ public class RedisSessionContextRepository implements SessionStateRepository {
     private SessionRedisKeyBuilder keyBuilder;
 
     @Resource
-    private SessionContextRedisMapper mapper;
+    private SessionContextRedisMapper sessionContextRedisMapper;
 
     @Value("${vi.agent.redis.ttl.session-context-seconds:1800}")
     private long sessionContextTtlSeconds;
 
     @Override
-    public Optional<SessionStateSnapshot> findBySessionId(String sessionId) {
+    public SessionStateSnapshot findBySessionId(String sessionId) {
         String key = keyBuilder.sessionContextKey(sessionId);
         Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(key);
         if (MapUtils.isEmpty(entries)) {
-            return Optional.empty();
+            return null;
         }
 
         try {
@@ -52,14 +52,13 @@ public class RedisSessionContextRepository implements SessionStateRepository {
             if (document.getSnapshotVersion() == null || document.getSnapshotVersion() != SNAPSHOT_VERSION) {
                 log.warn("Redis session context snapshotVersion invalid, sessionId={}, version={}", sessionId, document.getSnapshotVersion());
                 evict(sessionId);
-                return Optional.empty();
+                return null;
             }
-            SessionStateSnapshot snapshot = mapper.toModel(document);
-            return Optional.ofNullable(snapshot);
+            return sessionContextRedisMapper.toModel(document);
         } catch (Exception ex) {
             log.warn("Redis session context parse failed, sessionId={}", sessionId, ex);
             evict(sessionId);
-            return Optional.empty();
+            return null;
         }
     }
 
@@ -68,7 +67,7 @@ public class RedisSessionContextRepository implements SessionStateRepository {
         if (snapshot == null || StringUtils.isBlank(snapshot.getSessionId())) {
             return;
         }
-        SessionContextSnapshotDocument document = mapper.toDocument(snapshot);
+        SessionContextSnapshotDocument document = sessionContextRedisMapper.toDocument(snapshot);
         document.setSnapshotVersion(SNAPSHOT_VERSION);
 
         String key = keyBuilder.sessionContextKey(snapshot.getSessionId());
@@ -86,16 +85,16 @@ public class RedisSessionContextRepository implements SessionStateRepository {
     }
 
     private SessionContextSnapshotDocument fromHash(Map<Object, Object> hash) {
-        SessionContextSnapshotDocument.SessionContextSnapshotDocumentBuilder builder = SessionContextSnapshotDocument.builder();
-        builder.sessionId(getString(hash, "sessionId"));
-        builder.conversationId(getString(hash, "conversationId"));
-        builder.fromSequenceNo(getLong(hash, "fromSequenceNo"));
-        builder.toSequenceNo(getLong(hash, "toSequenceNo"));
-        builder.messageCount(getInteger(hash, "messageCount"));
-        builder.snapshotVersion(getInteger(hash, "snapshotVersion"));
-        builder.messagesJson(getString(hash, "messagesJson"));
-        builder.updatedAtEpochMs(getLong(hash, "updatedAtEpochMs"));
-        return builder.build();
+        return SessionContextSnapshotDocument.builder()
+            .sessionId(getString(hash, "sessionId"))
+            .conversationId(getString(hash, "conversationId"))
+            .fromSequenceNo(getLong(hash, "fromSequenceNo"))
+            .toSequenceNo(getLong(hash, "toSequenceNo"))
+            .messageCount(getInteger(hash, "messageCount"))
+            .snapshotVersion(getInteger(hash, "snapshotVersion"))
+            .messagesJson(getString(hash, "messagesJson"))
+            .updatedAtEpochMs(getLong(hash, "updatedAtEpochMs"))
+            .build();
     }
 
     private Map<String, String> toHash(SessionContextSnapshotDocument document) {

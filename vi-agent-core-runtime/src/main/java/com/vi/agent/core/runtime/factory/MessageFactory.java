@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 消息与工具事实工厂。
+ * Message and tool fact factory.
  */
 @Component
 public class MessageFactory {
@@ -34,9 +34,6 @@ public class MessageFactory {
     @Resource
     private RunIdentityFactory runIdentityFactory;
 
-    /**
-     * 每个 session 的本地序号游标，避免批量落库前重复序号。
-     */
     private final Map<String, Long> sessionSequenceCursor = new ConcurrentHashMap<>();
 
     public UserMessage createUserMessage(String conversationId, String sessionId, String turnId, String runId, String content) {
@@ -160,7 +157,7 @@ public class MessageFactory {
             toolResult.getToolCallRecordId(),
             toolResult.getToolCallId(),
             toolResult.getToolName(),
-            toolResult.isSuccess() ? ToolExecutionStatus.SUCCESS : ToolExecutionStatus.FAILED,
+            toolResult.isSuccess() ? ToolExecutionStatus.SUCCEEDED : ToolExecutionStatus.FAILED,
             toolResult.getErrorCode(),
             toolResult.getErrorMessage(),
             toolResult.getDurationMs(),
@@ -192,7 +189,7 @@ public class MessageFactory {
             .argumentsJson(argumentsJson)
             .outputText(toolResult.getOutput())
             .outputJson(toolResult.getOutput())
-            .status(toolResult.isSuccess() ? ToolExecutionStatus.SUCCESS : ToolExecutionStatus.FAILED)
+            .status(toolResult.isSuccess() ? ToolExecutionStatus.SUCCEEDED : ToolExecutionStatus.FAILED)
             .errorCode(toolResult.getErrorCode())
             .errorMessage(toolResult.getErrorMessage())
             .durationMs(toolResult.getDurationMs())

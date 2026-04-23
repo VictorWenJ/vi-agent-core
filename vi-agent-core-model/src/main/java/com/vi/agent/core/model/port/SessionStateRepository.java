@@ -9,7 +9,7 @@ import java.util.Optional;
  */
 public interface SessionStateRepository {
 
-    Optional<SessionStateSnapshot> findBySessionId(String sessionId);
+    SessionStateSnapshot findBySessionId(String sessionId);
 
     void save(SessionStateSnapshot snapshot);
 

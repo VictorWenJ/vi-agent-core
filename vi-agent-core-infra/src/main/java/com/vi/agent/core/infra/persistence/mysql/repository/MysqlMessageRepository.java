@@ -1,6 +1,9 @@
 package com.vi.agent.core.infra.persistence.mysql.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.vi.agent.core.infra.persistence.message.handler.MessageTypeHandlerRegistry;
+import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
+import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageToolCallEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentToolExecutionEntity;
@@ -9,29 +12,24 @@ import com.vi.agent.core.infra.persistence.mysql.mapper.AgentMessageMapper;
 import com.vi.agent.core.infra.persistence.mysql.mapper.AgentMessageToolCallMapper;
 import com.vi.agent.core.infra.persistence.mysql.mapper.AgentToolExecutionMapper;
 import com.vi.agent.core.infra.persistence.mysql.mapper.AgentTurnMapper;
-import com.vi.agent.core.infra.persistence.mysql.message.MessageAggregateRows;
-import com.vi.agent.core.infra.persistence.mysql.message.MessageTypeHandlerRegistry;
-import com.vi.agent.core.infra.persistence.mysql.message.MessageWritePlan;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
-import com.vi.agent.core.model.turn.TurnStatus;
 import com.vi.agent.core.model.port.MessageRepository;
+import com.vi.agent.core.model.tool.ToolCallStatus;
+import com.vi.agent.core.model.tool.ToolExecutionStatus;
+import com.vi.agent.core.model.turn.TurnStatus;
 import jakarta.annotation.Resource;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Repository;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * MySQL 消息仓储实现。
+ * MySQL message repository implementation.
  */
 @Repository
 public class MysqlMessageRepository implements MessageRepository {
@@ -74,8 +72,11 @@ public class MysqlMessageRepository implements MessageRepository {
                     messageToolCallMapper.insert(toolCallEntity);
                 }
             }
+        }
+
+        for (MessageWritePlan writePlan : writePlans) {
             if (writePlan.getToolExecution() != null) {
-                toolExecutionMapper.insert(writePlan.getToolExecution());
+                persistToolExecutionProgress(writePlan.getToolExecution());
             }
         }
     }
@@ -94,50 +95,48 @@ public class MysqlMessageRepository implements MessageRepository {
     }
 
     @Override
-    public List<Message> findCompletedContextBySessionId(String sessionId, int maxMessages) {
+    public List<Message> findCompletedContextBySessionId(String sessionId, int maxTurns) {
+        List<AgentTurnEntity> completedTurns = turnMapper.selectList(
+            Wrappers.lambdaQuery(AgentTurnEntity.class)
+                .eq(AgentTurnEntity::getSessionId, sessionId)
+                .eq(AgentTurnEntity::getStatus, TurnStatus.COMPLETED)
+                .orderByDesc(AgentTurnEntity::getCreatedAt));
+        if (CollectionUtils.isEmpty(completedTurns)) {
+            return Collections.emptyList();
+        }
+
+        List<String> selectedTurnIds = completedTurns.stream()
+            .map(AgentTurnEntity::getTurnId)
+            .filter(StringUtils::isNotBlank)
+            .toList();
+        if (CollectionUtils.isEmpty(selectedTurnIds)) {
+            return Collections.emptyList();
+        }
+
+        //按轮数截取
+        if (maxTurns > 0 && selectedTurnIds.size() > maxTurns) {
+            selectedTurnIds = selectedTurnIds.subList(0, maxTurns);
+        }
+
+        Set<String> turnIdSet = new HashSet<>(selectedTurnIds);
         List<AgentMessageEntity> entities = messageMapper.selectList(
             Wrappers.lambdaQuery(AgentMessageEntity.class)
                 .eq(AgentMessageEntity::getSessionId, sessionId)
+                .in(AgentMessageEntity::getTurnId, turnIdSet)
                 .orderByAsc(AgentMessageEntity::getSequenceNo)
         );
         if (CollectionUtils.isEmpty(entities)) {
-            return List.of();
+            return Collections.emptyList();
         }
 
-        Set<String> completedTurnIds = turnMapper.selectList(
-                Wrappers.lambdaQuery(AgentTurnEntity.class)
-                    .eq(AgentTurnEntity::getSessionId, sessionId)
-                    .eq(AgentTurnEntity::getStatus, TurnStatus.COMPLETED))
-            .stream()
-            .map(AgentTurnEntity::getTurnId)
-            .collect(Collectors.toSet());
+        Map<String, List<AgentMessageToolCallEntity>> toolCallsByAssistantMessageId = loadToolCallsByAssistantMessageId(entities);
+        Map<String, AgentToolExecutionEntity> executionsByToolMessageId = loadToolExecutionsByToolMessageId(entities);
 
-        if (CollectionUtils.isEmpty(completedTurnIds)) {
-            return List.of();
-        }
-
-        List<AgentMessageEntity> completedEntities = entities.stream()
-            .filter(entity -> completedTurnIds.contains(entity.getTurnId()))
-            .sorted(Comparator.comparingLong(AgentMessageEntity::getSequenceNo))
-            .toList();
-
-        if (CollectionUtils.isEmpty(completedEntities)) {
-            return List.of();
-        }
-
-        List<AgentMessageEntity> limitedEntities = completedEntities;
-        if (maxMessages > 0 && completedEntities.size() > maxMessages) {
-            limitedEntities = completedEntities.subList(completedEntities.size() - maxMessages, completedEntities.size());
-        }
-
-        Map<String, List<AgentMessageToolCallEntity>> toolCallsByAssistantMessageId = loadToolCallsByAssistantMessageId(limitedEntities);
-        Map<String, AgentToolExecutionEntity> executionsByToolMessageId = loadToolExecutionsByToolMessageId(limitedEntities);
-
-        List<Message> results = new ArrayList<>(limitedEntities.size());
-        for (AgentMessageEntity entity : limitedEntities) {
+        List<Message> results = new ArrayList<>(entities.size());
+        for (AgentMessageEntity entity : entities) {
             MessageAggregateRows aggregateRows = MessageAggregateRows.builder()
                 .message(entity)
-                .toolCalls(toolCallsByAssistantMessageId.getOrDefault(entity.getMessageId(), List.of()))
+                .toolCalls(toolCallsByAssistantMessageId.getOrDefault(entity.getMessageId(), Collections.emptyList()))
                 .toolExecution(executionsByToolMessageId.get(entity.getMessageId()))
                 .build();
             results.add(handlerRegistry.assemble(aggregateRows));
@@ -153,14 +152,14 @@ public class MysqlMessageRepository implements MessageRepository {
                 .orderByAsc(AgentMessageEntity::getSequenceNo)
         );
         if (CollectionUtils.isEmpty(entities)) {
-            return List.of();
+            return Collections.emptyList();
         }
         Map<String, List<AgentMessageToolCallEntity>> toolCallsByAssistantMessageId = loadToolCallsByAssistantMessageId(entities);
         Map<String, AgentToolExecutionEntity> executionsByToolMessageId = loadToolExecutionsByToolMessageId(entities);
         return entities.stream()
             .map(entity -> MessageAggregateRows.builder()
                 .message(entity)
-                .toolCalls(toolCallsByAssistantMessageId.getOrDefault(entity.getMessageId(), List.of()))
+                .toolCalls(toolCallsByAssistantMessageId.getOrDefault(entity.getMessageId(), Collections.emptyList()))
                 .toolExecution(executionsByToolMessageId.get(entity.getMessageId()))
                 .build())
             .map(handlerRegistry::assemble)
@@ -195,6 +194,75 @@ public class MysqlMessageRepository implements MessageRepository {
             return 1L;
         }
         return entity.getSequenceNo() + 1;
+    }
+
+    private void persistToolExecutionProgress(AgentToolExecutionEntity executionEntity) {
+        String toolCallRecordId = executionEntity.getToolCallRecordId();
+        if (StringUtils.isNotBlank(toolCallRecordId)) {
+            updateToolCallStatus(toolCallRecordId, ToolCallStatus.DISPATCHED);
+            updateToolCallStatus(toolCallRecordId, ToolCallStatus.RUNNING);
+        }
+
+        AgentToolExecutionEntity runningExecution = toRunningExecution(executionEntity);
+        toolExecutionMapper.insert(runningExecution);
+
+        ToolExecutionStatus finalStatus = executionEntity.getStatus() == ToolExecutionStatus.FAILED
+            ? ToolExecutionStatus.FAILED
+            : ToolExecutionStatus.SUCCEEDED;
+
+        toolExecutionMapper.update(
+            null,
+            Wrappers.lambdaUpdate(AgentToolExecutionEntity.class)
+                .eq(AgentToolExecutionEntity::getToolExecutionId, executionEntity.getToolExecutionId())
+                .set(AgentToolExecutionEntity::getStatus, finalStatus)
+                .set(AgentToolExecutionEntity::getOutputText, executionEntity.getOutputText())
+                .set(AgentToolExecutionEntity::getOutputJson, executionEntity.getOutputJson())
+                .set(AgentToolExecutionEntity::getErrorCode, executionEntity.getErrorCode())
+                .set(AgentToolExecutionEntity::getErrorMessage, executionEntity.getErrorMessage())
+                .set(AgentToolExecutionEntity::getDurationMs, executionEntity.getDurationMs())
+                .set(AgentToolExecutionEntity::getCompletedAt, executionEntity.getCompletedAt())
+        );
+
+        if (StringUtils.isNotBlank(toolCallRecordId)) {
+            updateToolCallStatus(
+                toolCallRecordId,
+                finalStatus == ToolExecutionStatus.SUCCEEDED ? ToolCallStatus.SUCCEEDED : ToolCallStatus.FAILED
+            );
+        }
+    }
+
+    private AgentToolExecutionEntity toRunningExecution(AgentToolExecutionEntity source) {
+        AgentToolExecutionEntity target = new AgentToolExecutionEntity();
+        target.setToolExecutionId(source.getToolExecutionId());
+        target.setToolCallRecordId(source.getToolCallRecordId());
+        target.setToolCallId(source.getToolCallId());
+        target.setToolResultMessageId(source.getToolResultMessageId());
+        target.setConversationId(source.getConversationId());
+        target.setSessionId(source.getSessionId());
+        target.setTurnId(source.getTurnId());
+        target.setRunId(source.getRunId());
+        target.setToolName(source.getToolName());
+        target.setArgumentsJson(source.getArgumentsJson());
+        target.setOutputText(null);
+        target.setOutputJson(null);
+        target.setStatus(ToolExecutionStatus.RUNNING);
+        target.setErrorCode(null);
+        target.setErrorMessage(null);
+        target.setDurationMs(null);
+        target.setStartedAt(source.getStartedAt() == null ? LocalDateTime.now() : source.getStartedAt());
+        target.setCompletedAt(null);
+        target.setCreatedAt(source.getCreatedAt() == null ? LocalDateTime.now() : source.getCreatedAt());
+        return target;
+    }
+
+    private void updateToolCallStatus(String toolCallRecordId, ToolCallStatus status) {
+        messageToolCallMapper.update(
+            null,
+            Wrappers.lambdaUpdate(AgentMessageToolCallEntity.class)
+                .eq(AgentMessageToolCallEntity::getToolCallRecordId, toolCallRecordId)
+                .set(AgentMessageToolCallEntity::getStatus, status)
+                .set(AgentMessageToolCallEntity::getUpdatedAt, LocalDateTime.now())
+        );
     }
 
     private MessageAggregateRows buildAggregateRow(AgentMessageEntity messageEntity) {
@@ -254,3 +322,4 @@ public class MysqlMessageRepository implements MessageRepository {
         return result;
     }
 }
+

@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.factory;
 
+import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
@@ -16,7 +17,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 统一构建 AgentExecutionResult。
+ * Unified factory for AgentExecutionResult.
  */
 @Component
 public class AgentExecutionResultFactory {
@@ -35,6 +36,21 @@ public class AgentExecutionResultFactory {
             .finalAssistantMessage(assistantMessage)
             .finishReason(loopExecutionResult == null ? null : loopExecutionResult.getFinishReason())
             .usage(loopExecutionResult == null ? null : loopExecutionResult.getUsage())
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    public AgentExecutionResult failed(RuntimeExecutionContext context, AgentRuntimeException exception) {
+        return AgentExecutionResult.builder()
+            .requestId(context.requestId())
+            .runStatus(RunStatus.FAILED)
+            .conversationId(context.conversationId())
+            .sessionId(context.sessionId())
+            .turnId(context.turnId())
+            .userMessageId(context.getUserMessage() == null ? (context.getTurn() == null ? null : context.getTurn().getUserMessageId()) : context.getUserMessage().getMessageId())
+            .assistantMessageId(context.getTurn() == null ? null : context.getTurn().getAssistantMessageId())
+            .runId(context.runId())
+            .finishReason(FinishReason.ERROR)
             .createdAt(Instant.now())
             .build();
     }
@@ -147,4 +163,3 @@ public class AgentExecutionResultFactory {
         );
     }
 }
-

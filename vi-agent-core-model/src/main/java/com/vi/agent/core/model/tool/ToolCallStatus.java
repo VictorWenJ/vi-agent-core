@@ -4,23 +4,21 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 /**
- * 工具调用记录状态枚举。
+ * Tool call record status enum.
  */
 @Getter
 @AllArgsConstructor
 public enum ToolCallStatus {
 
-    /** 已创建。 */
-    CREATED("created", "已创建"),
+    CREATED("created", "created"),
 
-    /** 已分发执行。 */
-    DISPATCHED("dispatched", "已分发执行"),
+    DISPATCHED("dispatched", "dispatched"),
 
-    /** 已完成。 */
-    COMPLETED("completed", "已完成"),
+    RUNNING("running", "running"),
 
-    /** 已失败。 */
-    FAILED("failed", "已失败");
+    SUCCEEDED("succeeded", "succeeded"),
+
+    FAILED("failed", "failed");
 
     private final String value;
 

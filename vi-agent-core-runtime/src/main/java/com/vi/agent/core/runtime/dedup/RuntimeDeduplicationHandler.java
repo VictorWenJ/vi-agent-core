@@ -1,7 +1,9 @@
 package com.vi.agent.core.runtime.dedup;
 
 import com.vi.agent.core.common.util.JsonUtils;
+import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.runtime.command.RuntimeExecuteCommand;
+import com.vi.agent.core.runtime.event.RuntimeEvent;
 import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.AgentExecutionResultFactory;
 import com.vi.agent.core.runtime.factory.RuntimeEventFactory;
@@ -36,29 +38,31 @@ public class RuntimeDeduplicationHandler {
             return null;
         }
 
+        Turn turn = turnDedupResult.getTurn();
+
         RuntimeExecuteCommand command = context.getCommand();
         return switch (turnDedupResult.getStatus()) {
             case COMPLETED ->
-                agentExecutionResultFactory.completedFromTurn(command, turnDedupResult.getTurn(), turnDedupResult.getAssistantMessage());
+                agentExecutionResultFactory.completedFromTurn(command, turn, turnDedupResult.getAssistantMessage());
             case RUNNING -> {
-                emitIfPresent(context, runtimeEventFactory.processing(command, turnDedupResult.getTurn()));
-                yield agentExecutionResultFactory.processing(command, turnDedupResult.getTurn());
+                emitIfPresent(context, runtimeEventFactory.processing(command, turn));
+                yield agentExecutionResultFactory.processing(command, turn);
             }
             case FAILED -> {
                 emitIfPresent(context, runtimeEventFactory.runFailed(
                     context,
-                    StringUtils.defaultIfBlank(turnDedupResult.getTurn().getErrorCode(), "TURN_FAILED"),
-                    StringUtils.defaultIfBlank(turnDedupResult.getTurn().getErrorMessage(), "turn already failed"),
+                    StringUtils.defaultIfBlank(turn.getErrorCode(), "TURN_FAILED"),
+                    StringUtils.defaultIfBlank(turn.getErrorMessage(), "turn already failed"),
                     "BUSINESS",
                     false
                 ));
-                yield agentExecutionResultFactory.failedFromTurn(command, turnDedupResult.getTurn());
+                yield agentExecutionResultFactory.failedFromTurn(command, turn);
             }
-            case CANCELLED -> agentExecutionResultFactory.cancelledFromTurn(command, turnDedupResult.getTurn());
+            case CANCELLED -> agentExecutionResultFactory.cancelledFromTurn(command, turn);
         };
     }
 
-    private void emitIfPresent(RuntimeExecutionContext context, com.vi.agent.core.runtime.event.RuntimeEvent runtimeEvent) {
+    private void emitIfPresent(RuntimeExecutionContext context, RuntimeEvent runtimeEvent) {
         if (context.getEventConsumer() == null || runtimeEvent == null) {
             return;
         }

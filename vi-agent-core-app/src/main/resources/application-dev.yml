@@ -17,8 +17,10 @@ vi:
   agent:
     runtime:
       max-iterations: 6
-      session-state-window: 5
+      session-context:
+        max-turns: 5
 
     provider:
       routing:
         default-provider: deepseek
+

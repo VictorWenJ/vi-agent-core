@@ -18,14 +18,13 @@ import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolResult;
-import com.vi.agent.core.runtime.context.ModelContextMessageFilter;
 import com.vi.agent.core.runtime.factory.MessageFactory;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -47,9 +46,6 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     @Resource
     private MessageFactory messageFactory;
-
-    @Resource
-    private ModelContextMessageFilter modelContextMessageFilter;
 
     @Value("${vi.agent.runtime.max-iterations:6}")
     private int maxIterations;
@@ -81,10 +77,10 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 .conversationId(runContext.getConversation().getConversationId())
                 .sessionId(runContext.getSession().getSessionId())
                 .turnId(runContext.getTurn().getTurnId())
-                .messages(modelContextMessageFilter.filter(runContext.getWorkingMessages()))
+                .messages(runContext.getWorkingMessages().stream().filter(Objects::nonNull).toList())
                 .tools(runContext.getAvailableTools())
                 .build();
-            log.info("SimpleAgentLoopEngine iteration={} modelRequest={}", iteration, JsonUtils.toJson(modelRequest));
+            log.info("SimpleAgentLoopEngine execute iteration={} modelRequest={}", iteration, JsonUtils.toJson(modelRequest));
 
             String assistantMessageId = messageFactory.nextAssistantMessageId();
             if (streamListener != null) {
@@ -94,8 +90,7 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             ModelResponse modelResponse = streamListener == null
                 ? llmGateway.generate(modelRequest)
                 : llmGateway.generateStreaming(modelRequest, delta -> streamListener.onMessageDelta(assistantMessageId, delta));
-            log.info("SimpleAgentLoopEngine iteration={} modelResponse={}", iteration, JsonUtils.toJson(modelResponse));
-
+            log.info("SimpleAgentLoopEngine execute iteration={} modelResponse={}", iteration, JsonUtils.toJson(modelResponse));
             if (modelResponse == null) {
                 throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, "model response is null");
             }
@@ -105,7 +100,7 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             List<ModelToolCall> modelToolCalls = modelResponse.getToolCalls() == null ? List.of() : modelResponse.getToolCalls();
 
             List<AssistantToolCall> assistantToolCalls = new ArrayList<>();
-            if (!CollectionUtils.isEmpty(modelToolCalls)) {
+            if (CollectionUtils.isNotEmpty(modelToolCalls)) {
                 int callIndex = 0;
                 for (ModelToolCall modelToolCall : modelToolCalls) {
                     if (modelToolCall == null) {
@@ -150,11 +145,16 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             }
 
             for (AssistantToolCall assistantToolCall : assistantToolCalls) {
+                log.info("SimpleAgentLoopEngine execute tool call start iteration={} assistantToolCall={}", iteration, JsonUtils.toJson(assistantToolCall));
                 toolCalls.add(assistantToolCall);
 
                 ToolCall toolCall = messageFactory.toToolCall(runContext.getTurn().getTurnId(), assistantToolCall);
+                log.info("SimpleAgentLoopEngine execute tool call start iteration={} toolCall={}", iteration, JsonUtils.toJson(toolCall));
+
                 Instant startedAt = Instant.now();
                 ToolResult toolResult = toolGateway.execute(toolCall);
+                log.info("SimpleAgentLoopEngine execute tool call start iteration={} toolResult={}", iteration, JsonUtils.toJson(toolResult));
+
                 Instant completedAt = Instant.now();
 
                 ToolResult normalizedToolResult = normalizeToolResult(toolResult, assistantToolCall, runContext.getTurn().getTurnId());
@@ -185,6 +185,7 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 toolExecutions.add(toolExecution);
             }
         }
+        log.info("SimpleAgentLoopEngine execute assistantToolCall={}", JsonUtils.toJson(toolExecutions));
 
         if (Objects.isNull(finalAssistant)) {
             throw new AgentRuntimeException(ErrorCode.RUNTIME_MAX_ITERATIONS_EXCEEDED, "max iterations exceeded: " + maxIterations);

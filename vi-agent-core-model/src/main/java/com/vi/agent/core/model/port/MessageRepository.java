@@ -5,25 +5,19 @@ import com.vi.agent.core.model.message.Message;
 import java.util.List;
 
 /**
- * Message 持久化端口。
+ * Message persistence port.
  */
 public interface MessageRepository {
 
-    /**
-     * 批量保存消息聚合事实。
-     */
     void saveBatch(List<Message> messages);
 
-    /**
-     * 兼容单条保存。
-     */
     default void save(Message message) {
         saveBatch(List.of(message));
     }
 
     Message findByMessageId(String messageId);
 
-    List<Message> findCompletedContextBySessionId(String sessionId, int maxMessages);
+    List<Message> findCompletedContextBySessionId(String sessionId, int maxTurns);
 
     List<Message> findByTurnId(String turnId);
 

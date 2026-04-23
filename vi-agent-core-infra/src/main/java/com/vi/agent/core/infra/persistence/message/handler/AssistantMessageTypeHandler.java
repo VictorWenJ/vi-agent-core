@@ -1,6 +1,8 @@
-package com.vi.agent.core.infra.persistence.mysql.message;
+package com.vi.agent.core.infra.persistence.message.handler;
 
 import com.vi.agent.core.common.util.JsonUtils;
+import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
+import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.infra.persistence.mysql.convertor.MysqlTimeConvertor;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageToolCallEntity;
@@ -18,7 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * AssistantMessage 处理器。
+ * AssistantMessage handler.
  */
 @Component
 public class AssistantMessageTypeHandler implements MessageTypeHandler<AssistantMessage> {
@@ -76,6 +78,8 @@ public class AssistantMessageTypeHandler implements MessageTypeHandler<Assistant
 
     @Override
     public MessageWritePlan decompose(AssistantMessage message) {
+        Instant createdAt = defaultNow(message.getCreatedAt());
+
         AgentMessageEntity entity = new AgentMessageEntity();
         entity.setMessageId(message.getMessageId());
         entity.setConversationId(message.getConversationId());
@@ -91,12 +95,13 @@ public class AssistantMessageTypeHandler implements MessageTypeHandler<Assistant
         entity.setMetadataJson(JsonUtils.toJson(message.getUsage()));
         entity.setProvider(message.getUsage() == null ? null : message.getUsage().getProvider());
         entity.setModel(message.getUsage() == null ? null : message.getUsage().getModel());
-        entity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
-        entity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
+        entity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(createdAt));
+        entity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(createdAt));
 
         List<AgentMessageToolCallEntity> toolCallEntities = new ArrayList<>();
         if (!CollectionUtils.isEmpty(message.getToolCalls())) {
             for (AssistantToolCall toolCall : message.getToolCalls()) {
+                Instant toolCallCreatedAt = defaultNow(toolCall.getCreatedAt());
                 AgentMessageToolCallEntity toolCallEntity = new AgentMessageToolCallEntity();
                 toolCallEntity.setToolCallRecordId(toolCall.getToolCallRecordId());
                 toolCallEntity.setToolCallId(toolCall.getToolCallId());
@@ -109,8 +114,8 @@ public class AssistantMessageTypeHandler implements MessageTypeHandler<Assistant
                 toolCallEntity.setArgumentsJson(toolCall.getArgumentsJson());
                 toolCallEntity.setCallIndex(toolCall.getCallIndex());
                 toolCallEntity.setStatus(toolCall.getStatus());
-                toolCallEntity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(toolCall.getCreatedAt())));
-                toolCallEntity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(toolCall.getCreatedAt())));
+                toolCallEntity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(toolCallCreatedAt));
+                toolCallEntity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(toolCallCreatedAt));
                 toolCallEntities.add(toolCallEntity);
             }
         }

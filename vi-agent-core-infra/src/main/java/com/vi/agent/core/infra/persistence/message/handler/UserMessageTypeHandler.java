@@ -1,35 +1,37 @@
-package com.vi.agent.core.infra.persistence.mysql.message;
+package com.vi.agent.core.infra.persistence.message.handler;
 
+import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
+import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.infra.persistence.mysql.convertor.MysqlTimeConvertor;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
-import com.vi.agent.core.model.message.SystemMessage;
+import com.vi.agent.core.model.message.UserMessage;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
 
 /**
- * SystemMessage 处理器。
+ * UserMessage handler.
  */
 @Component
-public class SystemMessageTypeHandler implements MessageTypeHandler<SystemMessage> {
+public class UserMessageTypeHandler implements MessageTypeHandler<UserMessage> {
 
     @Override
     public MessageRole role() {
-        return MessageRole.SYSTEM;
+        return MessageRole.USER;
     }
 
     @Override
     public List<MessageType> supportedTypes() {
-        return List.of(MessageType.SYSTEM_PROMPT);
+        return List.of(MessageType.USER_INPUT);
     }
 
     @Override
-    public SystemMessage assemble(MessageAggregateRows rows) {
+    public UserMessage assemble(MessageAggregateRows rows) {
         AgentMessageEntity entity = rows.getMessage();
-        return SystemMessage.restore(
+        return UserMessage.restore(
             entity.getMessageId(),
             entity.getConversationId(),
             entity.getSessionId(),
@@ -43,7 +45,8 @@ public class SystemMessageTypeHandler implements MessageTypeHandler<SystemMessag
     }
 
     @Override
-    public MessageWritePlan decompose(SystemMessage message) {
+    public MessageWritePlan decompose(UserMessage message) {
+        Instant createdAt = defaultNow(message.getCreatedAt());
         AgentMessageEntity entity = new AgentMessageEntity();
         entity.setMessageId(message.getMessageId());
         entity.setConversationId(message.getConversationId());
@@ -55,8 +58,8 @@ public class SystemMessageTypeHandler implements MessageTypeHandler<SystemMessag
         entity.setSequenceNo(message.getSequenceNo());
         entity.setStatus(message.getStatus());
         entity.setContentText(message.getContentText());
-        entity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
-        entity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
+        entity.setCreatedAt(MysqlTimeConvertor.toLocalDateTime(createdAt));
+        entity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(createdAt));
         return MessageWritePlan.builder().message(entity).build();
     }
 

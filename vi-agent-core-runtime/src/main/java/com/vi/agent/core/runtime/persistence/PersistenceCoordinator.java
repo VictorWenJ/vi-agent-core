@@ -13,6 +13,7 @@ import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
+import com.vi.agent.core.model.runtime.RunEventActorType;
 import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.session.Session;
@@ -23,12 +24,11 @@ import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 单次 turn 持久化协调器。
+ * Single-turn persistence coordinator.
  */
 @Slf4j
 @Service
@@ -63,13 +63,11 @@ public class PersistenceCoordinator {
     @Resource
     private RunIdentityFactory runIdentityFactory;
 
-    @Value("${vi.agent.runtime.session-context.max-messages:200}")
-    private int maxMessages;
+    @Resource
+    private SessionStateLoader sessionStateLoader;
 
     public List<Message> load(String conversationId, String sessionId) {
-        return sessionStateRepository.findBySessionId(sessionId)
-            .map(SessionStateSnapshot::getMessages)
-            .orElseGet(() -> reloadFromMysql(conversationId, sessionId));
+        return sessionStateLoader.load(conversationId, sessionId);
     }
 
     public void refresh(String conversationId, String sessionId, List<Message> messages) {
@@ -87,7 +85,7 @@ public class PersistenceCoordinator {
 
     @Transactional(rollbackFor = Exception.class)
     public void persistSuccess(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
-        if (!CollectionUtils.isEmpty(loopExecutionResult.getAppendedMessages())) {
+        if (CollectionUtils.isNotEmpty(loopExecutionResult.getAppendedMessages())) {
             messageRepository.saveBatch(loopExecutionResult.getAppendedMessages());
         }
 
@@ -138,17 +136,11 @@ public class PersistenceCoordinator {
         registerAfterCommit(() -> safeEvictSessionContext(session.getSessionId()));
     }
 
-    private List<Message> reloadFromMysql(String conversationId, String sessionId) {
-        List<Message> completedMessages = messageRepository.findCompletedContextBySessionId(sessionId, maxMessages);
-        refresh(conversationId, sessionId, completedMessages);
-        return completedMessages;
-    }
-
     private List<RunEventRecord> buildSuccessRunEvents(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
         List<RunEventRecord> runEvents = new ArrayList<>();
         int eventIndex = 1;
 
-        if (loopExecutionResult != null && !CollectionUtils.isEmpty(loopExecutionResult.getToolCalls())) {
+        if (loopExecutionResult != null && CollectionUtils.isNotEmpty(loopExecutionResult.getToolCalls())) {
             for (AssistantToolCall toolCall : loopExecutionResult.getToolCalls()) {
                 runEvents.add(RunEventRecord.builder()
                     .eventId(runIdentityFactory.nextRunEventId())
@@ -158,7 +150,7 @@ public class PersistenceCoordinator {
                     .runId(runContext.getRunMetadata().getRunId())
                     .eventIndex(eventIndex++)
                     .eventType(RunEventType.TOOL_CALL_CREATED)
-                    .actorType("assistant")
+                    .actorType(RunEventActorType.ASSISTANT)
                     .actorId(toolCall == null ? null : toolCall.getAssistantMessageId())
                     .payloadJson(toolCall == null ? "{}" : JsonUtils.toJson(toolCall))
                     .createdAt(Instant.now())
@@ -166,9 +158,9 @@ public class PersistenceCoordinator {
             }
         }
 
-        if (loopExecutionResult != null && !CollectionUtils.isEmpty(loopExecutionResult.getToolExecutions())) {
+        if (loopExecutionResult != null && CollectionUtils.isNotEmpty(loopExecutionResult.getToolExecutions())) {
             for (ToolExecution toolExecution : loopExecutionResult.getToolExecutions()) {
-                RunEventType runEventType = toolExecution != null && toolExecution.getStatus() == ToolExecutionStatus.SUCCESS
+                RunEventType runEventType = toolExecution != null && toolExecution.getStatus() == ToolExecutionStatus.SUCCEEDED
                     ? RunEventType.TOOL_COMPLETED
                     : RunEventType.TOOL_FAILED;
                 runEvents.add(RunEventRecord.builder()
@@ -179,7 +171,7 @@ public class PersistenceCoordinator {
                     .runId(runContext.getRunMetadata().getRunId())
                     .eventIndex(eventIndex++)
                     .eventType(runEventType)
-                    .actorType("tool")
+                    .actorType(RunEventActorType.TOOL)
                     .actorId(toolExecution == null ? null : toolExecution.getToolExecutionId())
                     .payloadJson(toolExecution == null ? "{}" : JsonUtils.toJson(toolExecution))
                     .createdAt(Instant.now())
@@ -195,7 +187,7 @@ public class PersistenceCoordinator {
             .runId(runContext.getRunMetadata().getRunId())
             .eventIndex(eventIndex)
             .eventType(RunEventType.RUN_COMPLETED)
-            .actorType("runtime")
+            .actorType(RunEventActorType.RUNTIME)
             .actorId(runContext.getRunMetadata().getRunId())
             .payloadJson(JsonUtils.toJson(Map.of(
                 "finishReason", loopExecutionResult == null || loopExecutionResult.getFinishReason() == null
@@ -217,7 +209,7 @@ public class PersistenceCoordinator {
             .runId(runContext.getRunMetadata().getRunId())
             .eventIndex(1)
             .eventType(RunEventType.RUN_FAILED)
-            .actorType("runtime")
+            .actorType(RunEventActorType.RUNTIME)
             .actorId(runContext.getRunMetadata().getRunId())
             .payloadJson(JsonUtils.toJson(Map.of(
                 "errorCode", errorCode,

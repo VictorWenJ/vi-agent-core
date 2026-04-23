@@ -1,20 +1,21 @@
-package com.vi.agent.core.infra.persistence.mysql.message;
+package com.vi.agent.core.infra.persistence.message.handler;
 
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
+import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
+import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 消息处理器注册表。
+ * Message handler registry.
  */
 @Component
 public class MessageTypeHandlerRegistry {
@@ -51,5 +52,8 @@ public class MessageTypeHandlerRegistry {
             );
         }
         return handler;
+    }
+
+    private record MessageTypeKey(MessageRole role, MessageType messageType) {
     }
 }

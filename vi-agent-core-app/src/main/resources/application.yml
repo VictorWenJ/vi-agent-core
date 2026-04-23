@@ -44,7 +44,8 @@ vi:
 
     runtime:
       max-iterations: 6
-      session-state-window: 5
+      session-context:
+        max-turns: 5
 
     provider:
       routing:
@@ -73,3 +74,4 @@ vi:
         chat-path: /v1/chat/completions
         connect-timeout-ms: 3000
         read-timeout-ms: 60000
+

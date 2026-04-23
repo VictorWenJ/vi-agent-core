@@ -1,5 +1,7 @@
 package com.vi.agent.core.runtime.factory;
 
+import com.vi.agent.core.common.exception.AgentRuntimeException;
+import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.model.conversation.Conversation;
 import com.vi.agent.core.model.conversation.ConversationStatus;
 import com.vi.agent.core.model.llm.FinishReason;
@@ -63,6 +65,21 @@ class AgentExecutionResultFactoryTest {
         assertEquals("run-1", result.getRunId());
         assertEquals(FinishReason.STOP, result.getFinishReason());
         assertNotNull(result.getUsage());
+    }
+
+    @Test
+    void failedShouldBuildFailedResult() {
+        RuntimeExecutionContext context = buildContext();
+
+        AgentExecutionResult result = factory.failed(
+            context,
+            new AgentRuntimeException(ErrorCode.RUNTIME_EXECUTION_FAILED, "boom")
+        );
+
+        assertEquals(RunStatus.FAILED, result.getRunStatus());
+        assertEquals("req-1", result.getRequestId());
+        assertEquals("turn-1", result.getTurnId());
+        assertEquals("run-1", result.getRunId());
     }
 
     @Test

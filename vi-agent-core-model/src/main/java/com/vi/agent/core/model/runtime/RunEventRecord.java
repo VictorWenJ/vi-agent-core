@@ -6,7 +6,7 @@ import lombok.Getter;
 import java.time.Instant;
 
 /**
- * Run 事件事实记录。
+ * Run event fact record.
  */
 @Getter
 @Builder
@@ -26,7 +26,7 @@ public class RunEventRecord {
 
     private final RunEventType eventType;
 
-    private final String actorType;
+    private final RunEventActorType actorType;
 
     private final String actorId;
 

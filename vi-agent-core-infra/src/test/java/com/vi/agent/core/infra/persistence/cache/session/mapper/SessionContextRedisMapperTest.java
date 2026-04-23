@@ -65,7 +65,7 @@ class SessionContextRedisMapperTest {
         ToolMessage toolMessage = assertInstanceOf(ToolMessage.class, restoredTool);
         assertEquals("tcr-1", toolMessage.getToolCallRecordId());
         assertEquals("call-1", toolMessage.getToolCallId());
-        assertEquals(ToolExecutionStatus.SUCCESS, toolMessage.getExecutionStatus());
+        assertEquals(ToolExecutionStatus.SUCCEEDED, toolMessage.getExecutionStatus());
     }
 
     private List<Message> buildMessages() {
@@ -85,7 +85,7 @@ class SessionContextRedisMapperTest {
             .build();
 
         return List.of(
-            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "现在几点"),
+            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "鐜板湪鍑犵偣"),
             AssistantMessage.create(
                 "msg-assistant-1",
                 "conv-1",
@@ -93,7 +93,7 @@ class SessionContextRedisMapperTest {
                 "turn-1",
                 "run-1",
                 2L,
-                "我来查询时间",
+                "鎴戞潵鏌ヨ鏃堕棿",
                 List.of(toolCall),
                 FinishReason.TOOL_CALL,
                 UsageInfo.empty()
@@ -109,7 +109,7 @@ class SessionContextRedisMapperTest {
                 "tcr-1",
                 "call-1",
                 "get_time",
-                ToolExecutionStatus.SUCCESS,
+                ToolExecutionStatus.SUCCEEDED,
                 null,
                 null,
                 1L,
@@ -118,3 +118,4 @@ class SessionContextRedisMapperTest {
         );
     }
 }
+

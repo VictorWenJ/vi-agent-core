@@ -13,7 +13,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Run 事件 MySQL 仓储实现。
+ * Run event MySQL repository implementation.
  */
 @Repository
 public class MysqlRunEventRepository implements RunEventRepository {

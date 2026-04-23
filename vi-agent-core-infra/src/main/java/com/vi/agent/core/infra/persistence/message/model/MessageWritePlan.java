@@ -1,4 +1,4 @@
-package com.vi.agent.core.infra.persistence.mysql.message;
+package com.vi.agent.core.infra.persistence.message.model;
 
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageToolCallEntity;
@@ -9,11 +9,11 @@ import lombok.Getter;
 import java.util.List;
 
 /**
- * 消息聚合行。
+ * Write plan for one message aggregate.
  */
 @Getter
 @Builder
-public class MessageAggregateRows {
+public class MessageWritePlan {
 
     private AgentMessageEntity message;
 

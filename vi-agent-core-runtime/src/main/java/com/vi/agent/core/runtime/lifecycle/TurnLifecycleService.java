@@ -27,14 +27,18 @@ public class TurnLifecycleService {
 
     public TurnDedupResult findAndBuildByRequestId(String requestId) {
         return Optional.ofNullable(turnRepository.findByRequestId(requestId))
-            .map(turn -> TurnDedupResult.builder()
-                .status(turn.getStatus())
-                .turn(turn)
-                .userMessage(messageRepository.findByMessageId(turn.getUserMessageId()))
-                .assistantMessage(Optional.ofNullable(turn.getAssistantMessageId())
-                    .map(assistantMessageId -> messageRepository.findByMessageId(assistantMessageId))
-                    .orElse(null))
-                .build()).orElse(null);
+            .map(turn ->
+                TurnDedupResult.builder()
+                    .status(turn.getStatus())
+                    .turn(turn)
+                    .userMessage(Optional.ofNullable(turn.getUserMessageId())
+                        .map(userMessageId -> messageRepository.findByMessageId(userMessageId))
+                        .orElse(null))
+                    .assistantMessage(Optional.ofNullable(turn.getAssistantMessageId())
+                        .map(assistantMessageId -> messageRepository.findByMessageId(assistantMessageId))
+                        .orElse(null))
+                    .build())
+            .orElse(null);
     }
 
     public Turn createRunningTurn(String turnId, String conversationId, String sessionId, String requestId, String runId, String userMessageId) {

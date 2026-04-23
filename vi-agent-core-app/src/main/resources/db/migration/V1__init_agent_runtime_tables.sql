@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS agent_message_tool_call (
   tool_name VARCHAR(128) NOT NULL COMMENT 'tool name',
   arguments_json MEDIUMTEXT NOT NULL COMMENT 'tool arguments json',
   call_index INT NOT NULL COMMENT 'tool call order in assistant message',
-  status VARCHAR(32) NOT NULL COMMENT 'CREATED/DISPATCHED/COMPLETED/FAILED',
+  status VARCHAR(32) NOT NULL COMMENT 'CREATED/DISPATCHED/RUNNING/SUCCEEDED/FAILED',
   created_at DATETIME NOT NULL COMMENT 'created time',
   updated_at DATETIME NOT NULL COMMENT 'updated time',
   UNIQUE KEY uk_agent_message_tool_call_record_id (tool_call_record_id),
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_execution (
   arguments_json MEDIUMTEXT DEFAULT NULL COMMENT 'tool arguments json',
   output_text MEDIUMTEXT DEFAULT NULL COMMENT 'tool output text',
   output_json MEDIUMTEXT DEFAULT NULL COMMENT 'tool output json',
-  status VARCHAR(32) NOT NULL COMMENT 'SUCCESS/FAILED',
+  status VARCHAR(32) NOT NULL COMMENT 'RUNNING/SUCCEEDED/FAILED',
   error_code VARCHAR(64) DEFAULT NULL COMMENT 'tool error code',
   error_message VARCHAR(1024) DEFAULT NULL COMMENT 'tool error message',
   duration_ms BIGINT DEFAULT NULL COMMENT 'execution duration in ms',
@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_execution (
   completed_at DATETIME DEFAULT NULL COMMENT 'execution completed time',
   created_at DATETIME NOT NULL COMMENT 'created time',
   UNIQUE KEY uk_agent_tool_execution_id (tool_execution_id),
+  UNIQUE KEY uk_agent_tool_execution_tool_call_record_id (tool_call_record_id),
   KEY idx_agent_tool_execution_tool_call_record_id (tool_call_record_id),
   KEY idx_agent_tool_execution_tool_call_id (tool_call_id),
   KEY idx_agent_tool_execution_tool_result_message_id (tool_result_message_id),
@@ -153,3 +154,4 @@ CREATE TABLE IF NOT EXISTS agent_run_event (
   KEY idx_agent_run_event_turn_id (turn_id),
   KEY idx_agent_run_event_session_id (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='runtime run events';
+

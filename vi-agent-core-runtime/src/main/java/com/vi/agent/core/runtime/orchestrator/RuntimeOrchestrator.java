@@ -29,7 +29,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Runtime run 级主编排器。
+ * Runtime run orchestrator.
  */
 @Slf4j
 @Component
@@ -115,7 +115,7 @@ public class RuntimeOrchestrator {
             return agentExecutionResult;
         } catch (Throwable throwable) {
             log.error("RuntimeOrchestrator executeInternal error", throwable);
-            throw failureHandler.handle(context, throwable, runtimeEventSink);
+            return failureHandler.handle(context, throwable, runtimeEventSink);
         }
     }
 }

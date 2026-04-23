@@ -173,9 +173,6 @@ public class OpenAICompatibleMessageProjector {
     }
 
     private AgentRuntimeException invalidModelContext(String message) {
-        return new AgentRuntimeException(
-            ErrorCode.INVALID_MODEL_CONTEXT_MESSAGE,
-            "Invalid model context message chain: " + message
-        );
+        return new AgentRuntimeException(ErrorCode.INVALID_MODEL_CONTEXT_MESSAGE, "Invalid model context message chain: " + message);
     }
 }

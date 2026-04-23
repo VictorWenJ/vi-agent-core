@@ -1,5 +1,7 @@
-package com.vi.agent.core.infra.persistence.mysql.message;
+package com.vi.agent.core.infra.persistence.message.handler;
 
+import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
+import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.infra.persistence.mysql.convertor.MysqlTimeConvertor;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentToolExecutionEntity;
@@ -12,7 +14,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * ToolMessage 处理器。
+ * ToolMessage handler.
  */
 @Component
 public class ToolMessageTypeHandler implements MessageTypeHandler<ToolMessage> {

@@ -27,7 +27,7 @@ class OpenAICompatibleMessageProjectorTest {
     @Test
     void projectShouldMapLegalToolChainToUserAssistantTool() {
         List<Message> messages = List.of(
-            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "现在几点"),
+            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "鐜板湪鍑犵偣"),
             buildAssistant("msg-assistant-1", "tcr-1", "call-1"),
             ToolMessage.create(
                 "msg-tool-1",
@@ -40,7 +40,7 @@ class OpenAICompatibleMessageProjectorTest {
                 "tcr-1",
                 "call-1",
                 "get_time",
-                ToolExecutionStatus.SUCCESS,
+                ToolExecutionStatus.SUCCEEDED,
                 null,
                 null,
                 1L,
@@ -62,7 +62,7 @@ class OpenAICompatibleMessageProjectorTest {
     @Test
     void projectShouldFailFastWhenToolMessageHasNoPendingAssistantToolCall() {
         List<Message> messages = List.of(
-            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "现在几点"),
+            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "鐜板湪鍑犵偣"),
             ToolMessage.create(
                 "msg-tool-1",
                 "conv-1",
@@ -74,7 +74,7 @@ class OpenAICompatibleMessageProjectorTest {
                 "tcr-1",
                 "call-1",
                 "get_time",
-                ToolExecutionStatus.SUCCESS,
+                ToolExecutionStatus.SUCCEEDED,
                 null,
                 null,
                 1L,
@@ -108,10 +108,11 @@ class OpenAICompatibleMessageProjectorTest {
             "turn-1",
             "run-1",
             2L,
-            "我来查询时间",
+            "鎴戞潵鏌ヨ鏃堕棿",
             List.of(toolCall),
             FinishReason.TOOL_CALL,
             UsageInfo.empty()
         );
     }
 }
+

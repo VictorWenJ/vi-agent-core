@@ -7,9 +7,10 @@ import com.vi.agent.core.runtime.factory.MessageFactory;
 import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * turn 启动初始化服务。
+ * turn start initialization service.
  */
 @Service
 public class TurnInitializationService {
@@ -23,6 +24,7 @@ public class TurnInitializationService {
     @Resource
     private PersistenceCoordinator persistenceCoordinator;
 
+    @Transactional(rollbackFor = Exception.class)
     public TurnStartResult start(RuntimeExecutionContext context) {
         UserMessage userMessage = messageFactory.createUserMessage(
             context.conversationId(),
