@@ -3,9 +3,10 @@ package com.vi.agent.core.runtime.persistence;
 import com.vi.agent.core.model.conversation.Conversation;
 import com.vi.agent.core.model.conversation.ConversationStatus;
 import com.vi.agent.core.model.llm.FinishReason;
-import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.ToolMessage;
 import com.vi.agent.core.model.port.ConversationRepository;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.RunEventRepository;
@@ -37,11 +38,80 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PersistenceCoordinatorFailureFlowTest {
 
     @Test
-    void persistFailureShouldPersistToolFactsAndKeepSessionActive() {
+    void persistFailureShouldKeepSucceededFactsAndCancelPendingCalls() {
+        PersistenceCoordinator coordinator = new PersistenceCoordinator();
+        StubMessageRepository messageRepository = new StubMessageRepository();
+        StubTurnRepository turnRepository = new StubTurnRepository();
+        StubSessionRepository sessionRepository = new StubSessionRepository();
+        StubConversationRepository conversationRepository = new StubConversationRepository();
+        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubRunEventRepository runEventRepository = new StubRunEventRepository();
+
+        TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
+        TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
+        TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
+        TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
+        TestFieldUtils.setField(coordinator, "sessionStateRepository", sessionStateRepository);
+        TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
+        TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+
+        AgentRunContext runContext = buildRunContext();
+        AssistantMessage assistantDecision = AssistantMessage.create(
+            "msg-assistant-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            2L,
+            "call tools",
+            List.of(
+                toolCall("tcr-1", "call-1", ToolCallStatus.SUCCEEDED),
+                toolCall("tcr-2", "call-2", ToolCallStatus.FAILED),
+                toolCall("tcr-3", "call-3", ToolCallStatus.CREATED)
+            ),
+            FinishReason.TOOL_CALL,
+            null
+        );
+        runContext.appendWorkingMessage(assistantDecision);
+        runContext.appendToolCall(toolCall("tcr-1", "call-1", ToolCallStatus.SUCCEEDED));
+        runContext.appendToolCall(toolCall("tcr-2", "call-2", ToolCallStatus.FAILED));
+        runContext.appendToolCall(toolCall("tcr-3", "call-3", ToolCallStatus.CREATED));
+        runContext.appendToolExecution(toolExecution("tex-1", "tcr-1", "call-1", ToolExecutionStatus.SUCCEEDED, "msg-tool-1"));
+        runContext.appendToolExecution(toolExecution("tex-2", "tcr-2", "call-2", ToolExecutionStatus.FAILED, null));
+
+        coordinator.persistFailure(runContext, "INVALID_MODEL_CONTEXT_MESSAGE", "invalid model context");
+
+        assertEquals(1, messageRepository.savedAssistantMessages.size());
+        assertEquals("msg-assistant-1", messageRepository.savedAssistantMessages.get(0).getMessageId());
+        assertEquals(1, messageRepository.failureToolFactsCount);
+        assertEquals(3, messageRepository.lastToolCalls.size());
+        assertEquals(ToolCallStatus.SUCCEEDED, statusOf(messageRepository.lastToolCalls, "tcr-1"));
+        assertEquals(ToolCallStatus.FAILED, statusOf(messageRepository.lastToolCalls, "tcr-2"));
+        assertEquals(ToolCallStatus.CANCELLED, statusOf(messageRepository.lastToolCalls, "tcr-3"));
+        assertEquals(2, messageRepository.lastToolExecutions.size());
+        assertEquals(ToolExecutionStatus.SUCCEEDED, executionStatusOf(messageRepository.lastToolExecutions, "tcr-1"));
+        assertEquals(ToolExecutionStatus.FAILED, executionStatusOf(messageRepository.lastToolExecutions, "tcr-2"));
+        assertNull(findExecution(messageRepository.lastToolExecutions, "tcr-2").getToolResultMessageId());
+
+        assertNotNull(turnRepository.lastUpdatedTurn);
+        assertEquals(TurnStatus.FAILED, turnRepository.lastUpdatedTurn.getStatus());
+        assertEquals("INVALID_MODEL_CONTEXT_MESSAGE", turnRepository.lastUpdatedTurn.getErrorCode());
+
+        assertNotNull(sessionRepository.lastUpdatedSession);
+        assertEquals(SessionStatus.ACTIVE, sessionRepository.lastUpdatedSession.getStatus());
+
+        assertTrue(runEventRepository.savedEvents.stream().anyMatch(event -> event.getEventType() == RunEventType.TOOL_CANCELLED));
+        assertTrue(runEventRepository.savedEvents.stream().anyMatch(event -> event.getEventType() == RunEventType.RUN_FAILED));
+        assertEquals("sess-1", sessionStateRepository.lastEvictedSessionId);
+    }
+
+    @Test
+    void toolLifecyclePersistenceShouldEmitEventsImmediately() {
         PersistenceCoordinator coordinator = new PersistenceCoordinator();
         StubMessageRepository messageRepository = new StubMessageRepository();
         StubTurnRepository turnRepository = new StubTurnRepository();
@@ -67,124 +137,66 @@ class PersistenceCoordinatorFailureFlowTest {
             "run-1",
             2L,
             "call tool",
-            List.of(AssistantToolCall.builder()
-                .toolCallRecordId("tcr-1")
-                .toolCallId("call-1")
-                .assistantMessageId("msg-assistant-1")
-                .conversationId("conv-1")
-                .sessionId("sess-1")
-                .turnId("turn-1")
-                .runId("run-1")
-                .toolName("tool-a")
-                .argumentsJson("{\"k\":\"v\"}")
-                .callIndex(0)
-                .status(ToolCallStatus.CREATED)
-                .createdAt(Instant.now())
-                .build()),
+            List.of(toolCall("tcr-1", "call-1", ToolCallStatus.CREATED)),
             FinishReason.TOOL_CALL,
             null
         );
-        runContext.appendWorkingMessage(assistantDecision);
-        runContext.appendToolCall(AssistantToolCall.builder()
-            .toolCallRecordId("tcr-1")
-            .toolCallId("call-1")
-            .assistantMessageId("msg-assistant-1")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .toolName("tool-a")
-            .argumentsJson("{\"k\":\"v\"}")
-            .callIndex(0)
-            .status(ToolCallStatus.CREATED)
-            .createdAt(Instant.now())
-            .build());
-        runContext.appendToolExecution(ToolExecution.builder()
+        ToolExecution runningExecution = toolExecution("tex-1", "tcr-1", "call-1", ToolExecutionStatus.RUNNING, null);
+        ToolExecution completedExecution = ToolExecution.builder()
             .toolExecutionId("tex-1")
             .toolCallRecordId("tcr-1")
             .toolCallId("call-1")
-            .toolResultMessageId(null)
+            .toolResultMessageId("msg-tool-1")
             .conversationId("conv-1")
             .sessionId("sess-1")
             .turnId("turn-1")
             .runId("run-1")
-            .toolName("tool-a")
-            .argumentsJson("{\"k\":\"v\"}")
-            .status(ToolExecutionStatus.FAILED)
-            .errorCode("TOOL_EXECUTION_FAILED")
-            .errorMessage("tool failed")
-            .durationMs(13L)
+            .toolName("tool-1")
+            .argumentsJson("{}")
+            .outputText("{\"ok\":true}")
+            .outputJson("{\"ok\":true}")
+            .status(ToolExecutionStatus.SUCCEEDED)
+            .durationMs(10L)
             .startedAt(Instant.now())
             .completedAt(Instant.now())
             .createdAt(Instant.now())
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-call")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_CALL_CREATED)
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-dispatched")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_DISPATCHED)
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-started")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_STARTED)
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-failed")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_FAILED)
-            .build());
+            .build();
+        ToolMessage toolMessage = ToolMessage.create(
+            "msg-tool-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            3L,
+            "{\"ok\":true}",
+            "tcr-1",
+            "call-1",
+            "tool-1",
+            ToolExecutionStatus.SUCCEEDED,
+            null,
+            null,
+            10L,
+            "{}"
+        );
 
-        coordinator.persistFailure(runContext, "INVALID_MODEL_CONTEXT_MESSAGE", "invalid model context");
+        coordinator.persistAssistantToolDecision(runContext, assistantDecision);
+        coordinator.persistToolDispatched(runContext, toolCall("tcr-1", "call-1", ToolCallStatus.DISPATCHED));
+        coordinator.persistToolStarted(runContext, toolCall("tcr-1", "call-1", ToolCallStatus.RUNNING), runningExecution);
+        coordinator.persistToolCompleted(runContext, toolCall("tcr-1", "call-1", ToolCallStatus.SUCCEEDED), completedExecution, toolMessage);
 
-        assertEquals(1, messageRepository.savedAssistantMessages.size());
-        assertEquals("msg-assistant-1", messageRepository.savedAssistantMessages.get(0).getMessageId());
-        assertEquals(1, messageRepository.failureToolFactsCount);
-        assertEquals(1, messageRepository.lastToolCalls.size());
-        assertEquals(1, messageRepository.lastToolExecutions.size());
-        assertNull(messageRepository.lastToolExecutions.get(0).getToolResultMessageId());
-
-        assertNotNull(turnRepository.lastUpdatedTurn);
-        assertEquals(TurnStatus.FAILED, turnRepository.lastUpdatedTurn.getStatus());
-        assertEquals("INVALID_MODEL_CONTEXT_MESSAGE", turnRepository.lastUpdatedTurn.getErrorCode());
-
-        assertNotNull(sessionRepository.lastUpdatedSession);
-        assertEquals(SessionStatus.ACTIVE, sessionRepository.lastUpdatedSession.getStatus());
-
-        assertEquals(5, runEventRepository.savedEvents.size());
         assertEquals(List.of(
             RunEventType.TOOL_CALL_CREATED,
             RunEventType.TOOL_DISPATCHED,
             RunEventType.TOOL_STARTED,
-            RunEventType.TOOL_FAILED,
-            RunEventType.RUN_FAILED
+            RunEventType.TOOL_COMPLETED
         ), runEventRepository.savedEvents.stream().map(RunEventRecord::getEventType).toList());
-
-        assertEquals("sess-1", sessionStateRepository.lastEvictedSessionId);
+        assertEquals(List.of(ToolCallStatus.DISPATCHED, ToolCallStatus.RUNNING, ToolCallStatus.SUCCEEDED), messageRepository.updatedToolCallStatuses);
+        assertEquals(1, messageRepository.runningExecutions.size());
+        assertEquals(1, messageRepository.finalExecutions.size());
     }
 
     @Test
-    void persistSuccessShouldPersistToolLifecycleEvents() {
+    void persistSuccessShouldWriteRunCompletedEvent() {
         PersistenceCoordinator coordinator = new PersistenceCoordinator();
         StubMessageRepository messageRepository = new StubMessageRepository();
         StubTurnRepository turnRepository = new StubTurnRepository();
@@ -202,43 +214,6 @@ class PersistenceCoordinatorFailureFlowTest {
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
 
         AgentRunContext runContext = buildRunContext();
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-call")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_CALL_CREATED)
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-dispatched")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_DISPATCHED)
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-started")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_STARTED)
-            .build());
-        runContext.appendRunEvent(RunEventRecord.builder()
-            .eventId("evt-tool-completed")
-            .conversationId("conv-1")
-            .sessionId("sess-1")
-            .turnId("turn-1")
-            .runId("run-1")
-            .eventIndex(runContext.nextRunEventIndex())
-            .eventType(RunEventType.TOOL_COMPLETED)
-            .build());
-
         AssistantMessage finalAssistant = AssistantMessage.create(
             "msg-assistant-final-1",
             "conv-1",
@@ -262,13 +237,9 @@ class PersistenceCoordinatorFailureFlowTest {
 
         coordinator.persistSuccess(runContext, loopExecutionResult);
 
-        assertEquals(List.of(
-            RunEventType.TOOL_CALL_CREATED,
-            RunEventType.TOOL_DISPATCHED,
-            RunEventType.TOOL_STARTED,
-            RunEventType.TOOL_COMPLETED,
-            RunEventType.RUN_COMPLETED
-        ), runEventRepository.savedEvents.stream().map(RunEventRecord::getEventType).toList());
+        assertEquals(1, runEventRepository.savedEvents.size());
+        assertEquals(RunEventType.RUN_COMPLETED, runEventRepository.savedEvents.get(0).getEventType());
+        assertEquals(TurnStatus.COMPLETED, turnRepository.lastUpdatedTurn.getStatus());
     }
 
     private AgentRunContext buildRunContext() {
@@ -297,7 +268,6 @@ class PersistenceCoordinatorFailureFlowTest {
             .userMessageId("msg-user-1")
             .createdAt(Instant.now())
             .build();
-
         return AgentRunContext.builder()
             .runMetadata(RunMetadata.builder().traceId("trace-1").runId("run-1").turnId("turn-1").build())
             .conversation(conversation)
@@ -308,10 +278,80 @@ class PersistenceCoordinatorFailureFlowTest {
             .build();
     }
 
+    private AssistantToolCall toolCall(String recordId, String callId, ToolCallStatus status) {
+        return AssistantToolCall.builder()
+            .toolCallRecordId(recordId)
+            .toolCallId(callId)
+            .assistantMessageId("msg-assistant-1")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .toolName("tool-" + callId)
+            .argumentsJson("{}")
+            .callIndex(0)
+            .status(status)
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    private ToolExecution toolExecution(
+        String executionId,
+        String recordId,
+        String callId,
+        ToolExecutionStatus status,
+        String toolResultMessageId
+    ) {
+        return ToolExecution.builder()
+            .toolExecutionId(executionId)
+            .toolCallRecordId(recordId)
+            .toolCallId(callId)
+            .toolResultMessageId(toolResultMessageId)
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .toolName("tool-" + callId)
+            .argumentsJson("{}")
+            .status(status)
+            .errorCode(status == ToolExecutionStatus.FAILED ? "TOOL_EXECUTION_FAILED" : null)
+            .errorMessage(status == ToolExecutionStatus.FAILED ? "tool failed" : null)
+            .durationMs(11L)
+            .startedAt(Instant.now())
+            .completedAt(status == ToolExecutionStatus.RUNNING ? null : Instant.now())
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    private ToolCallStatus statusOf(List<AssistantToolCall> toolCalls, String toolCallRecordId) {
+        return toolCalls.stream()
+            .filter(toolCall -> toolCallRecordId.equals(toolCall.getToolCallRecordId()))
+            .map(AssistantToolCall::getStatus)
+            .findFirst()
+            .orElse(null);
+    }
+
+    private ToolExecutionStatus executionStatusOf(List<ToolExecution> toolExecutions, String toolCallRecordId) {
+        return toolExecutions.stream()
+            .filter(execution -> toolCallRecordId.equals(execution.getToolCallRecordId()))
+            .map(ToolExecution::getStatus)
+            .findFirst()
+            .orElse(null);
+    }
+
+    private ToolExecution findExecution(List<ToolExecution> toolExecutions, String toolCallRecordId) {
+        return toolExecutions.stream()
+            .filter(execution -> toolCallRecordId.equals(execution.getToolCallRecordId()))
+            .findFirst()
+            .orElse(null);
+    }
+
     private static final class StubRunIdentityFactory extends RunIdentityFactory {
+        private long index;
+
         @Override
         public String nextRunEventId() {
-            return "evt-1";
+            return "evt-" + (++index);
         }
     }
 
@@ -320,6 +360,9 @@ class PersistenceCoordinatorFailureFlowTest {
         private List<AssistantToolCall> lastToolCalls = List.of();
         private List<ToolExecution> lastToolExecutions = List.of();
         private final List<AssistantMessage> savedAssistantMessages = new ArrayList<>();
+        private final List<ToolCallStatus> updatedToolCallStatuses = new ArrayList<>();
+        private final List<ToolExecution> runningExecutions = new ArrayList<>();
+        private final List<ToolExecution> finalExecutions = new ArrayList<>();
 
         @Override
         public void saveBatch(List<Message> messages) {
@@ -360,6 +403,25 @@ class PersistenceCoordinatorFailureFlowTest {
         @Override
         public void saveAssistantMessageIfAbsent(AssistantMessage assistantMessage) {
             savedAssistantMessages.add(assistantMessage);
+        }
+
+        @Override
+        public void saveToolCallCreated(AssistantToolCall toolCall) {
+        }
+
+        @Override
+        public void updateToolCallStatus(String toolCallRecordId, ToolCallStatus status) {
+            updatedToolCallStatuses.add(status);
+        }
+
+        @Override
+        public void upsertToolExecutionRunning(ToolExecution toolExecution) {
+            runningExecutions.add(toolExecution);
+        }
+
+        @Override
+        public void updateToolExecutionFinal(ToolExecution toolExecution) {
+            finalExecutions.add(toolExecution);
         }
     }
 

@@ -26,6 +26,8 @@ public enum RunEventType {
 
     TOOL_FAILED("tool_failed", "tool failed"),
 
+    TOOL_CANCELLED("tool_cancelled", "tool cancelled"),
+
     MESSAGE_COMPLETED("message_completed", "message completed"),
 
     RUN_COMPLETED("run_completed", "run completed"),

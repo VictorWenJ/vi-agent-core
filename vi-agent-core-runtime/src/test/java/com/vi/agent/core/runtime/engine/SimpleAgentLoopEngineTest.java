@@ -8,6 +8,7 @@ import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
 import com.vi.agent.core.model.llm.ModelToolCall;
 import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.UserMessage;
@@ -38,6 +39,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -61,7 +63,7 @@ class SimpleAgentLoopEngineTest {
                 .argumentsJson("{\"k\":\"v\"}")
                 .build()))
             .build()));
-        StubToolGateway toolGateway = new StubToolGateway(ToolResult.builder()
+        StubToolGateway toolGateway = new StubToolGateway(List.of(ToolResult.builder()
             .toolCallRecordId("ignored")
             .toolCallId("call-1")
             .toolName("tool-a")
@@ -71,7 +73,7 @@ class SimpleAgentLoopEngineTest {
             .errorCode("TOOL_EXECUTION_FAILED")
             .errorMessage("tool failed")
             .durationMs(12L)
-            .build());
+            .build()));
 
         TestFieldUtils.setField(engine, "llmGateway", llmGateway);
         TestFieldUtils.setField(engine, "toolGateway", toolGateway);
@@ -96,6 +98,7 @@ class SimpleAgentLoopEngineTest {
             ToolCallStatus.FAILED
         ), persistenceCoordinator.toolCallStatusTransitions);
         assertEquals(List.of(ToolExecutionStatus.RUNNING, ToolExecutionStatus.FAILED), persistenceCoordinator.toolExecutionStatusTransitions);
+        assertEquals(1, toolGateway.executedCount());
     }
 
     @Test
@@ -119,7 +122,7 @@ class SimpleAgentLoopEngineTest {
                 .toolCalls(List.of())
                 .build()
         ));
-        StubToolGateway toolGateway = new StubToolGateway(ToolResult.builder()
+        StubToolGateway toolGateway = new StubToolGateway(List.of(ToolResult.builder()
             .toolCallRecordId("ignored")
             .toolCallId("call-1")
             .toolName("tool-a")
@@ -127,7 +130,7 @@ class SimpleAgentLoopEngineTest {
             .success(true)
             .output("{\"ok\":true}")
             .durationMs(8L)
-            .build());
+            .build()));
 
         TestFieldUtils.setField(engine, "llmGateway", llmGateway);
         TestFieldUtils.setField(engine, "toolGateway", toolGateway);
@@ -147,6 +150,70 @@ class SimpleAgentLoopEngineTest {
             ToolCallStatus.SUCCEEDED
         ), persistenceCoordinator.toolCallStatusTransitions);
         assertEquals(List.of(ToolExecutionStatus.RUNNING, ToolExecutionStatus.SUCCEEDED), persistenceCoordinator.toolExecutionStatusTransitions);
+        assertEquals(1, toolGateway.executedCount());
+    }
+
+    @Test
+    void multiToolFailureShouldNotExecuteRemainingToolCalls() {
+        SimpleAgentLoopEngine engine = new SimpleAgentLoopEngine();
+        MessageFactory messageFactory = createMessageFactory();
+        RecordingPersistenceCoordinator persistenceCoordinator = new RecordingPersistenceCoordinator();
+        StubLlmGateway llmGateway = new StubLlmGateway(List.of(ModelResponse.builder()
+            .content("call tools")
+            .finishReason(FinishReason.TOOL_CALL)
+            .toolCalls(List.of(
+                ModelToolCall.builder().toolCallId("call-1").toolName("tool-a").argumentsJson("{\"id\":1}").build(),
+                ModelToolCall.builder().toolCallId("call-2").toolName("tool-b").argumentsJson("{\"id\":2}").build(),
+                ModelToolCall.builder().toolCallId("call-3").toolName("tool-c").argumentsJson("{\"id\":3}").build()
+            ))
+            .build()));
+        StubToolGateway toolGateway = new StubToolGateway(List.of(
+            ToolResult.builder()
+                .toolCallRecordId("ignored")
+                .toolCallId("call-1")
+                .toolName("tool-a")
+                .turnId("turn-1")
+                .success(true)
+                .output("{\"ok\":1}")
+                .durationMs(5L)
+                .build(),
+            ToolResult.builder()
+                .toolCallRecordId("ignored")
+                .toolCallId("call-2")
+                .toolName("tool-b")
+                .turnId("turn-1")
+                .success(false)
+                .output("")
+                .errorCode("TOOL_EXECUTION_FAILED")
+                .errorMessage("tool-b failed")
+                .durationMs(6L)
+                .build()
+        ));
+
+        TestFieldUtils.setField(engine, "llmGateway", llmGateway);
+        TestFieldUtils.setField(engine, "toolGateway", toolGateway);
+        TestFieldUtils.setField(engine, "messageFactory", messageFactory);
+        TestFieldUtils.setField(engine, "persistenceCoordinator", persistenceCoordinator);
+        TestFieldUtils.setField(engine, "maxIterations", 3);
+
+        AgentRunContext runContext = buildRunContext();
+
+        assertThrows(AgentRuntimeException.class, () -> engine.run(runContext));
+        assertEquals(2, toolGateway.executedCount());
+        assertEquals(1, persistenceCoordinator.toolCompletedCount);
+        assertEquals(1, persistenceCoordinator.toolFailedCount);
+        assertEquals(0, persistenceCoordinator.toolCancelledCount);
+        assertEquals(List.of(
+            ToolCallStatus.CREATED,
+            ToolCallStatus.CREATED,
+            ToolCallStatus.CREATED,
+            ToolCallStatus.DISPATCHED,
+            ToolCallStatus.RUNNING,
+            ToolCallStatus.SUCCEEDED,
+            ToolCallStatus.DISPATCHED,
+            ToolCallStatus.RUNNING,
+            ToolCallStatus.FAILED
+        ), persistenceCoordinator.toolCallStatusTransitions);
     }
 
     private MessageFactory createMessageFactory() {
@@ -220,20 +287,26 @@ class SimpleAgentLoopEngineTest {
     }
 
     private static final class StubToolGateway implements ToolGateway {
-        private final ToolResult toolResult;
+        private final Queue<ToolResult> toolResults;
+        private final AtomicInteger executedCount = new AtomicInteger();
 
-        private StubToolGateway(ToolResult toolResult) {
-            this.toolResult = toolResult;
+        private StubToolGateway(List<ToolResult> toolResults) {
+            this.toolResults = new ArrayDeque<>(toolResults);
         }
 
         @Override
         public ToolResult execute(ToolCall toolCall) {
-            return toolResult;
+            executedCount.incrementAndGet();
+            return toolResults.remove();
         }
 
         @Override
         public List<ToolDefinition> listDefinitions() {
             return List.of();
+        }
+
+        private int executedCount() {
+            return executedCount.get();
         }
     }
 
@@ -292,10 +365,16 @@ class SimpleAgentLoopEngineTest {
     private static final class RecordingPersistenceCoordinator extends PersistenceCoordinator {
         private final List<ToolCallStatus> toolCallStatusTransitions = new ArrayList<>();
         private final List<ToolExecutionStatus> toolExecutionStatusTransitions = new ArrayList<>();
+        private int toolCompletedCount;
+        private int toolFailedCount;
+        private int toolCancelledCount;
 
         @Override
-        public void persistToolCallCreated(AgentRunContext runContext, AssistantToolCall toolCall) {
-            toolCallStatusTransitions.add(ToolCallStatus.CREATED);
+        public void persistAssistantToolDecision(AgentRunContext runContext, AssistantMessage assistantMessage) {
+            if (assistantMessage == null || assistantMessage.getToolCalls() == null) {
+                return;
+            }
+            assistantMessage.getToolCalls().forEach(toolCall -> toolCallStatusTransitions.add(ToolCallStatus.CREATED));
         }
 
         @Override
@@ -310,15 +389,23 @@ class SimpleAgentLoopEngineTest {
         }
 
         @Override
-        public void persistToolCompleted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution completedExecution) {
+        public void persistToolCompleted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution completedExecution, Message toolMessage) {
             toolCallStatusTransitions.add(ToolCallStatus.SUCCEEDED);
             toolExecutionStatusTransitions.add(ToolExecutionStatus.SUCCEEDED);
+            toolCompletedCount++;
         }
 
         @Override
         public void persistToolFailed(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution failedExecution) {
             toolCallStatusTransitions.add(ToolCallStatus.FAILED);
             toolExecutionStatusTransitions.add(ToolExecutionStatus.FAILED);
+            toolFailedCount++;
+        }
+
+        @Override
+        public void persistToolCancelled(AgentRunContext runContext, AssistantToolCall cancelledToolCall) {
+            toolCallStatusTransitions.add(ToolCallStatus.CANCELLED);
+            toolCancelledCount++;
         }
     }
 }

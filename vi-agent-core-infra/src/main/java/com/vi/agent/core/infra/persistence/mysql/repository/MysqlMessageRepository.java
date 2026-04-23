@@ -66,7 +66,7 @@ public class MysqlMessageRepository implements MessageRepository {
 
         for (MessageWritePlan writePlan : writePlans) {
             if (writePlan.getMessage() != null) {
-                messageMapper.insert(writePlan.getMessage());
+                insertMessageIfAbsent(writePlan.getMessage());
             }
         }
 
@@ -227,9 +227,7 @@ public class MysqlMessageRepository implements MessageRepository {
         AgentMessageToolCallEntity existing = findToolCallByRecordId(toolCall.getToolCallRecordId());
         if (existing == null) {
             messageToolCallMapper.insert(toToolCallEntity(toolCall, ToolCallStatus.CREATED));
-            return;
         }
-        updateToolCallStatus(toolCall.getToolCallRecordId(), ToolCallStatus.CREATED);
     }
 
     @Override
@@ -331,11 +329,16 @@ public class MysqlMessageRepository implements MessageRepository {
 
         for (AssistantToolCall toolCall : uniqueByRecordId.values()) {
             String toolCallRecordId = toolCall.getToolCallRecordId();
+            ToolCallStatus targetStatus = toolCall.getStatus() == null ? ToolCallStatus.FAILED : toolCall.getStatus();
             if (existingRecordIds.contains(toolCallRecordId)) {
-                updateToolCallStatus(toolCallRecordId, ToolCallStatus.FAILED);
+                AgentMessageToolCallEntity existing = findToolCallByRecordId(toolCallRecordId);
+                if (existing != null && shouldSkipToolCallOverride(existing.getStatus(), targetStatus)) {
+                    continue;
+                }
+                updateToolCallStatus(toolCallRecordId, targetStatus);
                 continue;
             }
-            messageToolCallMapper.insert(toFailedToolCallEntity(toolCall));
+            messageToolCallMapper.insert(toToolCallEntity(toolCall, targetStatus));
         }
     }
 
@@ -365,10 +368,18 @@ public class MysqlMessageRepository implements MessageRepository {
         for (ToolExecution toolExecution : uniqueByRecordId.values()) {
             String toolCallRecordId = toolExecution.getToolCallRecordId();
             if (existingRecordIds.contains(toolCallRecordId)) {
-                updateFailedToolExecution(toolExecution);
+                AgentToolExecutionEntity existing = findToolExecutionByRecordId(toolCallRecordId);
+                if (existing != null && shouldSkipToolExecutionOverride(existing.getStatus(), toolExecution.getStatus())) {
+                    continue;
+                }
+                updateToolExecutionByFact(toolExecution);
                 continue;
             }
-            toolExecutionMapper.insert(toFailedToolExecutionEntity(toolExecution));
+            if (toolExecution.getStatus() == ToolExecutionStatus.RUNNING) {
+                toolExecutionMapper.insert(toRunningExecutionEntity(toolExecution));
+            } else {
+                toolExecutionMapper.insert(toFinalExecutionEntity(toolExecution));
+            }
         }
     }
 
@@ -403,66 +414,25 @@ public class MysqlMessageRepository implements MessageRepository {
         }
     }
 
-    private void updateFailedToolExecution(ToolExecution toolExecution) {
+    private void updateToolExecutionByFact(ToolExecution toolExecution) {
+        ToolExecutionStatus targetStatus = toolExecution.getStatus() == null ? ToolExecutionStatus.FAILED : toolExecution.getStatus();
         toolExecutionMapper.update(
             null,
             Wrappers.lambdaUpdate(AgentToolExecutionEntity.class)
                 .eq(AgentToolExecutionEntity::getToolCallRecordId, toolExecution.getToolCallRecordId())
-                .set(AgentToolExecutionEntity::getStatus, ToolExecutionStatus.FAILED)
-                .set(AgentToolExecutionEntity::getToolResultMessageId, null)
-                .set(AgentToolExecutionEntity::getErrorCode, StringUtils.defaultIfBlank(toolExecution.getErrorCode(), "TOOL_EXECUTION_FAILED"))
-                .set(AgentToolExecutionEntity::getErrorMessage, StringUtils.defaultIfBlank(toolExecution.getErrorMessage(), "tool execution failed"))
+                .set(AgentToolExecutionEntity::getStatus, targetStatus)
+                .set(AgentToolExecutionEntity::getToolResultMessageId, targetStatus == ToolExecutionStatus.SUCCEEDED
+                    ? toolExecution.getToolResultMessageId() : null)
+                .set(AgentToolExecutionEntity::getErrorCode, targetStatus == ToolExecutionStatus.FAILED
+                    ? StringUtils.defaultIfBlank(toolExecution.getErrorCode(), "TOOL_EXECUTION_FAILED") : null)
+                .set(AgentToolExecutionEntity::getErrorMessage, targetStatus == ToolExecutionStatus.FAILED
+                    ? StringUtils.defaultIfBlank(toolExecution.getErrorMessage(), "tool execution failed") : null)
                 .set(AgentToolExecutionEntity::getDurationMs, toolExecution.getDurationMs())
                 .set(AgentToolExecutionEntity::getOutputText, toolExecution.getOutputText())
                 .set(AgentToolExecutionEntity::getOutputJson, toolExecution.getOutputJson())
-                .set(AgentToolExecutionEntity::getCompletedAt, defaultNow(toolExecution.getCompletedAt()))
+                .set(AgentToolExecutionEntity::getCompletedAt, targetStatus == ToolExecutionStatus.RUNNING ? null : defaultNow(toolExecution.getCompletedAt()))
                 .set(AgentToolExecutionEntity::getUpdatedAt, LocalDateTime.now())
         );
-    }
-
-    private AgentMessageToolCallEntity toFailedToolCallEntity(AssistantToolCall toolCall) {
-        LocalDateTime now = LocalDateTime.now();
-        AgentMessageToolCallEntity entity = new AgentMessageToolCallEntity();
-        entity.setToolCallRecordId(toolCall.getToolCallRecordId());
-        entity.setToolCallId(toolCall.getToolCallId());
-        entity.setAssistantMessageId(toolCall.getAssistantMessageId());
-        entity.setConversationId(toolCall.getConversationId());
-        entity.setSessionId(toolCall.getSessionId());
-        entity.setTurnId(toolCall.getTurnId());
-        entity.setRunId(toolCall.getRunId());
-        entity.setToolName(toolCall.getToolName());
-        entity.setArgumentsJson(toolCall.getArgumentsJson());
-        entity.setCallIndex(toolCall.getCallIndex());
-        entity.setStatus(ToolCallStatus.FAILED);
-        entity.setCreatedAt(defaultNow(toolCall.getCreatedAt()));
-        entity.setUpdatedAt(now);
-        return entity;
-    }
-
-    private AgentToolExecutionEntity toFailedToolExecutionEntity(ToolExecution toolExecution) {
-        LocalDateTime now = LocalDateTime.now();
-        AgentToolExecutionEntity entity = new AgentToolExecutionEntity();
-        entity.setToolExecutionId(StringUtils.defaultIfBlank(toolExecution.getToolExecutionId(), "tex-" + UUID.randomUUID()));
-        entity.setToolCallRecordId(toolExecution.getToolCallRecordId());
-        entity.setToolCallId(toolExecution.getToolCallId());
-        entity.setToolResultMessageId(null);
-        entity.setConversationId(toolExecution.getConversationId());
-        entity.setSessionId(toolExecution.getSessionId());
-        entity.setTurnId(toolExecution.getTurnId());
-        entity.setRunId(toolExecution.getRunId());
-        entity.setToolName(toolExecution.getToolName());
-        entity.setArgumentsJson(toolExecution.getArgumentsJson());
-        entity.setOutputText(toolExecution.getOutputText());
-        entity.setOutputJson(toolExecution.getOutputJson());
-        entity.setStatus(ToolExecutionStatus.FAILED);
-        entity.setErrorCode(StringUtils.defaultIfBlank(toolExecution.getErrorCode(), "TOOL_EXECUTION_FAILED"));
-        entity.setErrorMessage(StringUtils.defaultIfBlank(toolExecution.getErrorMessage(), "tool execution failed"));
-        entity.setDurationMs(toolExecution.getDurationMs());
-        entity.setStartedAt(defaultNow(toolExecution.getStartedAt()));
-        entity.setCompletedAt(defaultNow(toolExecution.getCompletedAt()));
-        entity.setCreatedAt(defaultNow(toolExecution.getCreatedAt()));
-        entity.setUpdatedAt(now);
-        return entity;
     }
 
     private void insertToolCallIfAbsent(AgentMessageToolCallEntity toolCallEntity) {
@@ -548,7 +518,8 @@ public class MysqlMessageRepository implements MessageRepository {
         entity.setToolExecutionId(StringUtils.defaultIfBlank(toolExecution.getToolExecutionId(), "tex-" + UUID.randomUUID()));
         entity.setToolCallRecordId(toolExecution.getToolCallRecordId());
         entity.setToolCallId(toolExecution.getToolCallId());
-        entity.setToolResultMessageId(toolExecution.getToolResultMessageId());
+        entity.setToolResultMessageId(toolExecution.getStatus() == ToolExecutionStatus.SUCCEEDED
+            ? toolExecution.getToolResultMessageId() : null);
         entity.setConversationId(toolExecution.getConversationId());
         entity.setSessionId(toolExecution.getSessionId());
         entity.setTurnId(toolExecution.getTurnId());
@@ -558,14 +529,38 @@ public class MysqlMessageRepository implements MessageRepository {
         entity.setOutputText(toolExecution.getOutputText());
         entity.setOutputJson(toolExecution.getOutputJson());
         entity.setStatus(toolExecution.getStatus());
-        entity.setErrorCode(toolExecution.getErrorCode());
-        entity.setErrorMessage(toolExecution.getErrorMessage());
+        entity.setErrorCode(toolExecution.getStatus() == ToolExecutionStatus.FAILED
+            ? StringUtils.defaultIfBlank(toolExecution.getErrorCode(), "TOOL_EXECUTION_FAILED") : null);
+        entity.setErrorMessage(toolExecution.getStatus() == ToolExecutionStatus.FAILED
+            ? StringUtils.defaultIfBlank(toolExecution.getErrorMessage(), "tool execution failed") : null);
         entity.setDurationMs(toolExecution.getDurationMs());
         entity.setStartedAt(defaultNow(toolExecution.getStartedAt()));
         entity.setCompletedAt(defaultNow(toolExecution.getCompletedAt()));
         entity.setCreatedAt(defaultNow(toolExecution.getCreatedAt()));
         entity.setUpdatedAt(now);
         return entity;
+    }
+
+    private boolean shouldSkipToolCallOverride(ToolCallStatus existingStatus, ToolCallStatus targetStatus) {
+        return existingStatus == ToolCallStatus.SUCCEEDED && targetStatus != ToolCallStatus.SUCCEEDED;
+    }
+
+    private boolean shouldSkipToolExecutionOverride(ToolExecutionStatus existingStatus, ToolExecutionStatus targetStatus) {
+        return existingStatus == ToolExecutionStatus.SUCCEEDED && targetStatus != ToolExecutionStatus.SUCCEEDED;
+    }
+
+    private void insertMessageIfAbsent(AgentMessageEntity messageEntity) {
+        if (messageEntity == null || StringUtils.isBlank(messageEntity.getMessageId())) {
+            return;
+        }
+        AgentMessageEntity existing = messageMapper.selectOne(
+            Wrappers.lambdaQuery(AgentMessageEntity.class)
+                .eq(AgentMessageEntity::getMessageId, messageEntity.getMessageId())
+                .last("limit 1")
+        );
+        if (existing == null) {
+            messageMapper.insert(messageEntity);
+        }
     }
 
     private LocalDateTime defaultNow(java.time.Instant instant) {

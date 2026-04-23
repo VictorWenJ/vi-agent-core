@@ -18,7 +18,9 @@ public enum ToolCallStatus {
 
     SUCCEEDED("succeeded", "succeeded"),
 
-    FAILED("failed", "failed");
+    FAILED("failed", "failed"),
+
+    CANCELLED("cancelled", "cancelled");
 
     private final String value;
 

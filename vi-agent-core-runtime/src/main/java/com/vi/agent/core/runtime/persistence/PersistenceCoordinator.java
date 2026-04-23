@@ -2,8 +2,8 @@ package com.vi.agent.core.runtime.persistence;
 
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.conversation.Conversation;
-import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.UserMessage;
@@ -20,6 +20,7 @@ import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.session.Session;
 import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.turn.Turn;
@@ -38,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Single-turn persistence coordinator.
@@ -111,7 +113,7 @@ public class PersistenceCoordinator {
         conversation.touchLastMessageAt(Instant.now());
         conversationRepository.update(conversation);
 
-        runEventRepository.saveBatch(buildSuccessRunEvents(runContext, loopExecutionResult));
+        runEventRepository.saveBatch(List.of(buildRunCompletedEvent(runContext, loopExecutionResult)));
 
         String conversationId = conversation.getConversationId();
         String sessionId = session.getSessionId();
@@ -129,10 +131,9 @@ public class PersistenceCoordinator {
     @Transactional(rollbackFor = Exception.class)
     public void persistFailure(AgentRunContext runContext, String errorCode, String errorMessage) {
         persistAssistantToolDecisionMessages(runContext);
+        cancelPendingToolCalls(runContext);
         messageRepository.saveFailureToolFacts(runContext.getToolCalls(), runContext.getToolExecutions());
-
-        List<RunEventRecord> runEvents = buildFailureRunEvents(runContext, errorCode, errorMessage);
-        runEventRepository.saveBatch(runEvents);
+        runEventRepository.saveBatch(List.of(buildRunFailedEvent(runContext, errorCode, errorMessage)));
 
         Turn turn = runContext.getTurn();
         turn.markFailed(errorCode, errorMessage, Instant.now());
@@ -146,41 +147,112 @@ public class PersistenceCoordinator {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void persistToolCallCreated(AgentRunContext runContext, AssistantToolCall toolCall) {
-        messageRepository.saveToolCallCreated(toolCall);
-        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_CALL_CREATED, RunEventActorType.ASSISTANT, toolCall, null));
+    public void persistAssistantToolDecision(AgentRunContext runContext, AssistantMessage assistantMessage) {
+        if (assistantMessage == null || CollectionUtils.isEmpty(assistantMessage.getToolCalls())) {
+            return;
+        }
+        messageRepository.saveAssistantMessageIfAbsent(assistantMessage);
+        for (AssistantToolCall toolCall : assistantMessage.getToolCalls()) {
+            messageRepository.saveToolCallCreated(toolCall);
+            runEventRepository.saveBatch(List.of(buildToolEvent(
+                runContext, RunEventType.TOOL_CALL_CREATED, RunEventActorType.ASSISTANT, toolCall, null
+            )));
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void persistToolDispatched(AgentRunContext runContext, AssistantToolCall toolCall) {
-        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.DISPATCHED);
-        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_DISPATCHED, RunEventActorType.TOOL, toolCall, null));
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), ToolCallStatus.DISPATCHED);
+        runEventRepository.saveBatch(List.of(buildToolEvent(
+            runContext, RunEventType.TOOL_DISPATCHED, RunEventActorType.TOOL, toolCall, null
+        )));
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void persistToolStarted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution runningExecution) {
-        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.RUNNING);
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), ToolCallStatus.RUNNING);
         messageRepository.upsertToolExecutionRunning(runningExecution);
-        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_STARTED, RunEventActorType.TOOL, toolCall, runningExecution));
+        runEventRepository.saveBatch(List.of(buildToolEvent(
+            runContext, RunEventType.TOOL_STARTED, RunEventActorType.TOOL, toolCall, runningExecution
+        )));
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void persistToolCompleted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution completedExecution) {
-        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.SUCCEEDED);
+    public void persistToolCompleted(
+        AgentRunContext runContext,
+        AssistantToolCall toolCall,
+        ToolExecution completedExecution,
+        Message toolMessage
+    ) {
+        if (toolMessage != null) {
+            messageRepository.save(toolMessage);
+        }
         messageRepository.updateToolExecutionFinal(completedExecution);
-        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_COMPLETED, RunEventActorType.TOOL, toolCall, completedExecution));
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), ToolCallStatus.SUCCEEDED);
+        runEventRepository.saveBatch(List.of(buildToolEvent(
+            runContext, RunEventType.TOOL_COMPLETED, RunEventActorType.TOOL, toolCall, completedExecution
+        )));
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void persistToolFailed(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution failedExecution) {
-        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.FAILED);
         messageRepository.updateToolExecutionFinal(failedExecution);
-        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_FAILED, RunEventActorType.TOOL, toolCall, failedExecution));
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), ToolCallStatus.FAILED);
+        runEventRepository.saveBatch(List.of(buildToolEvent(
+            runContext, RunEventType.TOOL_FAILED, RunEventActorType.TOOL, toolCall, failedExecution
+        )));
     }
 
-    private List<RunEventRecord> buildSuccessRunEvents(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
-        List<RunEventRecord> runEvents = new ArrayList<>(runContext.getRunEvents());
-        runEvents.add(RunEventRecord.builder()
+    @Transactional(rollbackFor = Exception.class)
+    public void persistToolCancelled(AgentRunContext runContext, AssistantToolCall cancelledToolCall) {
+        messageRepository.updateToolCallStatus(cancelledToolCall.getToolCallRecordId(), ToolCallStatus.CANCELLED);
+        runEventRepository.saveBatch(List.of(buildToolEvent(
+            runContext, RunEventType.TOOL_CANCELLED, RunEventActorType.TOOL, cancelledToolCall, null
+        )));
+    }
+
+    private void cancelPendingToolCalls(AgentRunContext runContext) {
+        if (runContext == null || CollectionUtils.isEmpty(runContext.getToolCalls())) {
+            return;
+        }
+        Map<String, ToolExecution> executionByRecordId = runContext.getToolExecutions().stream()
+            .filter(Objects::nonNull)
+            .filter(execution -> execution.getToolCallRecordId() != null)
+            .collect(Collectors.toMap(
+                ToolExecution::getToolCallRecordId,
+                execution -> execution,
+                (left, right) -> right,
+                LinkedHashMap::new
+            ));
+
+        for (AssistantToolCall toolCall : runContext.getToolCalls()) {
+            if (toolCall == null || toolCall.getStatus() == null) {
+                continue;
+            }
+            if (toolCall.getStatus() == ToolCallStatus.SUCCEEDED
+                || toolCall.getStatus() == ToolCallStatus.FAILED
+                || toolCall.getStatus() == ToolCallStatus.CANCELLED) {
+                continue;
+            }
+            ToolExecution relatedExecution = executionByRecordId.get(toolCall.getToolCallRecordId());
+            if (relatedExecution == null) {
+                AssistantToolCall cancelledToolCall = copyToolCallWithStatus(toolCall, ToolCallStatus.CANCELLED);
+                runContext.appendToolCall(cancelledToolCall);
+                persistToolCancelled(runContext, cancelledToolCall);
+                continue;
+            }
+            if (relatedExecution.getStatus() == ToolExecutionStatus.RUNNING) {
+                ToolExecution failedExecution = copyRunningExecutionAsFailed(relatedExecution);
+                AssistantToolCall failedToolCall = copyToolCallWithStatus(toolCall, ToolCallStatus.FAILED);
+                runContext.appendToolCall(failedToolCall);
+                runContext.appendToolExecution(failedExecution);
+                persistToolFailed(runContext, failedToolCall, failedExecution);
+            }
+        }
+    }
+
+    private RunEventRecord buildRunCompletedEvent(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
+        return RunEventRecord.builder()
             .eventId(runIdentityFactory.nextRunEventId())
             .conversationId(runContext.getConversation().getConversationId())
             .sessionId(runContext.getSession().getSessionId())
@@ -192,24 +264,7 @@ public class PersistenceCoordinator {
             .actorId(runContext.getRunMetadata().getRunId())
             .payloadJson(JsonUtils.toJson(buildRunCompletedPayload(loopExecutionResult)))
             .createdAt(Instant.now())
-            .build());
-
-        return runEvents;
-    }
-
-    private List<RunEventRecord> buildFailureRunEvents(AgentRunContext runContext, String errorCode, String errorMessage) {
-        List<RunEventRecord> runEvents = new ArrayList<>(runContext.getRunEvents());
-        if (!hasToolFailedEvent(runEvents)) {
-            for (ToolExecution toolExecution : runContext.getToolExecutions()) {
-                if (toolExecution == null || toolExecution.getStatus() != ToolExecutionStatus.FAILED) {
-                    continue;
-                }
-                AssistantToolCall matchedToolCall = findToolCall(runContext.getToolCalls(), toolExecution.getToolCallRecordId());
-                runEvents.add(buildToolEvent(runContext, RunEventType.TOOL_FAILED, RunEventActorType.TOOL, matchedToolCall, toolExecution));
-            }
-        }
-        runEvents.add(buildRunFailedEvent(runContext, errorCode, errorMessage));
-        return runEvents;
+            .build();
     }
 
     private RunEventRecord buildRunFailedEvent(AgentRunContext runContext, String errorCode, String errorMessage) {
@@ -268,25 +323,6 @@ public class PersistenceCoordinator {
             .build();
     }
 
-    private AssistantToolCall findToolCall(List<AssistantToolCall> toolCalls, String toolCallRecordId) {
-        if (CollectionUtils.isEmpty(toolCalls)) {
-            return null;
-        }
-        for (AssistantToolCall toolCall : toolCalls) {
-            if (toolCall != null && Objects.equals(toolCall.getToolCallRecordId(), toolCallRecordId)) {
-                return toolCall;
-            }
-        }
-        return null;
-    }
-
-    private boolean hasToolFailedEvent(List<RunEventRecord> runEvents) {
-        if (CollectionUtils.isEmpty(runEvents)) {
-            return false;
-        }
-        return runEvents.stream().anyMatch(event -> event != null && event.getEventType() == RunEventType.TOOL_FAILED);
-    }
-
     private Map<String, Object> buildRunCompletedPayload(LoopExecutionResult loopExecutionResult) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("finishReason", loopExecutionResult == null || loopExecutionResult.getFinishReason() == null
@@ -300,6 +336,47 @@ public class PersistenceCoordinator {
         payload.put("errorCode", errorCode);
         payload.put("errorMessage", errorMessage);
         return payload;
+    }
+
+    private AssistantToolCall copyToolCallWithStatus(AssistantToolCall source, ToolCallStatus status) {
+        return AssistantToolCall.builder()
+            .toolCallRecordId(source.getToolCallRecordId())
+            .toolCallId(source.getToolCallId())
+            .assistantMessageId(source.getAssistantMessageId())
+            .conversationId(source.getConversationId())
+            .sessionId(source.getSessionId())
+            .turnId(source.getTurnId())
+            .runId(source.getRunId())
+            .toolName(source.getToolName())
+            .argumentsJson(source.getArgumentsJson())
+            .callIndex(source.getCallIndex())
+            .status(status)
+            .createdAt(source.getCreatedAt())
+            .build();
+    }
+
+    private ToolExecution copyRunningExecutionAsFailed(ToolExecution runningExecution) {
+        return ToolExecution.builder()
+            .toolExecutionId(runningExecution.getToolExecutionId())
+            .toolCallRecordId(runningExecution.getToolCallRecordId())
+            .toolCallId(runningExecution.getToolCallId())
+            .toolResultMessageId(null)
+            .conversationId(runningExecution.getConversationId())
+            .sessionId(runningExecution.getSessionId())
+            .turnId(runningExecution.getTurnId())
+            .runId(runningExecution.getRunId())
+            .toolName(runningExecution.getToolName())
+            .argumentsJson(runningExecution.getArgumentsJson())
+            .outputText(null)
+            .outputJson(null)
+            .status(ToolExecutionStatus.FAILED)
+            .errorCode("TOOL_EXECUTION_FAILED")
+            .errorMessage("tool execution interrupted")
+            .durationMs(0L)
+            .startedAt(runningExecution.getStartedAt())
+            .completedAt(Instant.now())
+            .createdAt(runningExecution.getCreatedAt())
+            .build();
     }
 
     private void persistAssistantToolDecisionMessages(AgentRunContext runContext) {
@@ -321,6 +398,9 @@ public class PersistenceCoordinator {
                 continue;
             }
             messageRepository.saveAssistantMessageIfAbsent(assistantMessage);
+            for (AssistantToolCall toolCall : assistantMessage.getToolCalls()) {
+                messageRepository.saveToolCallCreated(toolCall);
+            }
         }
     }
 

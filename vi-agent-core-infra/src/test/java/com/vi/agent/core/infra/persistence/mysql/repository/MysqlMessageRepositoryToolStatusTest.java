@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class MysqlMessageRepositoryToolStatusTest {
@@ -147,7 +148,7 @@ class MysqlMessageRepositoryToolStatusTest {
             .toolName("get_time")
             .argumentsJson("{}")
             .callIndex(0)
-            .status(ToolCallStatus.CREATED)
+            .status(ToolCallStatus.FAILED)
             .createdAt(Instant.now())
             .build();
         ToolExecution toolExecution = ToolExecution.builder()
@@ -186,6 +187,82 @@ class MysqlMessageRepositoryToolStatusTest {
         assertNotNull(executionCaptor.getValue().getCompletedAt());
         assertNotNull(executionCaptor.getValue().getUpdatedAt());
         assertNull(executionCaptor.getValue().getToolResultMessageId());
+    }
+
+    @Test
+    void toolCallStatusShouldSupportCancelled() {
+        MysqlMessageRepository repository = new MysqlMessageRepository();
+
+        AgentMessageToolCallMapper toolCallMapper = Mockito.mock(AgentMessageToolCallMapper.class);
+        setCoreFields(repository, toolCallMapper, Mockito.mock(AgentToolExecutionMapper.class));
+
+        repository.updateToolCallStatus("tcr-cancel", ToolCallStatus.CANCELLED);
+
+        verify(toolCallMapper, times(1)).update(any(), any());
+    }
+
+    @Test
+    void saveFailureToolFactsShouldNotOverrideSucceededExecution() {
+        MysqlMessageRepository repository = new MysqlMessageRepository();
+
+        AgentMessageToolCallMapper toolCallMapper = Mockito.mock(AgentMessageToolCallMapper.class);
+        AgentToolExecutionMapper toolExecutionMapper = Mockito.mock(AgentToolExecutionMapper.class);
+        setCoreFields(repository, toolCallMapper, toolExecutionMapper);
+
+        AgentMessageToolCallEntity existingSucceededCall = new AgentMessageToolCallEntity();
+        existingSucceededCall.setToolCallRecordId("tcr-1");
+        existingSucceededCall.setStatus(ToolCallStatus.SUCCEEDED);
+
+        AgentToolExecutionEntity existingSucceededExecution = new AgentToolExecutionEntity();
+        existingSucceededExecution.setToolCallRecordId("tcr-1");
+        existingSucceededExecution.setStatus(ToolExecutionStatus.SUCCEEDED);
+
+        when(toolCallMapper.selectList(any())).thenReturn(List.of(existingSucceededCall));
+        when(toolExecutionMapper.selectList(any())).thenReturn(List.of(existingSucceededExecution));
+        when(toolCallMapper.selectOne(any())).thenReturn(existingSucceededCall);
+        when(toolExecutionMapper.selectOne(any())).thenReturn(existingSucceededExecution);
+
+        AssistantToolCall toolCall = AssistantToolCall.builder()
+            .toolCallRecordId("tcr-1")
+            .toolCallId("call-1")
+            .assistantMessageId("msg-assistant-1")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .toolName("get_time")
+            .argumentsJson("{}")
+            .callIndex(0)
+            .status(ToolCallStatus.FAILED)
+            .createdAt(Instant.now())
+            .build();
+        ToolExecution toolExecution = ToolExecution.builder()
+            .toolExecutionId("tex-1")
+            .toolCallRecordId("tcr-1")
+            .toolCallId("call-1")
+            .toolResultMessageId(null)
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .toolName("get_time")
+            .argumentsJson("{}")
+            .status(ToolExecutionStatus.FAILED)
+            .errorCode("TOOL_EXECUTION_FAILED")
+            .errorMessage("tool failed")
+            .durationMs(21L)
+            .startedAt(Instant.now())
+            .completedAt(Instant.now())
+            .createdAt(Instant.now())
+            .build();
+
+        repository.saveFailureToolFacts(List.of(toolCall), List.of(toolExecution));
+
+        verify(toolCallMapper, times(1)).selectList(any());
+        verify(toolExecutionMapper, times(1)).selectList(any());
+        verify(toolCallMapper, times(1)).selectOne(any());
+        verify(toolExecutionMapper, times(1)).selectOne(any());
+        verifyNoMoreInteractions(toolCallMapper, toolExecutionMapper);
     }
 
     private static void setCoreFields(
