@@ -10,17 +10,17 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum ToolCallStatus {
 
-    CREATED("created", "created"),
+    CREATED("created", "已创建"),
 
-    DISPATCHED("dispatched", "dispatched"),
+    DISPATCHED("dispatched", "已派发"),
 
-    RUNNING("running", "running"),
+    RUNNING("running", "执行中"),
 
-    SUCCEEDED("succeeded", "succeeded"),
+    SUCCEEDED("succeeded", "执行成功"),
 
-    FAILED("failed", "failed"),
+    FAILED("failed", "执行失败"),
 
-    CANCELLED("cancelled", "cancelled");
+    CANCELLED("cancelled", "已取消");
 
     private final String value;
 

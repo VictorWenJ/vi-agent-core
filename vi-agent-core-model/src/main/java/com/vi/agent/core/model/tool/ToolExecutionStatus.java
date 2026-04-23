@@ -10,11 +10,11 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum ToolExecutionStatus {
 
-    RUNNING("running", "running"),
+    RUNNING("running", "执行中"),
 
-    SUCCEEDED("succeeded", "succeeded"),
+    SUCCEEDED("succeeded", "执行成功"),
 
-    FAILED("failed", "failed");
+    FAILED("failed", "执行失败");
 
     private final String value;
 

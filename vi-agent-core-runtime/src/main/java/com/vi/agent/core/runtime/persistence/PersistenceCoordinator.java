@@ -155,7 +155,7 @@ public class PersistenceCoordinator {
         for (AssistantToolCall toolCall : assistantMessage.getToolCalls()) {
             messageRepository.saveToolCallCreated(toolCall);
             runEventRepository.saveBatch(List.of(buildToolEvent(
-                runContext, RunEventType.TOOL_CALL_CREATED, RunEventActorType.ASSISTANT, toolCall, null
+                runContext, RunEventType.TOOL_CALL_CREATED, RunEventActorType.MODEL, toolCall, null
             )));
         }
     }
@@ -260,7 +260,7 @@ public class PersistenceCoordinator {
             .runId(runContext.getRunMetadata().getRunId())
             .eventIndex(runContext.nextRunEventIndex())
             .eventType(RunEventType.RUN_COMPLETED)
-            .actorType(RunEventActorType.RUNTIME)
+            .actorType(RunEventActorType.AGENT)
             .actorId(runContext.getRunMetadata().getRunId())
             .payloadJson(JsonUtils.toJson(buildRunCompletedPayload(loopExecutionResult)))
             .createdAt(Instant.now())
@@ -276,7 +276,7 @@ public class PersistenceCoordinator {
             .runId(runContext.getRunMetadata().getRunId())
             .eventIndex(runContext.nextRunEventIndex())
             .eventType(RunEventType.RUN_FAILED)
-            .actorType(RunEventActorType.RUNTIME)
+            .actorType(RunEventActorType.AGENT)
             .actorId(runContext.getRunMetadata().getRunId())
             .payloadJson(JsonUtils.toJson(buildRunFailedPayload(errorCode, errorMessage)))
             .createdAt(Instant.now())
@@ -303,9 +303,9 @@ public class PersistenceCoordinator {
         }
 
         String actorId = switch (actorType) {
-            case ASSISTANT -> toolCall == null ? null : toolCall.getAssistantMessageId();
+            case MODEL -> toolCall == null ? null : toolCall.getAssistantMessageId();
             case TOOL -> toolExecution == null ? (toolCall == null ? null : toolCall.getToolCallRecordId()) : toolExecution.getToolExecutionId();
-            default -> runContext.getRunMetadata().getRunId();
+            case USER, AGENT, SYSTEM -> runContext.getRunMetadata().getRunId();
         };
 
         return RunEventRecord.builder()

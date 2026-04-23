@@ -10,11 +10,15 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum RunEventActorType {
 
-    ASSISTANT("assistant", "assistant"),
+    USER("user", "用户"),
 
-    TOOL("tool", "tool"),
+    MODEL("model", "模型"),
 
-    RUNTIME("runtime", "runtime");
+    TOOL("tool", "工具"),
+
+    AGENT("agent", "代理"),
+
+    SYSTEM("system", "系统");
 
     private final String value;
 

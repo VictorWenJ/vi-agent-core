@@ -15,6 +15,7 @@ import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
+import com.vi.agent.core.model.runtime.RunEventActorType;
 import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.runtime.RunMetadata;
@@ -107,6 +108,9 @@ class PersistenceCoordinatorFailureFlowTest {
 
         assertTrue(runEventRepository.savedEvents.stream().anyMatch(event -> event.getEventType() == RunEventType.TOOL_CANCELLED));
         assertTrue(runEventRepository.savedEvents.stream().anyMatch(event -> event.getEventType() == RunEventType.RUN_FAILED));
+        assertTrue(runEventRepository.savedEvents.stream()
+            .filter(event -> event.getEventType() == RunEventType.RUN_FAILED)
+            .allMatch(event -> event.getActorType() == RunEventActorType.AGENT));
         assertEquals("sess-1", sessionStateRepository.lastEvictedSessionId);
     }
 
@@ -190,6 +194,12 @@ class PersistenceCoordinatorFailureFlowTest {
             RunEventType.TOOL_STARTED,
             RunEventType.TOOL_COMPLETED
         ), runEventRepository.savedEvents.stream().map(RunEventRecord::getEventType).toList());
+        assertEquals(List.of(
+            RunEventActorType.MODEL,
+            RunEventActorType.TOOL,
+            RunEventActorType.TOOL,
+            RunEventActorType.TOOL
+        ), runEventRepository.savedEvents.stream().map(RunEventRecord::getActorType).toList());
         assertEquals(List.of(ToolCallStatus.DISPATCHED, ToolCallStatus.RUNNING, ToolCallStatus.SUCCEEDED), messageRepository.updatedToolCallStatuses);
         assertEquals(1, messageRepository.runningExecutions.size());
         assertEquals(1, messageRepository.finalExecutions.size());
@@ -239,6 +249,7 @@ class PersistenceCoordinatorFailureFlowTest {
 
         assertEquals(1, runEventRepository.savedEvents.size());
         assertEquals(RunEventType.RUN_COMPLETED, runEventRepository.savedEvents.get(0).getEventType());
+        assertEquals(RunEventActorType.AGENT, runEventRepository.savedEvents.get(0).getActorType());
         assertEquals(TurnStatus.COMPLETED, turnRepository.lastUpdatedTurn.getStatus());
     }
 

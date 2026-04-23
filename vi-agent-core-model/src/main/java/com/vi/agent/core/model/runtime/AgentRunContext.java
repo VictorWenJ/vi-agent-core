@@ -39,8 +39,6 @@ public class AgentRunContext {
 
     private final List<ToolExecution> toolExecutions;
 
-    private final List<RunEventRecord> runEvents;
-
     private AgentRunState state;
 
     private int iteration;
@@ -58,7 +56,6 @@ public class AgentRunContext {
         List<ToolDefinition> availableTools,
         List<AssistantToolCall> toolCalls,
         List<ToolExecution> toolExecutions,
-        List<RunEventRecord> runEvents,
         AgentRunState state,
         int iteration,
         int nextRunEventIndex
@@ -72,7 +69,6 @@ public class AgentRunContext {
         this.availableTools = availableTools == null ? new ArrayList<>() : new ArrayList<>(availableTools);
         this.toolCalls = toolCalls == null ? new ArrayList<>() : new ArrayList<>(toolCalls);
         this.toolExecutions = toolExecutions == null ? new ArrayList<>() : new ArrayList<>(toolExecutions);
-        this.runEvents = runEvents == null ? new ArrayList<>() : new ArrayList<>(runEvents);
         this.state = state == null ? AgentRunState.STARTED : state;
         this.iteration = iteration;
         this.nextRunEventIndex = nextRunEventIndex <= 0 ? 1 : nextRunEventIndex;
@@ -120,12 +116,6 @@ public class AgentRunContext {
         this.toolExecutions.add(toolExecution);
     }
 
-    public void appendRunEvent(RunEventRecord runEventRecord) {
-        if (runEventRecord != null) {
-            this.runEvents.add(runEventRecord);
-        }
-    }
-
     public void nextIteration() {
         this.iteration++;
     }
@@ -144,10 +134,6 @@ public class AgentRunContext {
 
     public List<ToolExecution> getToolExecutions() {
         return Collections.unmodifiableList(new ArrayList<>(toolExecutions));
-    }
-
-    public List<RunEventRecord> getRunEvents() {
-        return Collections.unmodifiableList(new ArrayList<>(runEvents));
     }
 
     public int nextRunEventIndex() {
