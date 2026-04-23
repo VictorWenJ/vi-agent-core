@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_execution (
   tool_execution_id VARCHAR(64) NOT NULL COMMENT 'tool execution id',
   tool_call_record_id VARCHAR(64) NOT NULL COMMENT 'internal tool call record id',
   tool_call_id VARCHAR(128) NOT NULL COMMENT 'provider tool_call_id',
-  tool_result_message_id VARCHAR(64) NOT NULL COMMENT 'tool result message id',
+  tool_result_message_id VARCHAR(64) NULL COMMENT 'tool result message id',
   conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
   session_id VARCHAR(64) NOT NULL COMMENT 'session id',
   turn_id VARCHAR(64) NOT NULL COMMENT 'turn id',

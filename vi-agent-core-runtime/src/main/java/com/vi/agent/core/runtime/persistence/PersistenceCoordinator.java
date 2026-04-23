@@ -3,7 +3,9 @@ package com.vi.agent.core.runtime.persistence;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.conversation.Conversation;
 import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.ConversationRepository;
 import com.vi.agent.core.model.port.MessageRepository;
@@ -32,8 +34,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Single-turn persistence coordinator.
@@ -124,7 +128,11 @@ public class PersistenceCoordinator {
 
     @Transactional(rollbackFor = Exception.class)
     public void persistFailure(AgentRunContext runContext, String errorCode, String errorMessage) {
+        persistAssistantToolDecisionMessages(runContext);
         messageRepository.saveFailureToolFacts(runContext.getToolCalls(), runContext.getToolExecutions());
+
+        List<RunEventRecord> runEvents = buildFailureRunEvents(runContext, errorCode, errorMessage);
+        runEventRepository.saveBatch(runEvents);
 
         Turn turn = runContext.getTurn();
         turn.markFailed(errorCode, errorMessage, Instant.now());
@@ -134,71 +142,73 @@ public class PersistenceCoordinator {
         session.touch(Instant.now());
         sessionRepository.update(session);
 
-        runEventRepository.saveBatch(List.of(buildRunFailedEvent(runContext, errorCode, errorMessage)));
         registerAfterCommit(() -> safeEvictSessionContext(session.getSessionId()));
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public void persistToolCallCreated(AgentRunContext runContext, AssistantToolCall toolCall) {
+        messageRepository.saveToolCallCreated(toolCall);
+        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_CALL_CREATED, RunEventActorType.ASSISTANT, toolCall, null));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void persistToolDispatched(AgentRunContext runContext, AssistantToolCall toolCall) {
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.DISPATCHED);
+        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_DISPATCHED, RunEventActorType.TOOL, toolCall, null));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void persistToolStarted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution runningExecution) {
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.RUNNING);
+        messageRepository.upsertToolExecutionRunning(runningExecution);
+        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_STARTED, RunEventActorType.TOOL, toolCall, runningExecution));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void persistToolCompleted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution completedExecution) {
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.SUCCEEDED);
+        messageRepository.updateToolExecutionFinal(completedExecution);
+        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_COMPLETED, RunEventActorType.TOOL, toolCall, completedExecution));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void persistToolFailed(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution failedExecution) {
+        messageRepository.updateToolCallStatus(toolCall.getToolCallRecordId(), com.vi.agent.core.model.tool.ToolCallStatus.FAILED);
+        messageRepository.updateToolExecutionFinal(failedExecution);
+        runContext.appendRunEvent(buildToolEvent(runContext, RunEventType.TOOL_FAILED, RunEventActorType.TOOL, toolCall, failedExecution));
+    }
+
     private List<RunEventRecord> buildSuccessRunEvents(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
-        List<RunEventRecord> runEvents = new ArrayList<>();
-        int eventIndex = 1;
-
-        if (loopExecutionResult != null && CollectionUtils.isNotEmpty(loopExecutionResult.getToolCalls())) {
-            for (AssistantToolCall toolCall : loopExecutionResult.getToolCalls()) {
-                runEvents.add(RunEventRecord.builder()
-                    .eventId(runIdentityFactory.nextRunEventId())
-                    .conversationId(runContext.getConversation().getConversationId())
-                    .sessionId(runContext.getSession().getSessionId())
-                    .turnId(runContext.getTurn().getTurnId())
-                    .runId(runContext.getRunMetadata().getRunId())
-                    .eventIndex(eventIndex++)
-                    .eventType(RunEventType.TOOL_CALL_CREATED)
-                    .actorType(RunEventActorType.ASSISTANT)
-                    .actorId(toolCall == null ? null : toolCall.getAssistantMessageId())
-                    .payloadJson(toolCall == null ? "{}" : JsonUtils.toJson(toolCall))
-                    .createdAt(Instant.now())
-                    .build());
-            }
-        }
-
-        if (loopExecutionResult != null && CollectionUtils.isNotEmpty(loopExecutionResult.getToolExecutions())) {
-            for (ToolExecution toolExecution : loopExecutionResult.getToolExecutions()) {
-                RunEventType runEventType = toolExecution != null && toolExecution.getStatus() == ToolExecutionStatus.SUCCEEDED
-                    ? RunEventType.TOOL_COMPLETED
-                    : RunEventType.TOOL_FAILED;
-                runEvents.add(RunEventRecord.builder()
-                    .eventId(runIdentityFactory.nextRunEventId())
-                    .conversationId(runContext.getConversation().getConversationId())
-                    .sessionId(runContext.getSession().getSessionId())
-                    .turnId(runContext.getTurn().getTurnId())
-                    .runId(runContext.getRunMetadata().getRunId())
-                    .eventIndex(eventIndex++)
-                    .eventType(runEventType)
-                    .actorType(RunEventActorType.TOOL)
-                    .actorId(toolExecution == null ? null : toolExecution.getToolExecutionId())
-                    .payloadJson(toolExecution == null ? "{}" : JsonUtils.toJson(toolExecution))
-                    .createdAt(Instant.now())
-                    .build());
-            }
-        }
-
+        List<RunEventRecord> runEvents = new ArrayList<>(runContext.getRunEvents());
         runEvents.add(RunEventRecord.builder()
             .eventId(runIdentityFactory.nextRunEventId())
             .conversationId(runContext.getConversation().getConversationId())
             .sessionId(runContext.getSession().getSessionId())
             .turnId(runContext.getTurn().getTurnId())
             .runId(runContext.getRunMetadata().getRunId())
-            .eventIndex(eventIndex)
+            .eventIndex(runContext.nextRunEventIndex())
             .eventType(RunEventType.RUN_COMPLETED)
             .actorType(RunEventActorType.RUNTIME)
             .actorId(runContext.getRunMetadata().getRunId())
-            .payloadJson(JsonUtils.toJson(Map.of(
-                "finishReason", loopExecutionResult == null || loopExecutionResult.getFinishReason() == null
-                    ? null : loopExecutionResult.getFinishReason().name(),
-                "usage", loopExecutionResult == null ? null : loopExecutionResult.getUsage()
-            )))
+            .payloadJson(JsonUtils.toJson(buildRunCompletedPayload(loopExecutionResult)))
             .createdAt(Instant.now())
             .build());
 
+        return runEvents;
+    }
+
+    private List<RunEventRecord> buildFailureRunEvents(AgentRunContext runContext, String errorCode, String errorMessage) {
+        List<RunEventRecord> runEvents = new ArrayList<>(runContext.getRunEvents());
+        if (!hasToolFailedEvent(runEvents)) {
+            for (ToolExecution toolExecution : runContext.getToolExecutions()) {
+                if (toolExecution == null || toolExecution.getStatus() != ToolExecutionStatus.FAILED) {
+                    continue;
+                }
+                AssistantToolCall matchedToolCall = findToolCall(runContext.getToolCalls(), toolExecution.getToolCallRecordId());
+                runEvents.add(buildToolEvent(runContext, RunEventType.TOOL_FAILED, RunEventActorType.TOOL, matchedToolCall, toolExecution));
+            }
+        }
+        runEvents.add(buildRunFailedEvent(runContext, errorCode, errorMessage));
         return runEvents;
     }
 
@@ -209,16 +219,109 @@ public class PersistenceCoordinator {
             .sessionId(runContext.getSession().getSessionId())
             .turnId(runContext.getTurn().getTurnId())
             .runId(runContext.getRunMetadata().getRunId())
-            .eventIndex(1)
+            .eventIndex(runContext.nextRunEventIndex())
             .eventType(RunEventType.RUN_FAILED)
             .actorType(RunEventActorType.RUNTIME)
             .actorId(runContext.getRunMetadata().getRunId())
-            .payloadJson(JsonUtils.toJson(Map.of(
-                "errorCode", errorCode,
-                "errorMessage", errorMessage
-            )))
+            .payloadJson(JsonUtils.toJson(buildRunFailedPayload(errorCode, errorMessage)))
             .createdAt(Instant.now())
             .build();
+    }
+
+    private RunEventRecord buildToolEvent(
+        AgentRunContext runContext,
+        RunEventType eventType,
+        RunEventActorType actorType,
+        AssistantToolCall toolCall,
+        ToolExecution toolExecution
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("toolCallRecordId", toolCall == null ? null : toolCall.getToolCallRecordId());
+        payload.put("toolCallId", toolCall == null ? null : toolCall.getToolCallId());
+        payload.put("toolName", toolCall == null ? (toolExecution == null ? null : toolExecution.getToolName()) : toolCall.getToolName());
+        if (toolExecution != null) {
+            payload.put("toolExecutionId", toolExecution.getToolExecutionId());
+            payload.put("status", toolExecution.getStatus() == null ? null : toolExecution.getStatus().name());
+            payload.put("errorCode", toolExecution.getErrorCode());
+            payload.put("errorMessage", toolExecution.getErrorMessage());
+            payload.put("durationMs", toolExecution.getDurationMs());
+        }
+
+        String actorId = switch (actorType) {
+            case ASSISTANT -> toolCall == null ? null : toolCall.getAssistantMessageId();
+            case TOOL -> toolExecution == null ? (toolCall == null ? null : toolCall.getToolCallRecordId()) : toolExecution.getToolExecutionId();
+            default -> runContext.getRunMetadata().getRunId();
+        };
+
+        return RunEventRecord.builder()
+            .eventId(runIdentityFactory.nextRunEventId())
+            .conversationId(runContext.getConversation().getConversationId())
+            .sessionId(runContext.getSession().getSessionId())
+            .turnId(runContext.getTurn().getTurnId())
+            .runId(runContext.getRunMetadata().getRunId())
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(eventType)
+            .actorType(actorType)
+            .actorId(actorId)
+            .payloadJson(JsonUtils.toJson(payload))
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    private AssistantToolCall findToolCall(List<AssistantToolCall> toolCalls, String toolCallRecordId) {
+        if (CollectionUtils.isEmpty(toolCalls)) {
+            return null;
+        }
+        for (AssistantToolCall toolCall : toolCalls) {
+            if (toolCall != null && Objects.equals(toolCall.getToolCallRecordId(), toolCallRecordId)) {
+                return toolCall;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasToolFailedEvent(List<RunEventRecord> runEvents) {
+        if (CollectionUtils.isEmpty(runEvents)) {
+            return false;
+        }
+        return runEvents.stream().anyMatch(event -> event != null && event.getEventType() == RunEventType.TOOL_FAILED);
+    }
+
+    private Map<String, Object> buildRunCompletedPayload(LoopExecutionResult loopExecutionResult) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("finishReason", loopExecutionResult == null || loopExecutionResult.getFinishReason() == null
+            ? null : loopExecutionResult.getFinishReason().name());
+        payload.put("usage", loopExecutionResult == null ? null : loopExecutionResult.getUsage());
+        return payload;
+    }
+
+    private Map<String, Object> buildRunFailedPayload(String errorCode, String errorMessage) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("errorCode", errorCode);
+        payload.put("errorMessage", errorMessage);
+        return payload;
+    }
+
+    private void persistAssistantToolDecisionMessages(AgentRunContext runContext) {
+        if (runContext == null || CollectionUtils.isEmpty(runContext.getWorkingMessages())) {
+            return;
+        }
+        String currentTurnId = runContext.getTurn().getTurnId();
+        for (Message message : runContext.getWorkingMessages()) {
+            if (!(message instanceof AssistantMessage assistantMessage)) {
+                continue;
+            }
+            if (assistantMessage.getRole() != MessageRole.ASSISTANT) {
+                continue;
+            }
+            if (!Objects.equals(currentTurnId, assistantMessage.getTurnId())) {
+                continue;
+            }
+            if (CollectionUtils.isEmpty(assistantMessage.getToolCalls())) {
+                continue;
+            }
+            messageRepository.saveAssistantMessageIfAbsent(assistantMessage);
+        }
     }
 
     private void registerAfterCommit(Runnable action) {

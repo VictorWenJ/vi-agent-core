@@ -7,6 +7,7 @@ import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
 import com.vi.agent.core.model.llm.ModelToolCall;
+import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.UserMessage;
@@ -20,12 +21,14 @@ import com.vi.agent.core.model.session.SessionStatus;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolDefinition;
 import com.vi.agent.core.model.tool.ToolExecution;
+import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.tool.ToolResult;
 import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.model.turn.TurnStatus;
 import com.vi.agent.core.runtime.factory.MessageFactory;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
+import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import org.junit.jupiter.api.Test;
@@ -48,6 +51,7 @@ class SimpleAgentLoopEngineTest {
     void toolFailureShouldNotCreateToolMessageAndShouldRecordFailedExecution() {
         SimpleAgentLoopEngine engine = new SimpleAgentLoopEngine();
         MessageFactory messageFactory = createMessageFactory();
+        RecordingPersistenceCoordinator persistenceCoordinator = new RecordingPersistenceCoordinator();
         StubLlmGateway llmGateway = new StubLlmGateway(List.of(ModelResponse.builder()
             .content("call tool")
             .finishReason(FinishReason.TOOL_CALL)
@@ -72,6 +76,7 @@ class SimpleAgentLoopEngineTest {
         TestFieldUtils.setField(engine, "llmGateway", llmGateway);
         TestFieldUtils.setField(engine, "toolGateway", toolGateway);
         TestFieldUtils.setField(engine, "messageFactory", messageFactory);
+        TestFieldUtils.setField(engine, "persistenceCoordinator", persistenceCoordinator);
         TestFieldUtils.setField(engine, "maxIterations", 3);
 
         AgentRunContext runContext = buildRunContext();
@@ -84,12 +89,20 @@ class SimpleAgentLoopEngineTest {
         ToolExecution toolExecution = runContext.getToolExecutions().get(0);
         assertEquals(ToolExecutionStatus.FAILED, toolExecution.getStatus());
         assertEquals("TOOL_EXECUTION_FAILED", toolExecution.getErrorCode());
+        assertEquals(List.of(
+            ToolCallStatus.CREATED,
+            ToolCallStatus.DISPATCHED,
+            ToolCallStatus.RUNNING,
+            ToolCallStatus.FAILED
+        ), persistenceCoordinator.toolCallStatusTransitions);
+        assertEquals(List.of(ToolExecutionStatus.RUNNING, ToolExecutionStatus.FAILED), persistenceCoordinator.toolExecutionStatusTransitions);
     }
 
     @Test
     void toolSuccessShouldStillCreateToolMessage() {
         SimpleAgentLoopEngine engine = new SimpleAgentLoopEngine();
         MessageFactory messageFactory = createMessageFactory();
+        RecordingPersistenceCoordinator persistenceCoordinator = new RecordingPersistenceCoordinator();
         StubLlmGateway llmGateway = new StubLlmGateway(List.of(
             ModelResponse.builder()
                 .content("call tool")
@@ -119,6 +132,7 @@ class SimpleAgentLoopEngineTest {
         TestFieldUtils.setField(engine, "llmGateway", llmGateway);
         TestFieldUtils.setField(engine, "toolGateway", toolGateway);
         TestFieldUtils.setField(engine, "messageFactory", messageFactory);
+        TestFieldUtils.setField(engine, "persistenceCoordinator", persistenceCoordinator);
         TestFieldUtils.setField(engine, "maxIterations", 3);
 
         AgentRunContext runContext = buildRunContext();
@@ -126,6 +140,13 @@ class SimpleAgentLoopEngineTest {
 
         assertTrue(loopExecutionResult.getAppendedMessages().stream().anyMatch(message -> message.getRole() == MessageRole.TOOL));
         assertTrue(runContext.getWorkingMessages().stream().anyMatch(message -> message.getRole() == MessageRole.TOOL));
+        assertEquals(List.of(
+            ToolCallStatus.CREATED,
+            ToolCallStatus.DISPATCHED,
+            ToolCallStatus.RUNNING,
+            ToolCallStatus.SUCCEEDED
+        ), persistenceCoordinator.toolCallStatusTransitions);
+        assertEquals(List.of(ToolExecutionStatus.RUNNING, ToolExecutionStatus.SUCCEEDED), persistenceCoordinator.toolExecutionStatusTransitions);
     }
 
     private MessageFactory createMessageFactory() {
@@ -265,6 +286,39 @@ class SimpleAgentLoopEngineTest {
         @Override
         public String nextToolExecutionId() {
             return "tex-" + (++toolExecutionIndex);
+        }
+    }
+
+    private static final class RecordingPersistenceCoordinator extends PersistenceCoordinator {
+        private final List<ToolCallStatus> toolCallStatusTransitions = new ArrayList<>();
+        private final List<ToolExecutionStatus> toolExecutionStatusTransitions = new ArrayList<>();
+
+        @Override
+        public void persistToolCallCreated(AgentRunContext runContext, AssistantToolCall toolCall) {
+            toolCallStatusTransitions.add(ToolCallStatus.CREATED);
+        }
+
+        @Override
+        public void persistToolDispatched(AgentRunContext runContext, AssistantToolCall toolCall) {
+            toolCallStatusTransitions.add(ToolCallStatus.DISPATCHED);
+        }
+
+        @Override
+        public void persistToolStarted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution runningExecution) {
+            toolCallStatusTransitions.add(ToolCallStatus.RUNNING);
+            toolExecutionStatusTransitions.add(ToolExecutionStatus.RUNNING);
+        }
+
+        @Override
+        public void persistToolCompleted(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution completedExecution) {
+            toolCallStatusTransitions.add(ToolCallStatus.SUCCEEDED);
+            toolExecutionStatusTransitions.add(ToolExecutionStatus.SUCCEEDED);
+        }
+
+        @Override
+        public void persistToolFailed(AgentRunContext runContext, AssistantToolCall toolCall, ToolExecution failedExecution) {
+            toolCallStatusTransitions.add(ToolCallStatus.FAILED);
+            toolExecutionStatusTransitions.add(ToolExecutionStatus.FAILED);
         }
     }
 }

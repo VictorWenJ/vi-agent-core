@@ -2,7 +2,9 @@ package com.vi.agent.core.runtime.persistence;
 
 import com.vi.agent.core.model.conversation.Conversation;
 import com.vi.agent.core.model.conversation.ConversationStatus;
+import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.message.AssistantToolCall;
+import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.port.ConversationRepository;
 import com.vi.agent.core.model.port.MessageRepository;
@@ -11,6 +13,7 @@ import com.vi.agent.core.model.port.SessionRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
+import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.runtime.RunMetadata;
@@ -33,6 +36,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class PersistenceCoordinatorFailureFlowTest {
 
@@ -55,6 +59,32 @@ class PersistenceCoordinatorFailureFlowTest {
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
 
         AgentRunContext runContext = buildRunContext();
+        AssistantMessage assistantDecision = AssistantMessage.create(
+            "msg-assistant-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            2L,
+            "call tool",
+            List.of(AssistantToolCall.builder()
+                .toolCallRecordId("tcr-1")
+                .toolCallId("call-1")
+                .assistantMessageId("msg-assistant-1")
+                .conversationId("conv-1")
+                .sessionId("sess-1")
+                .turnId("turn-1")
+                .runId("run-1")
+                .toolName("tool-a")
+                .argumentsJson("{\"k\":\"v\"}")
+                .callIndex(0)
+                .status(ToolCallStatus.CREATED)
+                .createdAt(Instant.now())
+                .build()),
+            FinishReason.TOOL_CALL,
+            null
+        );
+        runContext.appendWorkingMessage(assistantDecision);
         runContext.appendToolCall(AssistantToolCall.builder()
             .toolCallRecordId("tcr-1")
             .toolCallId("call-1")
@@ -73,7 +103,7 @@ class PersistenceCoordinatorFailureFlowTest {
             .toolExecutionId("tex-1")
             .toolCallRecordId("tcr-1")
             .toolCallId("call-1")
-            .toolResultMessageId("tex-1")
+            .toolResultMessageId(null)
             .conversationId("conv-1")
             .sessionId("sess-1")
             .turnId("turn-1")
@@ -88,12 +118,51 @@ class PersistenceCoordinatorFailureFlowTest {
             .completedAt(Instant.now())
             .createdAt(Instant.now())
             .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-call")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_CALL_CREATED)
+            .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-dispatched")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_DISPATCHED)
+            .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-started")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_STARTED)
+            .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-failed")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_FAILED)
+            .build());
 
         coordinator.persistFailure(runContext, "INVALID_MODEL_CONTEXT_MESSAGE", "invalid model context");
 
+        assertEquals(1, messageRepository.savedAssistantMessages.size());
+        assertEquals("msg-assistant-1", messageRepository.savedAssistantMessages.get(0).getMessageId());
         assertEquals(1, messageRepository.failureToolFactsCount);
         assertEquals(1, messageRepository.lastToolCalls.size());
         assertEquals(1, messageRepository.lastToolExecutions.size());
+        assertNull(messageRepository.lastToolExecutions.get(0).getToolResultMessageId());
 
         assertNotNull(turnRepository.lastUpdatedTurn);
         assertEquals(TurnStatus.FAILED, turnRepository.lastUpdatedTurn.getStatus());
@@ -102,10 +171,104 @@ class PersistenceCoordinatorFailureFlowTest {
         assertNotNull(sessionRepository.lastUpdatedSession);
         assertEquals(SessionStatus.ACTIVE, sessionRepository.lastUpdatedSession.getStatus());
 
-        assertEquals(1, runEventRepository.savedEvents.size());
-        assertEquals(RunEventType.RUN_FAILED, runEventRepository.savedEvents.get(0).getEventType());
+        assertEquals(5, runEventRepository.savedEvents.size());
+        assertEquals(List.of(
+            RunEventType.TOOL_CALL_CREATED,
+            RunEventType.TOOL_DISPATCHED,
+            RunEventType.TOOL_STARTED,
+            RunEventType.TOOL_FAILED,
+            RunEventType.RUN_FAILED
+        ), runEventRepository.savedEvents.stream().map(RunEventRecord::getEventType).toList());
 
         assertEquals("sess-1", sessionStateRepository.lastEvictedSessionId);
+    }
+
+    @Test
+    void persistSuccessShouldPersistToolLifecycleEvents() {
+        PersistenceCoordinator coordinator = new PersistenceCoordinator();
+        StubMessageRepository messageRepository = new StubMessageRepository();
+        StubTurnRepository turnRepository = new StubTurnRepository();
+        StubSessionRepository sessionRepository = new StubSessionRepository();
+        StubConversationRepository conversationRepository = new StubConversationRepository();
+        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubRunEventRepository runEventRepository = new StubRunEventRepository();
+
+        TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
+        TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
+        TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
+        TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
+        TestFieldUtils.setField(coordinator, "sessionStateRepository", sessionStateRepository);
+        TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
+        TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+
+        AgentRunContext runContext = buildRunContext();
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-call")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_CALL_CREATED)
+            .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-dispatched")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_DISPATCHED)
+            .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-started")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_STARTED)
+            .build());
+        runContext.appendRunEvent(RunEventRecord.builder()
+            .eventId("evt-tool-completed")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .eventIndex(runContext.nextRunEventIndex())
+            .eventType(RunEventType.TOOL_COMPLETED)
+            .build());
+
+        AssistantMessage finalAssistant = AssistantMessage.create(
+            "msg-assistant-final-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            3L,
+            "done",
+            List.of(),
+            FinishReason.STOP,
+            null
+        );
+        LoopExecutionResult loopExecutionResult = LoopExecutionResult.builder()
+            .assistantMessage(finalAssistant)
+            .appendedMessages(List.of(finalAssistant))
+            .toolCalls(List.of())
+            .toolExecutions(List.of())
+            .finishReason(FinishReason.STOP)
+            .usage(null)
+            .build();
+
+        coordinator.persistSuccess(runContext, loopExecutionResult);
+
+        assertEquals(List.of(
+            RunEventType.TOOL_CALL_CREATED,
+            RunEventType.TOOL_DISPATCHED,
+            RunEventType.TOOL_STARTED,
+            RunEventType.TOOL_COMPLETED,
+            RunEventType.RUN_COMPLETED
+        ), runEventRepository.savedEvents.stream().map(RunEventRecord::getEventType).toList());
     }
 
     private AgentRunContext buildRunContext() {
@@ -156,6 +319,7 @@ class PersistenceCoordinatorFailureFlowTest {
         private int failureToolFactsCount;
         private List<AssistantToolCall> lastToolCalls = List.of();
         private List<ToolExecution> lastToolExecutions = List.of();
+        private final List<AssistantMessage> savedAssistantMessages = new ArrayList<>();
 
         @Override
         public void saveBatch(List<Message> messages) {
@@ -191,6 +355,11 @@ class PersistenceCoordinatorFailureFlowTest {
             failureToolFactsCount++;
             lastToolCalls = toolCalls == null ? List.of() : toolCalls;
             lastToolExecutions = toolExecutions == null ? List.of() : toolExecutions;
+        }
+
+        @Override
+        public void saveAssistantMessageIfAbsent(AssistantMessage assistantMessage) {
+            savedAssistantMessages.add(assistantMessage);
         }
     }
 

@@ -101,6 +101,10 @@ public class MessageFactory {
         return runIdentityFactory.nextMessageId();
     }
 
+    public String nextToolExecutionId() {
+        return runIdentityFactory.nextToolExecutionId();
+    }
+
     public AssistantToolCall createAssistantToolCall(
         String conversationId,
         String sessionId,
@@ -181,7 +185,7 @@ public class MessageFactory {
             .toolExecutionId(toolExecutionId)
             .toolCallRecordId(toolResult.getToolCallRecordId())
             .toolCallId(toolResult.getToolCallId())
-            .toolResultMessageId(toolMessage == null ? toolExecutionId : toolMessage.getMessageId())
+            .toolResultMessageId(toolMessage == null ? null : toolMessage.getMessageId())
             .conversationId(conversationId)
             .sessionId(sessionId)
             .turnId(turnId)

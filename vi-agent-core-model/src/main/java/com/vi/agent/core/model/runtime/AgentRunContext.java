@@ -13,6 +13,7 @@ import lombok.Getter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Agent run context.
@@ -38,9 +39,13 @@ public class AgentRunContext {
 
     private final List<ToolExecution> toolExecutions;
 
+    private final List<RunEventRecord> runEvents;
+
     private AgentRunState state;
 
     private int iteration;
+
+    private int nextRunEventIndex;
 
     @Builder
     public AgentRunContext(
@@ -53,8 +58,10 @@ public class AgentRunContext {
         List<ToolDefinition> availableTools,
         List<AssistantToolCall> toolCalls,
         List<ToolExecution> toolExecutions,
+        List<RunEventRecord> runEvents,
         AgentRunState state,
-        int iteration
+        int iteration,
+        int nextRunEventIndex
     ) {
         this.runMetadata = runMetadata;
         this.conversation = conversation;
@@ -65,8 +72,10 @@ public class AgentRunContext {
         this.availableTools = availableTools == null ? new ArrayList<>() : new ArrayList<>(availableTools);
         this.toolCalls = toolCalls == null ? new ArrayList<>() : new ArrayList<>(toolCalls);
         this.toolExecutions = toolExecutions == null ? new ArrayList<>() : new ArrayList<>(toolExecutions);
+        this.runEvents = runEvents == null ? new ArrayList<>() : new ArrayList<>(runEvents);
         this.state = state == null ? AgentRunState.STARTED : state;
         this.iteration = iteration;
+        this.nextRunEventIndex = nextRunEventIndex <= 0 ? 1 : nextRunEventIndex;
     }
 
     public void appendWorkingMessage(Message message) {
@@ -76,14 +85,44 @@ public class AgentRunContext {
     }
 
     public void appendToolCall(AssistantToolCall toolCall) {
-        if (toolCall != null) {
-            this.toolCalls.add(toolCall);
+        if (toolCall == null) {
+            return;
         }
+        if (isBlank(toolCall.getToolCallRecordId())) {
+            this.toolCalls.add(toolCall);
+            return;
+        }
+        for (int i = 0; i < this.toolCalls.size(); i++) {
+            AssistantToolCall existing = this.toolCalls.get(i);
+            if (existing != null && Objects.equals(existing.getToolCallRecordId(), toolCall.getToolCallRecordId())) {
+                this.toolCalls.set(i, toolCall);
+                return;
+            }
+        }
+        this.toolCalls.add(toolCall);
     }
 
     public void appendToolExecution(ToolExecution toolExecution) {
-        if (toolExecution != null) {
+        if (toolExecution == null) {
+            return;
+        }
+        if (isBlank(toolExecution.getToolCallRecordId())) {
             this.toolExecutions.add(toolExecution);
+            return;
+        }
+        for (int i = 0; i < this.toolExecutions.size(); i++) {
+            ToolExecution existing = this.toolExecutions.get(i);
+            if (existing != null && Objects.equals(existing.getToolCallRecordId(), toolExecution.getToolCallRecordId())) {
+                this.toolExecutions.set(i, toolExecution);
+                return;
+            }
+        }
+        this.toolExecutions.add(toolExecution);
+    }
+
+    public void appendRunEvent(RunEventRecord runEventRecord) {
+        if (runEventRecord != null) {
+            this.runEvents.add(runEventRecord);
         }
     }
 
@@ -105,5 +144,17 @@ public class AgentRunContext {
 
     public List<ToolExecution> getToolExecutions() {
         return Collections.unmodifiableList(new ArrayList<>(toolExecutions));
+    }
+
+    public List<RunEventRecord> getRunEvents() {
+        return Collections.unmodifiableList(new ArrayList<>(runEvents));
+    }
+
+    public int nextRunEventIndex() {
+        return nextRunEventIndex++;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }

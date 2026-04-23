@@ -4,41 +4,33 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 /**
- * 运行事件类型枚举。
+ * Runtime event type enum.
  */
 @Getter
 @AllArgsConstructor
 public enum RunEventType {
 
-    /** 运行开始。 */
-    RUN_STARTED("run_started", "运行开始"),
+    RUN_STARTED("run_started", "run started"),
 
-    /** 消息开始。 */
-    MESSAGE_STARTED("message_started", "消息开始"),
+    MESSAGE_STARTED("message_started", "message started"),
 
-    /** 消息增量。 */
-    MESSAGE_DELTA("message_delta", "消息增量"),
+    MESSAGE_DELTA("message_delta", "message delta"),
 
-    /** 工具调用创建。 */
-    TOOL_CALL_CREATED("tool_call_created", "工具调用创建"),
+    TOOL_CALL_CREATED("tool_call_created", "tool call created"),
 
-    /** 工具执行开始。 */
-    TOOL_STARTED("tool_started", "工具执行开始"),
+    TOOL_DISPATCHED("tool_dispatched", "tool dispatched"),
 
-    /** 工具执行完成。 */
-    TOOL_COMPLETED("tool_completed", "工具执行完成"),
+    TOOL_STARTED("tool_started", "tool started"),
 
-    /** 工具执行失败。 */
-    TOOL_FAILED("tool_failed", "工具执行失败"),
+    TOOL_COMPLETED("tool_completed", "tool completed"),
 
-    /** 消息完成。 */
-    MESSAGE_COMPLETED("message_completed", "消息完成"),
+    TOOL_FAILED("tool_failed", "tool failed"),
 
-    /** 运行完成。 */
-    RUN_COMPLETED("run_completed", "运行完成"),
+    MESSAGE_COMPLETED("message_completed", "message completed"),
 
-    /** 运行失败。 */
-    RUN_FAILED("run_failed", "运行失败");
+    RUN_COMPLETED("run_completed", "run completed"),
+
+    RUN_FAILED("run_failed", "run failed");
 
     private final String value;
 

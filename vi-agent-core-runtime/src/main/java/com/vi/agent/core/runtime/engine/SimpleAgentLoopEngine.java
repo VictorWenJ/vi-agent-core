@@ -17,8 +17,10 @@ import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
 import com.vi.agent.core.model.tool.ToolCall;
 import com.vi.agent.core.model.tool.ToolExecution;
+import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.tool.ToolResult;
 import com.vi.agent.core.runtime.factory.MessageFactory;
+import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import com.vi.agent.core.runtime.tool.ToolGateway;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +50,9 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
     @Resource
     private MessageFactory messageFactory;
+
+    @Resource
+    private PersistenceCoordinator persistenceCoordinator;
 
     @Value("${vi.agent.runtime.max-iterations:6}")
     private int maxIterations;
@@ -150,11 +155,17 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 log.info("SimpleAgentLoopEngine execute tool call start iteration={} assistantToolCall={}", iteration, JsonUtils.toJson(assistantToolCall));
                 toolCalls.add(assistantToolCall);
                 runContext.appendToolCall(assistantToolCall);
+                persistenceCoordinator.persistToolCallCreated(runContext, assistantToolCall);
+                persistenceCoordinator.persistToolDispatched(runContext, assistantToolCall);
 
                 ToolCall toolCall = messageFactory.toToolCall(runContext.getTurn().getTurnId(), assistantToolCall);
                 log.info("SimpleAgentLoopEngine execute tool call start iteration={} toolCall={}", iteration, JsonUtils.toJson(toolCall));
 
                 Instant startedAt = Instant.now();
+                ToolExecution runningToolExecution = createRunningToolExecution(runContext, assistantToolCall, startedAt);
+                runContext.appendToolExecution(runningToolExecution);
+                persistenceCoordinator.persistToolStarted(runContext, assistantToolCall, runningToolExecution);
+
                 ToolResult normalizedToolResult;
                 Throwable toolExecutionThrowable = null;
                 try {
@@ -173,19 +184,10 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
 
                 Instant completedAt = Instant.now();
                 if (!normalizedToolResult.isSuccess()) {
-                    ToolExecution failedToolExecution = messageFactory.createToolExecution(
-                        runContext.getConversation().getConversationId(),
-                        runContext.getSession().getSessionId(),
-                        runContext.getTurn().getTurnId(),
-                        runContext.getRunMetadata().getRunId(),
-                        normalizedToolResult,
-                        null,
-                        assistantToolCall.getArgumentsJson(),
-                        startedAt,
-                        completedAt
-                    );
+                    ToolExecution failedToolExecution = createFinalToolExecution(runningToolExecution, normalizedToolResult, null, completedAt);
                     toolExecutions.add(failedToolExecution);
                     runContext.appendToolExecution(failedToolExecution);
+                    persistenceCoordinator.persistToolFailed(runContext, assistantToolCall, failedToolExecution);
                     throw buildToolExecutionFailedException(assistantToolCall, normalizedToolResult, toolExecutionThrowable);
                 }
 
@@ -199,19 +201,10 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
                 );
                 runContext.appendWorkingMessage(toolMessage);
                 appendedMessages.add(toolMessage);
-                ToolExecution toolExecution = messageFactory.createToolExecution(
-                    runContext.getConversation().getConversationId(),
-                    runContext.getSession().getSessionId(),
-                    runContext.getTurn().getTurnId(),
-                    runContext.getRunMetadata().getRunId(),
-                    normalizedToolResult,
-                    toolMessage,
-                    assistantToolCall.getArgumentsJson(),
-                    startedAt,
-                    completedAt
-                );
+                ToolExecution toolExecution = createFinalToolExecution(runningToolExecution, normalizedToolResult, toolMessage, completedAt);
                 toolExecutions.add(toolExecution);
                 runContext.appendToolExecution(toolExecution);
+                persistenceCoordinator.persistToolCompleted(runContext, assistantToolCall, toolExecution);
             }
         }
         log.info("SimpleAgentLoopEngine execute assistantToolCall={}", JsonUtils.toJson(toolExecutions));
@@ -295,5 +288,59 @@ public class SimpleAgentLoopEngine implements AgentLoopEngine {
             return new AgentRuntimeException(ErrorCode.TOOL_EXECUTION_FAILED, message);
         }
         return new AgentRuntimeException(ErrorCode.TOOL_EXECUTION_FAILED, message, throwable);
+    }
+
+    private ToolExecution createRunningToolExecution(AgentRunContext runContext, AssistantToolCall assistantToolCall, Instant startedAt) {
+        return ToolExecution.builder()
+            .toolExecutionId(messageFactory.nextToolExecutionId())
+            .toolCallRecordId(assistantToolCall.getToolCallRecordId())
+            .toolCallId(assistantToolCall.getToolCallId())
+            .toolResultMessageId(null)
+            .conversationId(runContext.getConversation().getConversationId())
+            .sessionId(runContext.getSession().getSessionId())
+            .turnId(runContext.getTurn().getTurnId())
+            .runId(runContext.getRunMetadata().getRunId())
+            .toolName(assistantToolCall.getToolName())
+            .argumentsJson(assistantToolCall.getArgumentsJson())
+            .outputText(null)
+            .outputJson(null)
+            .status(ToolExecutionStatus.RUNNING)
+            .errorCode(null)
+            .errorMessage(null)
+            .durationMs(null)
+            .startedAt(startedAt)
+            .completedAt(null)
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    private ToolExecution createFinalToolExecution(
+        ToolExecution runningToolExecution,
+        ToolResult normalizedToolResult,
+        ToolMessage toolMessage,
+        Instant completedAt
+    ) {
+        boolean success = normalizedToolResult.isSuccess();
+        return ToolExecution.builder()
+            .toolExecutionId(runningToolExecution.getToolExecutionId())
+            .toolCallRecordId(runningToolExecution.getToolCallRecordId())
+            .toolCallId(runningToolExecution.getToolCallId())
+            .toolResultMessageId(success && toolMessage != null ? toolMessage.getMessageId() : null)
+            .conversationId(runningToolExecution.getConversationId())
+            .sessionId(runningToolExecution.getSessionId())
+            .turnId(runningToolExecution.getTurnId())
+            .runId(runningToolExecution.getRunId())
+            .toolName(runningToolExecution.getToolName())
+            .argumentsJson(runningToolExecution.getArgumentsJson())
+            .outputText(normalizedToolResult.getOutput())
+            .outputJson(normalizedToolResult.getOutput())
+            .status(success ? ToolExecutionStatus.SUCCEEDED : ToolExecutionStatus.FAILED)
+            .errorCode(normalizedToolResult.getErrorCode())
+            .errorMessage(normalizedToolResult.getErrorMessage())
+            .durationMs(normalizedToolResult.getDurationMs())
+            .startedAt(runningToolExecution.getStartedAt())
+            .completedAt(completedAt)
+            .createdAt(runningToolExecution.getCreatedAt())
+            .build();
     }
 }
