@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * DeepSeek 配置。
+ * DeepSeek config.
  */
 @Getter
 @Setter
@@ -15,32 +15,47 @@ import org.springframework.stereotype.Component;
 public class DeepSeekProperties {
 
     /**
-     * API Key。
+     * API Key.
      */
     private String apiKey = "";
 
     /**
-     * 模型名称。
+     * Model name.
      */
-    private String model = "deepseek-chat";
+    private String model = "deepseek-v4-flash";
 
     /**
-     * Base URL。
+     * Base URL.
      */
     private String baseUrl = "https://api.deepseek.com";
 
     /**
-     * Chat API 路径。
+     * Chat API path.
      */
     private String chatPath = "/chat/completions";
 
     /**
-     * 连接超时，单位毫秒。
+     * Connect timeout milliseconds.
      */
     private int connectTimeoutMs = 3000;
 
     /**
-     * 读取超时，单位毫秒。
+     * Read timeout milliseconds.
      */
     private int readTimeoutMs = 60000;
+
+    /**
+     * Thinking type passed to DeepSeek API.
+     */
+    private String thinkingType = "disabled";
+
+    /**
+     * Max tokens passed to provider request.
+     */
+    private Integer maxTokens = 512;
+
+    /**
+     * Temperature passed to provider request.
+     */
+    private Double temperature = 0.2d;
 }

@@ -2,6 +2,8 @@ package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
+import com.vi.agent.core.infra.provider.protocol.openai.ChatCompletionsRequest;
+import com.vi.agent.core.model.llm.ModelRequest;
 import jakarta.annotation.Resource;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -55,5 +57,13 @@ public class DeepSeekChatProvider extends OpenAICompatibleChatProvider {
     protected int readTimeoutMs() {
         return properties.getReadTimeoutMs();
     }
-}
 
+    @Override
+    protected ChatCompletionsRequest buildRequest(ModelRequest modelRequest, boolean stream) {
+        ChatCompletionsRequest request = super.buildRequest(modelRequest, stream);
+        request.setThinkingType(properties.getThinkingType());
+        request.setMaxTokens(properties.getMaxTokens());
+        request.setTemperature(properties.getTemperature());
+        return request;
+    }
+}

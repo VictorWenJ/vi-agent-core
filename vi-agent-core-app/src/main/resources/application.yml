@@ -52,10 +52,13 @@ vi:
         default-provider: ${DEFAULT_LLM_PROVIDER:deepseek}
 
       deepseek:
-        api-key: ${DEEPSEEK_API_KEY:sk-8f20b04bdf1849bb96c78c38948bf8b4}
+        api-key: ${DEEPSEEK_API_KEY:sk-2ed15312da914180a6763153a4ff1987}
         model: ${DEEPSEEK_MODEL:deepseek-chat}
         base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
         chat-path: /chat/completions
+        thinking-type: ${DEEPSEEK_THINKING_TYPE:disabled}
+        max-tokens: ${DEEPSEEK_MAX_TOKENS:512}
+        temperature: ${DEEPSEEK_TEMPERATURE:0.2}
         connect-timeout-ms: 3000
         read-timeout-ms: 60000
 
@@ -74,4 +77,3 @@ vi:
         chat-path: /v1/chat/completions
         connect-timeout-ms: 3000
         read-timeout-ms: 60000
-
