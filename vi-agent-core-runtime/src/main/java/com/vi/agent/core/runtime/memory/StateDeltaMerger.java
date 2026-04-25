@@ -12,6 +12,7 @@ import com.vi.agent.core.model.memory.ToolOutcomeDigest;
 import com.vi.agent.core.model.memory.UserPreferenceState;
 import com.vi.agent.core.model.memory.statepatch.PhaseStatePatch;
 import com.vi.agent.core.model.memory.statepatch.UserPreferencePatch;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -26,6 +27,7 @@ import java.util.function.Function;
  *
  * <p>该合并器只实现 P2 冻结设计里的显式领域规则，不提供通用反射式 patch 能力。</p>
  */
+@Component
 public class StateDeltaMerger {
 
     /** 最近工具结果摘要最多保留条数。 */

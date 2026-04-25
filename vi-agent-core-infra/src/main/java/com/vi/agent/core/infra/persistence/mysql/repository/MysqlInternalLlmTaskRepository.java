@@ -37,7 +37,18 @@ public class MysqlInternalLlmTaskRepository implements InternalLlmTaskRepository
         if (task == null) {
             return;
         }
-        internalLlmTaskMapper.insert(toEntity(task));
+        AgentInternalLlmTaskEntity entity = toEntity(task);
+        AgentInternalLlmTaskEntity existing = internalLlmTaskMapper.selectOne(
+            Wrappers.lambdaQuery(AgentInternalLlmTaskEntity.class)
+                .eq(AgentInternalLlmTaskEntity::getInternalTaskId, task.getInternalTaskId())
+                .last("limit 1")
+        );
+        if (existing == null) {
+            internalLlmTaskMapper.insert(entity);
+            return;
+        }
+        entity.setId(existing.getId());
+        internalLlmTaskMapper.updateById(entity);
     }
 
     /**

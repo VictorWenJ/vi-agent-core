@@ -56,6 +56,11 @@ vi:
         reserved-tool-loop-tokens: ${CONTEXT_RESERVED_TOOL_LOOP_TOKENS:1024}
         safety-margin-tokens: ${CONTEXT_SAFETY_MARGIN_TOKENS:512}
 
+    memory:
+      post-turn-update-enabled: ${MEMORY_POST_TURN_UPDATE_ENABLED:true}
+      state-extraction-enabled: ${MEMORY_STATE_EXTRACTION_ENABLED:true}
+      summary-update-enabled: ${MEMORY_SUMMARY_UPDATE_ENABLED:true}
+
     provider:
       routing:
         default-provider: ${DEFAULT_LLM_PROVIDER:deepseek}

@@ -60,6 +60,8 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
 
         assertEquals(RunStatus.FAILED, result.getRunStatus());
         assertEquals(1, fixture.persistenceCoordinator.persistFailureCount);
+        assertEquals(0, fixture.completionHandler.invocationCount);
+        assertEquals(0, fixture.completionHandler.memoryUpdateCount);
     }
 
     @Test
@@ -72,6 +74,8 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
 
         assertEquals(RuntimeEventType.RUN_FAILED, events.get(events.size() - 1).getEventType());
         assertEquals(1, fixture.persistenceCoordinator.persistFailureCount);
+        assertEquals(0, fixture.completionHandler.invocationCount);
+        assertEquals(0, fixture.completionHandler.memoryUpdateCount);
     }
 
     private static final class Fixture {
@@ -106,6 +110,7 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
         private final UserMessage userMessage = UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "hello");
 
         private final StubPersistenceCoordinator persistenceCoordinator = new StubPersistenceCoordinator();
+        private final StubCompletionHandler completionHandler = new StubCompletionHandler();
 
         RuntimeExecuteCommand command() {
             return RuntimeExecuteCommand.builder()
@@ -135,7 +140,7 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
             TestFieldUtils.setField(orchestrator, "agentRunContextFactory", new StubAgentRunContextFactory(conversation, session, turn));
             TestFieldUtils.setField(orchestrator, "eventSinkFactory", eventSinkFactory);
             TestFieldUtils.setField(orchestrator, "loopInvocationService", new StubLoopInvocationService());
-            TestFieldUtils.setField(orchestrator, "completionHandler", new StubCompletionHandler());
+            TestFieldUtils.setField(orchestrator, "completionHandler", completionHandler);
             TestFieldUtils.setField(orchestrator, "failureHandler", failureHandler);
             return orchestrator;
         }
@@ -253,8 +258,13 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
     }
 
     private static final class StubCompletionHandler extends RuntimeCompletionHandler {
+        private int invocationCount;
+        private int memoryUpdateCount;
+
         @Override
         public AgentExecutionResult complete(RuntimeExecutionContext context, RuntimeEventSink eventSink) {
+            invocationCount++;
+            memoryUpdateCount++;
             throw new IllegalStateException("should not be called");
         }
     }

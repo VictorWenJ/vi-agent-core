@@ -2,6 +2,11 @@ package com.vi.agent.core.runtime.completion;
 
 import com.vi.agent.core.model.conversation.Conversation;
 import com.vi.agent.core.model.conversation.ConversationStatus;
+import com.vi.agent.core.model.context.AgentMode;
+import com.vi.agent.core.model.context.CheckpointTrigger;
+import com.vi.agent.core.model.context.WorkingContext;
+import com.vi.agent.core.model.context.WorkingContextBuildResult;
+import com.vi.agent.core.model.context.WorkingContextMetadata;
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
@@ -24,6 +29,9 @@ import com.vi.agent.core.runtime.event.RuntimeEventType;
 import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.AgentExecutionResultFactory;
 import com.vi.agent.core.runtime.factory.RuntimeEventFactory;
+import com.vi.agent.core.runtime.memory.SessionMemoryCoordinator;
+import com.vi.agent.core.runtime.memory.SessionMemoryUpdateCommand;
+import com.vi.agent.core.runtime.memory.SessionMemoryUpdateResult;
 import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
@@ -42,9 +50,11 @@ class RuntimeCompletionHandlerTest {
     void completeShouldPersistEmitRunCompletedAndReturnCompletedResult() {
         RuntimeCompletionHandler handler = new RuntimeCompletionHandler();
         StubPersistenceCoordinator persistenceCoordinator = new StubPersistenceCoordinator();
+        StubSessionMemoryCoordinator sessionMemoryCoordinator = new StubSessionMemoryCoordinator();
         AgentExecutionResultFactory resultFactory = new AgentExecutionResultFactory();
         TestFieldUtils.setField(handler, "persistenceCoordinator", persistenceCoordinator);
         TestFieldUtils.setField(handler, "agentExecutionResultFactory", resultFactory);
+        TestFieldUtils.setField(handler, "sessionMemoryCoordinator", sessionMemoryCoordinator);
 
         RuntimeExecutionContext context = buildContext();
         AssistantMessage assistantMessage = AssistantMessage.create(
@@ -78,6 +88,46 @@ class RuntimeCompletionHandlerTest {
         assertEquals(RunStatus.COMPLETED, result.getRunStatus());
         assertEquals("msg-assistant-1", result.getAssistantMessageId());
         assertEquals(AgentRunState.COMPLETED, context.getRunContext().getState());
+        assertEquals(1, sessionMemoryCoordinator.invocationCount);
+        assertEquals("msg-user-1", sessionMemoryCoordinator.lastCommand.getCurrentUserMessageId());
+        assertEquals("msg-assistant-1", sessionMemoryCoordinator.lastCommand.getAssistantMessageId());
+        assertEquals("wctx-1", sessionMemoryCoordinator.lastCommand.getWorkingContextSnapshotId());
+        assertEquals(AgentMode.GENERAL, sessionMemoryCoordinator.lastCommand.getAgentMode());
+    }
+
+    @Test
+    void completeShouldIgnorePostTurnMemoryUpdateFailureAndReturnCompletedResult() {
+        RuntimeCompletionHandler handler = new RuntimeCompletionHandler();
+        StubSessionMemoryCoordinator sessionMemoryCoordinator = new StubSessionMemoryCoordinator();
+        sessionMemoryCoordinator.throwOnUpdate = true;
+        TestFieldUtils.setField(handler, "persistenceCoordinator", new StubPersistenceCoordinator());
+        TestFieldUtils.setField(handler, "agentExecutionResultFactory", new AgentExecutionResultFactory());
+        TestFieldUtils.setField(handler, "sessionMemoryCoordinator", sessionMemoryCoordinator);
+
+        RuntimeExecutionContext context = buildContext();
+        AssistantMessage assistantMessage = AssistantMessage.create(
+            "msg-assistant-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            2L,
+            "done",
+            List.of(),
+            FinishReason.STOP,
+            UsageInfo.empty()
+        );
+        LoopExecutionResult loopExecutionResult = LoopExecutionResult.builder()
+            .assistantMessage(assistantMessage)
+            .finishReason(FinishReason.STOP)
+            .usage(UsageInfo.empty())
+            .build();
+        context.setLoopResult(loopExecutionResult);
+
+        AgentExecutionResult result = handler.complete(context, new RuntimeEventSink(context, new RuntimeEventFactory(), event -> { }));
+
+        assertEquals(RunStatus.COMPLETED, result.getRunStatus());
+        assertEquals(1, sessionMemoryCoordinator.invocationCount);
     }
 
     private static RuntimeExecutionContext buildContext() {
@@ -136,6 +186,20 @@ class RuntimeCompletionHandlerTest {
             .session(session)
             .turn(turn)
             .userInput("hello")
+            .agentMode(AgentMode.GENERAL)
+            .workingContextBuildResult(WorkingContextBuildResult.builder()
+                .context(WorkingContext.builder()
+                    .metadata(WorkingContextMetadata.builder()
+                        .workingContextSnapshotId("wctx-1")
+                        .conversationId("conv-1")
+                        .sessionId("sess-1")
+                        .turnId("turn-1")
+                        .runId("run-1")
+                        .checkpointTrigger(CheckpointTrigger.BEFORE_FIRST_MODEL_CALL)
+                        .agentMode(AgentMode.GENERAL)
+                        .build())
+                    .build())
+                .build())
             .workingMessages(new ArrayList<>())
             .availableTools(List.of())
             .state(AgentRunState.STARTED)
@@ -152,6 +216,22 @@ class RuntimeCompletionHandlerTest {
         public void persistSuccess(AgentRunContext runContext, LoopExecutionResult loopExecutionResult) {
             lastRunContext = runContext;
             lastLoopExecutionResult = loopExecutionResult;
+        }
+    }
+
+    private static final class StubSessionMemoryCoordinator extends SessionMemoryCoordinator {
+        private int invocationCount;
+        private boolean throwOnUpdate;
+        private SessionMemoryUpdateCommand lastCommand;
+
+        @Override
+        public SessionMemoryUpdateResult updateAfterTurn(SessionMemoryUpdateCommand command) {
+            invocationCount++;
+            lastCommand = command;
+            if (throwOnUpdate) {
+                throw new IllegalStateException("memory failed");
+            }
+            return SessionMemoryUpdateResult.builder().success(true).build();
         }
     }
 }

@@ -58,6 +58,23 @@ class SessionSnapshotConfigurationContractTest {
     }
 
     @Test
+    void sessionMemoryPropertiesShouldBindAsIndependentSwitches() {
+        contextRunner
+            .withPropertyValues(
+                "vi.agent.memory.post-turn-update-enabled=false",
+                "vi.agent.memory.state-extraction-enabled=false",
+                "vi.agent.memory.summary-update-enabled=false"
+            )
+            .run(context -> {
+                ConfigurationProbe probe = context.getBean(ConfigurationProbe.class);
+
+                assertFalse(probe.postTurnUpdateEnabled);
+                assertFalse(probe.stateExtractionEnabled);
+                assertFalse(probe.summaryUpdateEnabled);
+            });
+    }
+
+    @Test
     void oldSessionContextPropertiesShouldNotBindAsFormalEntry() {
         contextRunner
             .withPropertyValues(
@@ -103,6 +120,9 @@ class SessionSnapshotConfigurationContractTest {
         assertTrue(application.contains("reserved-output-tokens"));
         assertTrue(application.contains("reserved-tool-loop-tokens"));
         assertTrue(application.contains("safety-margin-tokens"));
+        assertTrue(application.contains("post-turn-update-enabled"));
+        assertTrue(application.contains("state-extraction-enabled"));
+        assertTrue(application.contains("summary-update-enabled"));
     }
 
     private String readResource(String resourcePath) throws IOException {
@@ -137,5 +157,14 @@ class SessionSnapshotConfigurationContractTest {
 
         @Value("${vi.agent.context.budget.safety-margin-tokens:512}")
         int safetyMarginTokens;
+
+        @Value("${vi.agent.memory.post-turn-update-enabled:true}")
+        boolean postTurnUpdateEnabled;
+
+        @Value("${vi.agent.memory.state-extraction-enabled:true}")
+        boolean stateExtractionEnabled;
+
+        @Value("${vi.agent.memory.summary-update-enabled:true}")
+        boolean summaryUpdateEnabled;
     }
 }

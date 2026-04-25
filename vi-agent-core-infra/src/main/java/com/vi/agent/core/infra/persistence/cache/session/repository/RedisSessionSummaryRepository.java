@@ -4,6 +4,7 @@ import com.vi.agent.core.infra.persistence.cache.session.document.SessionSummary
 import com.vi.agent.core.infra.persistence.cache.session.key.SessionRedisKeyBuilder;
 import com.vi.agent.core.infra.persistence.cache.session.mapper.SessionSummaryRedisMapper;
 import com.vi.agent.core.model.memory.ConversationSummary;
+import com.vi.agent.core.model.port.SessionSummaryCacheRepository;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
@@ -22,7 +23,7 @@ import java.util.Optional;
  */
 @Slf4j
 @Repository
-public class RedisSessionSummaryRepository {
+public class RedisSessionSummaryRepository implements SessionSummaryCacheRepository {
 
     private static final int SNAPSHOT_VERSION = 1;
 

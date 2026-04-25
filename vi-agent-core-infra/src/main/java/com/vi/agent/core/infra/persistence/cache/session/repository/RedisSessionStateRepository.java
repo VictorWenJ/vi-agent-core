@@ -4,6 +4,7 @@ import com.vi.agent.core.infra.persistence.cache.session.document.SessionStateSn
 import com.vi.agent.core.infra.persistence.cache.session.key.SessionRedisKeyBuilder;
 import com.vi.agent.core.infra.persistence.cache.session.mapper.SessionStateRedisMapper;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
+import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
@@ -22,7 +23,7 @@ import java.util.Optional;
  */
 @Slf4j
 @Repository
-public class RedisSessionStateRepository {
+public class RedisSessionStateRepository implements SessionStateCacheRepository {
 
     private static final int SNAPSHOT_VERSION = 1;
 
