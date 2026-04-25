@@ -14,6 +14,7 @@ import com.vi.agent.core.model.memory.statepatch.PhaseStatePatch;
 import com.vi.agent.core.model.memory.statepatch.UserPreferencePatch;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -134,7 +135,7 @@ public class StateDeltaMerger {
         Set<String> closeIds = new HashSet<>(nullSafe(delta.getOpenLoopIdsToClose()));
         List<OpenLoop> merged = new ArrayList<>();
         for (OpenLoop openLoop : nullSafe(current)) {
-            if (closeIds.contains(openLoop.getOpenLoopId())) {
+            if (closeIds.contains(openLoop.getLoopId())) {
                 merged.add(closeOpenLoop(openLoop));
             } else {
                 merged.add(openLoop);
@@ -146,14 +147,14 @@ public class StateDeltaMerger {
 
     private OpenLoop closeOpenLoop(OpenLoop openLoop) {
         return OpenLoop.builder()
-            .openLoopId(openLoop.getOpenLoopId())
+            .loopId(openLoop.getLoopId())
             .kind(openLoop.getKind())
+            .content(openLoop.getContent())
             .status(OpenLoopStatus.CLOSED)
-            .title(openLoop.getTitle())
-            .description(openLoop.getDescription())
-            .evidenceIds(nullSafe(openLoop.getEvidenceIds()))
+            .sourceType(openLoop.getSourceType())
+            .sourceRef(openLoop.getSourceRef())
             .createdAt(openLoop.getCreatedAt())
-            .updatedAt(openLoop.getUpdatedAt())
+            .closedAt(Objects.nonNull(openLoop.getClosedAt()) ? openLoop.getClosedAt() : Instant.now())
             .build();
     }
 

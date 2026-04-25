@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory.extract;
 
+import com.vi.agent.core.common.id.InternalTaskMessageIdGenerator;
 import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
 import com.vi.agent.core.model.message.Message;
@@ -11,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * LLM-backed StateDelta extractor for the internal STATE_EXTRACT task.
@@ -28,6 +28,9 @@ public class LlmStateDeltaExtractor implements StateDeltaExtractor {
 
     @Resource
     private StateDeltaExtractionOutputParser outputParser;
+
+    @Resource
+    private InternalTaskMessageIdGenerator internalTaskMessageIdGenerator;
 
     @Override
     public StateDeltaExtractionResult extract(StateDeltaExtractionCommand command) {
@@ -79,7 +82,7 @@ public class LlmStateDeltaExtractor implements StateDeltaExtractor {
     }
 
     private String nextInternalMessageId(String role) {
-        return "itaskmsg-" + role + "-" + UUID.randomUUID();
+        return internalTaskMessageIdGenerator.nextId(role);
     }
 
     private StateDeltaExtractionResult degraded(String failureReason) {

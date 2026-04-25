@@ -2,11 +2,9 @@ package com.vi.agent.core.model.memory;
 
 import lombok.Builder;
 import lombok.Getter;
-import lombok.Singular;
 import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * 当前未闭环事项。
@@ -16,28 +14,27 @@ import java.util.List;
 @Jacksonized
 public class OpenLoop {
 
-    /** 未闭环事项 ID。 */
-    private final String openLoopId;
+    /** loop ID。 */
+    private final String loopId;
 
-    /** 未闭环事项类型。 */
+    /** 未完成事项类型。 */
     private final OpenLoopKind kind;
 
-    /** 未闭环事项状态。 */
+    /** 未完成事项内容。 */
+    private final String content;
+
+    /** 当前状态。 */
     private final OpenLoopStatus status;
 
-    /** 未闭环事项标题。 */
-    private final String title;
+    /** 来源类型，如 USER / TOOL / SYSTEM。 */
+    private final String sourceType;
 
-    /** 未闭环事项描述。 */
-    private final String description;
+    /** 来源引用，如 messageId / toolCallRecordId。 */
+    private final String sourceRef;
 
-    /** 支撑该未闭环事项的 evidence ID 列表。 */
-    @Singular("evidenceId")
-    private final List<String> evidenceIds;
-
-    /** 未闭环事项创建时间。 */
+    /** 创建时间。 */
     private final Instant createdAt;
 
-    /** 未闭环事项更新时间。 */
-    private final Instant updatedAt;
+    /** 关闭时间，可空。 */
+    private final Instant closedAt;
 }

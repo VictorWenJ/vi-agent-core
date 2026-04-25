@@ -2,6 +2,7 @@ package com.vi.agent.core.infra.persistence.mysql.repository;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.vi.agent.core.common.id.ToolExecutionIdGenerator;
 import com.vi.agent.core.infra.persistence.message.handler.MessageTypeHandlerRegistry;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageEntity;
 import com.vi.agent.core.infra.persistence.mysql.entity.AgentMessageToolCallEntity;
@@ -124,6 +125,37 @@ class MysqlMessageRepositoryToolStatusTest {
 
         verify(toolExecutionMapper, times(1)).insert(any(AgentToolExecutionEntity.class));
         verify(toolExecutionMapper, times(1)).update(any(), any());
+    }
+
+    @Test
+    void missingToolExecutionIdShouldBeGeneratedByToolExecutionIdGenerator() {
+        MysqlMessageRepository repository = new MysqlMessageRepository();
+
+        AgentMessageToolCallMapper toolCallMapper = Mockito.mock(AgentMessageToolCallMapper.class);
+        AgentToolExecutionMapper toolExecutionMapper = Mockito.mock(AgentToolExecutionMapper.class);
+        setCoreFields(repository, toolCallMapper, toolExecutionMapper);
+
+        when(toolExecutionMapper.selectOne(any())).thenReturn(null);
+
+        ToolExecution runningExecution = ToolExecution.builder()
+            .toolCallRecordId("tcr-1")
+            .toolCallId("call-1")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .toolName("get_time")
+            .argumentsJson("{}")
+            .status(ToolExecutionStatus.RUNNING)
+            .startedAt(Instant.now())
+            .createdAt(Instant.now())
+            .build();
+
+        repository.upsertToolExecutionRunning(runningExecution);
+
+        ArgumentCaptor<AgentToolExecutionEntity> executionCaptor = ArgumentCaptor.forClass(AgentToolExecutionEntity.class);
+        verify(toolExecutionMapper, times(1)).insert(executionCaptor.capture());
+        assertEquals("tex-fixed", executionCaptor.getValue().getToolExecutionId());
     }
 
     @Test
@@ -275,6 +307,15 @@ class MysqlMessageRepositoryToolStatusTest {
         setField(repository, "toolExecutionMapper", toolExecutionMapper);
         setField(repository, "turnMapper", Mockito.mock(AgentTurnMapper.class));
         setField(repository, "handlerRegistry", Mockito.mock(MessageTypeHandlerRegistry.class));
+        setField(repository, "toolExecutionIdGenerator", new FixedToolExecutionIdGenerator());
+    }
+
+    private static final class FixedToolExecutionIdGenerator extends ToolExecutionIdGenerator {
+
+        @Override
+        public String nextId() {
+            return "tex-fixed";
+        }
     }
 
     private static void setField(Object target, String fieldName, Object value) {

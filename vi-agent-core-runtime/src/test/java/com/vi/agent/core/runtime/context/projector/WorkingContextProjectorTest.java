@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.context.projector;
 
+import com.vi.agent.core.common.id.WorkingContextProjectionIdGenerator;
 import com.vi.agent.core.model.context.ContextBlockType;
 import com.vi.agent.core.model.context.WorkingContext;
 import com.vi.agent.core.model.context.WorkingContextProjection;
@@ -30,8 +31,12 @@ class WorkingContextProjectorTest {
             ContextTestFixtures.currentUserBlock()
         ), ContextTestFixtures.budget(50));
 
-        WorkingContextProjection projection = new WorkingContextProjector(new FixedSyntheticMessageIdGenerator()).project(context);
+        WorkingContextProjection projection = new WorkingContextProjector(
+            new FixedSyntheticMessageIdGenerator(),
+            new FixedWorkingContextProjectionIdGenerator()
+        ).project(context);
 
+        assertEquals("wcp-fixed", projection.getProjectionId());
         assertEquals("wctx-1", projection.getWorkingContextSnapshotId());
         assertEquals(5, projection.getModelMessages().size());
         assertInstanceOf(SystemMessage.class, projection.getModelMessages().get(0));
@@ -52,6 +57,14 @@ class WorkingContextProjectorTest {
         public String newSyntheticMessageId(MessageRole role, ContextBlockType blockType) {
             count++;
             return "ctxmsg-" + role.getValue() + "-" + blockType.getValue() + "-" + count;
+        }
+    }
+
+    private static final class FixedWorkingContextProjectionIdGenerator extends WorkingContextProjectionIdGenerator {
+
+        @Override
+        public String nextId() {
+            return "wcp-fixed";
         }
     }
 }

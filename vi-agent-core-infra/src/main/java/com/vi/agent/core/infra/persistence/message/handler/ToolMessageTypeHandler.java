@@ -1,5 +1,6 @@
 package com.vi.agent.core.infra.persistence.message.handler;
 
+import com.vi.agent.core.common.id.ToolExecutionIdGenerator;
 import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
 import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.infra.persistence.mysql.convertor.MysqlTimeConvertor;
@@ -8,16 +9,29 @@ import com.vi.agent.core.infra.persistence.mysql.entity.AgentToolExecutionEntity
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
 import com.vi.agent.core.model.message.ToolMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * ToolMessage handler.
  */
 @Component
 public class ToolMessageTypeHandler implements MessageTypeHandler<ToolMessage> {
+
+    private final ToolExecutionIdGenerator toolExecutionIdGenerator;
+
+    public ToolMessageTypeHandler() {
+        this(new ToolExecutionIdGenerator());
+    }
+
+    @Autowired
+    public ToolMessageTypeHandler(ToolExecutionIdGenerator toolExecutionIdGenerator) {
+        this.toolExecutionIdGenerator = Objects.requireNonNull(toolExecutionIdGenerator, "toolExecutionIdGenerator must not be null");
+    }
 
     @Override
     public MessageRole role() {
@@ -75,7 +89,7 @@ public class ToolMessageTypeHandler implements MessageTypeHandler<ToolMessage> {
         entity.setUpdatedAt(MysqlTimeConvertor.toLocalDateTime(defaultNow(message.getCreatedAt())));
 
         AgentToolExecutionEntity execution = new AgentToolExecutionEntity();
-        execution.setToolExecutionId("tex-" + message.getMessageId());
+        execution.setToolExecutionId(toolExecutionIdGenerator.nextId());
         execution.setToolCallRecordId(message.getToolCallRecordId());
         execution.setToolCallId(message.getToolCallId());
         execution.setToolResultMessageId(message.getMessageId());

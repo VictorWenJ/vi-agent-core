@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.context.builder;
 
+import com.vi.agent.core.common.id.ContextBlockIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
 import com.vi.agent.core.model.context.ContextPriority;
@@ -24,7 +25,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Objects;
 
 /**
  * Builds canonical context blocks from raw memory inputs.
@@ -41,14 +42,21 @@ public class ContextBlockFactory {
 
     private final SessionStateBlockRenderer sessionStateBlockRenderer;
 
+    private final ContextBlockIdGenerator contextBlockIdGenerator;
+
     public ContextBlockFactory(ContextBudgetCalculator contextBudgetCalculator) {
-        this(contextBudgetCalculator, new SessionStateBlockRenderer());
+        this(contextBudgetCalculator, new SessionStateBlockRenderer(), new ContextBlockIdGenerator());
     }
 
     @Autowired
-    public ContextBlockFactory(ContextBudgetCalculator contextBudgetCalculator, SessionStateBlockRenderer sessionStateBlockRenderer) {
-        this.contextBudgetCalculator = contextBudgetCalculator;
-        this.sessionStateBlockRenderer = sessionStateBlockRenderer;
+    public ContextBlockFactory(
+        ContextBudgetCalculator contextBudgetCalculator,
+        SessionStateBlockRenderer sessionStateBlockRenderer,
+        ContextBlockIdGenerator contextBlockIdGenerator
+    ) {
+        this.contextBudgetCalculator = Objects.requireNonNull(contextBudgetCalculator, "contextBudgetCalculator must not be null");
+        this.sessionStateBlockRenderer = Objects.requireNonNull(sessionStateBlockRenderer, "sessionStateBlockRenderer must not be null");
+        this.contextBlockIdGenerator = Objects.requireNonNull(contextBlockIdGenerator, "contextBlockIdGenerator must not be null");
     }
 
     /**
@@ -191,7 +199,7 @@ public class ContextBlockFactory {
     }
 
     private String nextBlockId() {
-        return "ctxblk-" + UUID.randomUUID();
+        return contextBlockIdGenerator.nextId();
     }
 
     private String toVersionString(Object version) {

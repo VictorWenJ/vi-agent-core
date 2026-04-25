@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StateDeltaExtractionPromptBuilderTest {
@@ -45,7 +46,18 @@ class StateDeltaExtractionPromptBuilderTest {
         assertTrue(prompt.contains("Only output StateDelta JSON"));
         assertTrue(prompt.contains("taskGoalOverride"));
         assertTrue(prompt.contains("sourceCandidateIds"));
+        assertTrue(prompt.contains("ConfirmedFactRecord fields are only: factId, content, confidence, lastVerifiedAt, stalePolicy."));
+        assertTrue(prompt.contains("ConstraintRecord fields are only: constraintId, content, scope, confidence, lastVerifiedAt."));
+        assertTrue(prompt.contains("DecisionRecord fields are only: decisionId, content, decidedBy, decidedAt, confidence."));
+        assertTrue(prompt.contains("OpenLoop fields are only: loopId, kind, content, status, sourceType, sourceRef, createdAt, closedAt."));
+        assertTrue(prompt.contains("ToolOutcomeDigest fields are only: digestId, toolCallRecordId, toolExecutionId, toolName, summary, freshnessPolicy, validUntil, lastVerifiedAt."));
+        assertTrue(prompt.contains("UserPreferencePatch fields are only: answerStyle, detailLevel, termFormat."));
+        assertTrue(prompt.contains("PhaseStatePatch fields are only: promptEngineeringEnabled, contextAuditEnabled, summaryEnabled, stateExtractionEnabled, compactionEnabled."));
         assertTrue(prompt.contains("Do not output upsert"));
         assertTrue(prompt.contains("Do not output remove"));
+        assertFalse(prompt.contains("decisionText"));
+        assertFalse(prompt.contains("digestText"));
+        assertFalse(prompt.contains("expiresAt"));
+        assertFalse(prompt.contains("openLoopId,"));
     }
 }

@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory.task;
 
+import com.vi.agent.core.common.id.InternalTaskIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.memory.InternalLlmTaskRecord;
 import com.vi.agent.core.model.memory.InternalTaskStatus;
@@ -25,6 +26,7 @@ class InternalMemoryTaskServiceTest {
         InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
+        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
 
         InternalMemoryTaskResult result = service.execute(
             stateCommand(),
@@ -43,6 +45,7 @@ class InternalMemoryTaskServiceTest {
         );
 
         assertTrue(result.isSuccess());
+        assertEquals("itask-fixed", result.getInternalTaskId());
         assertFalse(result.isDegraded());
         assertEquals(InternalTaskStatus.SUCCEEDED, result.getStatus());
         assertNotNull(result.getStateDelta());
@@ -51,6 +54,7 @@ class InternalMemoryTaskServiceTest {
         assertEquals(List.of("msg-user-1"), result.getSourceCandidateIds());
         assertEquals(3, repository.saved.size());
         assertEquals(InternalTaskStatus.PENDING, repository.saved.get(0).getStatus());
+        assertEquals("itask-fixed", repository.saved.get(0).getInternalTaskId());
         assertEquals(InternalTaskStatus.RUNNING, repository.saved.get(1).getStatus());
         assertEquals(InternalTaskStatus.SUCCEEDED, repository.saved.get(2).getStatus());
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"sessionId\":\"sess-1\""));
@@ -65,10 +69,12 @@ class InternalMemoryTaskServiceTest {
         InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
+        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
 
         InternalMemoryTaskResult result = service.execute(command(InternalTaskType.SUMMARY_EXTRACT));
 
         assertTrue(result.isSuccess());
+        assertEquals("itask-fixed", result.getInternalTaskId());
         assertTrue(result.isSkipped());
         assertEquals(InternalTaskStatus.SKIPPED, result.getStatus());
         assertEquals(3, repository.saved.size());
@@ -87,6 +93,7 @@ class InternalMemoryTaskServiceTest {
         };
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
+        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
 
         InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACT));
 
@@ -144,6 +151,14 @@ class InternalMemoryTaskServiceTest {
             .messageId("msg-assistant-1")
             .currentStateVersion(1L)
             .build();
+    }
+
+    private static final class FixedInternalTaskIdGenerator extends InternalTaskIdGenerator {
+
+        @Override
+        public String nextId() {
+            return "itask-fixed";
+        }
     }
 
     private static final class RecordingInternalTaskRepository implements InternalLlmTaskRepository {

@@ -1,6 +1,7 @@
 package com.vi.agent.core.infra.persistence.mysql.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.vi.agent.core.common.id.ToolExecutionIdGenerator;
 import com.vi.agent.core.infra.persistence.message.handler.MessageTypeHandlerRegistry;
 import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
 import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
@@ -52,6 +53,9 @@ public class MysqlMessageRepository implements MessageRepository {
 
     @Resource
     private MessageTypeHandlerRegistry handlerRegistry;
+
+    @Resource
+    private ToolExecutionIdGenerator toolExecutionIdGenerator;
 
     @Override
     public void saveBatch(List<Message> messages) {
@@ -498,7 +502,7 @@ public class MysqlMessageRepository implements MessageRepository {
     private AgentToolExecutionEntity toRunningExecutionEntity(ToolExecution toolExecution) {
         LocalDateTime now = LocalDateTime.now();
         AgentToolExecutionEntity entity = new AgentToolExecutionEntity();
-        entity.setToolExecutionId(StringUtils.defaultIfBlank(toolExecution.getToolExecutionId(), "tex-" + UUID.randomUUID()));
+        entity.setToolExecutionId(resolveToolExecutionId(toolExecution));
         entity.setToolCallRecordId(toolExecution.getToolCallRecordId());
         entity.setToolCallId(toolExecution.getToolCallId());
         entity.setToolResultMessageId(null);
@@ -524,7 +528,7 @@ public class MysqlMessageRepository implements MessageRepository {
     private AgentToolExecutionEntity toFinalExecutionEntity(ToolExecution toolExecution) {
         LocalDateTime now = LocalDateTime.now();
         AgentToolExecutionEntity entity = new AgentToolExecutionEntity();
-        entity.setToolExecutionId(StringUtils.defaultIfBlank(toolExecution.getToolExecutionId(), "tex-" + UUID.randomUUID()));
+        entity.setToolExecutionId(resolveToolExecutionId(toolExecution));
         entity.setToolCallRecordId(toolExecution.getToolCallRecordId());
         entity.setToolCallId(toolExecution.getToolCallId());
         entity.setToolResultMessageId(toolExecution.getStatus() == ToolExecutionStatus.SUCCEEDED
@@ -552,6 +556,13 @@ public class MysqlMessageRepository implements MessageRepository {
 
     private boolean shouldSkipToolCallOverride(ToolCallStatus existingStatus, ToolCallStatus targetStatus) {
         return existingStatus == ToolCallStatus.SUCCEEDED && targetStatus != ToolCallStatus.SUCCEEDED;
+    }
+
+    private String resolveToolExecutionId(ToolExecution toolExecution) {
+        if (StringUtils.isNotBlank(toolExecution.getToolExecutionId())) {
+            return toolExecution.getToolExecutionId();
+        }
+        return toolExecutionIdGenerator.nextId();
     }
 
     private boolean shouldSkipToolExecutionOverride(ToolExecutionStatus existingStatus, ToolExecutionStatus targetStatus) {

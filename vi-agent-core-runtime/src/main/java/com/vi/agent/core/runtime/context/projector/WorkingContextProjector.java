@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.context.projector;
 
+import com.vi.agent.core.common.id.WorkingContextProjectionIdGenerator;
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
 import com.vi.agent.core.model.context.ContextBlockType;
 import com.vi.agent.core.model.context.ContextViewType;
@@ -21,7 +22,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -32,13 +32,26 @@ public class WorkingContextProjector {
 
     private final SyntheticMessageIdGenerator syntheticMessageIdGenerator;
 
+    private final WorkingContextProjectionIdGenerator workingContextProjectionIdGenerator;
+
     public WorkingContextProjector() {
-        this(new SyntheticMessageIdGenerator());
+        this(new SyntheticMessageIdGenerator(), new WorkingContextProjectionIdGenerator());
+    }
+
+    public WorkingContextProjector(SyntheticMessageIdGenerator syntheticMessageIdGenerator) {
+        this(syntheticMessageIdGenerator, new WorkingContextProjectionIdGenerator());
     }
 
     @Autowired
-    public WorkingContextProjector(SyntheticMessageIdGenerator syntheticMessageIdGenerator) {
+    public WorkingContextProjector(
+        SyntheticMessageIdGenerator syntheticMessageIdGenerator,
+        WorkingContextProjectionIdGenerator workingContextProjectionIdGenerator
+    ) {
         this.syntheticMessageIdGenerator = Objects.requireNonNull(syntheticMessageIdGenerator, "syntheticMessageIdGenerator must not be null");
+        this.workingContextProjectionIdGenerator = Objects.requireNonNull(
+            workingContextProjectionIdGenerator,
+            "workingContextProjectionIdGenerator must not be null"
+        );
     }
 
     public WorkingContextProjection project(WorkingContext context) {
@@ -103,7 +116,7 @@ public class WorkingContextProjector {
             .ifPresent(modelMessages::add);
 
         return WorkingContextProjection.builder()
-            .projectionId("wcp-" + UUID.randomUUID())
+            .projectionId(workingContextProjectionIdGenerator.nextId())
             .workingContextSnapshotId(context.getMetadata().getWorkingContextSnapshotId())
             .contextViewType(context.getMetadata().getContextViewType() == null
                 ? ContextViewType.MAIN_AGENT

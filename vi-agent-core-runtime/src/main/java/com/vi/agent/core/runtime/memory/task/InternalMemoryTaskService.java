@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory.task;
 
+import com.vi.agent.core.common.id.InternalTaskIdGenerator;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.context.CheckpointTrigger;
 import com.vi.agent.core.model.memory.InternalLlmTaskRecord;
@@ -15,7 +16,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Internal memory task audit service.
@@ -36,6 +36,9 @@ public class InternalMemoryTaskService {
 
     @Resource
     private InternalLlmTaskRepository internalLlmTaskRepository;
+
+    @Resource
+    private InternalTaskIdGenerator internalTaskIdGenerator;
 
     public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command) {
         return execute(command, (internalTaskId, inputJson) -> runDeterministicTask(command, internalTaskId));
@@ -264,6 +267,6 @@ public class InternalMemoryTaskService {
     }
 
     private String nextInternalTaskId() {
-        return "itask-" + UUID.randomUUID();
+        return internalTaskIdGenerator.nextId();
     }
 }

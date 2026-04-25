@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory.extract;
 
+import com.vi.agent.core.common.id.InternalTaskMessageIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
@@ -44,6 +45,8 @@ class LlmStateDeltaExtractorTest {
         assertNotNull(gateway.lastRequest);
         assertEquals("run-1", gateway.lastRequest.getRunId());
         assertEquals(2, gateway.lastRequest.getMessages().size());
+        assertEquals("itaskmsg-system-fixed", gateway.lastRequest.getMessages().get(0).getMessageId());
+        assertEquals("itaskmsg-user-fixed", gateway.lastRequest.getMessages().get(1).getMessageId());
     }
 
     @Test
@@ -75,6 +78,7 @@ class LlmStateDeltaExtractorTest {
         TestFieldUtils.setField(extractor, "llmGateway", gateway);
         TestFieldUtils.setField(extractor, "promptBuilder", new StateDeltaExtractionPromptBuilder());
         TestFieldUtils.setField(extractor, "outputParser", new StateDeltaExtractionOutputParser());
+        TestFieldUtils.setField(extractor, "internalTaskMessageIdGenerator", new FixedInternalTaskMessageIdGenerator());
         return extractor;
     }
 
@@ -89,6 +93,14 @@ class LlmStateDeltaExtractorTest {
             .turnMessages(List.of(UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "Remember this.")))
             .workingContextSnapshotId("wctx-1")
             .build();
+    }
+
+    private static final class FixedInternalTaskMessageIdGenerator extends InternalTaskMessageIdGenerator {
+
+        @Override
+        public String nextId(String role) {
+            return "itaskmsg-" + role + "-fixed";
+        }
     }
 
     private static final class RecordingLlmGateway implements LlmGateway {

@@ -14,9 +14,11 @@ import com.vi.agent.core.model.memory.ConfirmedFactRecord;
 import com.vi.agent.core.model.memory.ConstraintRecord;
 import com.vi.agent.core.model.memory.DecisionRecord;
 import com.vi.agent.core.model.memory.OpenLoop;
+import com.vi.agent.core.model.memory.OpenLoopKind;
 import com.vi.agent.core.model.memory.OpenLoopStatus;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.ToolOutcomeDigest;
+import com.vi.agent.core.model.memory.ToolOutcomeFreshnessPolicy;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.SummaryMessage;
 import com.vi.agent.core.runtime.context.ContextTestFixtures;
@@ -115,10 +117,9 @@ class ContextBlockFactoryTest {
         assertEquals("5", stateBlock.getSourceRefs().get(0).getSourceVersion());
         assertTrue(stateBlock.getRenderedText().contains("Fact content for prompt."));
         assertTrue(stateBlock.getRenderedText().contains("Constraint content for prompt."));
-        assertTrue(stateBlock.getRenderedText().contains("Decision title"));
         assertTrue(stateBlock.getRenderedText().contains("Decision text."));
-        assertTrue(stateBlock.getRenderedText().contains("[OPEN] Open loop title - Open loop description."));
-        assertTrue(stateBlock.getRenderedText().contains("toolA - Tool digest text."));
+        assertTrue(stateBlock.getRenderedText().contains("[OPEN] FOLLOW_UP_ACTION - Open loop content."));
+        assertTrue(stateBlock.getRenderedText().contains("toolA - Tool summary text."));
         assertTrue(stateMessage.getContentText().contains("Fact content for prompt."));
         assertTrue(stateMessage.getContentText().contains("Constraint content for prompt."));
     }
@@ -153,19 +154,23 @@ class ContextBlockFactoryTest {
                 .build())
             .decision(DecisionRecord.builder()
                 .decisionId("decision-1")
-                .title("Decision title")
-                .decisionText("Decision text.")
+                .content("Decision text.")
                 .build())
             .openLoop(OpenLoop.builder()
-                .openLoopId("loop-1")
+                .loopId("loop-1")
+                .kind(OpenLoopKind.FOLLOW_UP_ACTION)
                 .status(OpenLoopStatus.OPEN)
-                .title("Open loop title")
-                .description("Open loop description.")
+                .content("Open loop content.")
+                .sourceType("USER")
+                .sourceRef("msg-user-1")
                 .build())
             .recentToolOutcome(ToolOutcomeDigest.builder()
                 .digestId("digest-1")
+                .toolCallRecordId("tcr-1")
+                .toolExecutionId("tex-1")
                 .toolName("toolA")
-                .digestText("Tool digest text.")
+                .summary("Tool summary text.")
+                .freshnessPolicy(ToolOutcomeFreshnessPolicy.SESSION)
                 .build())
             .build();
     }

@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory;
 
+import com.vi.agent.core.common.id.SessionStateSnapshotIdGenerator;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.memory.ConversationSummary;
@@ -30,7 +31,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * Coordinates deterministic post-turn session memory update.
@@ -68,6 +68,9 @@ public class SessionMemoryCoordinator {
 
     @Resource
     private StateDeltaMerger stateDeltaMerger;
+
+    @Resource
+    private SessionStateSnapshotIdGenerator sessionStateSnapshotIdGenerator;
 
     public SessionMemoryUpdateResult updateAfterTurn(SessionMemoryUpdateCommand command) {
         if (properties != null && !properties.isPostTurnUpdateEnabled()) {
@@ -411,7 +414,7 @@ public class SessionMemoryCoordinator {
 
     private SessionStateSnapshot emptyState(SessionMemoryUpdateCommand command) {
         return SessionStateSnapshot.builder()
-            .snapshotId("state-" + UUID.randomUUID())
+            .snapshotId(sessionStateSnapshotIdGenerator.nextId())
             .sessionId(command == null ? null : command.getSessionId())
             .stateVersion(0L)
             .updatedAt(Instant.now())
@@ -421,7 +424,7 @@ public class SessionMemoryCoordinator {
     private SessionStateSnapshot copyAsNextState(SessionStateSnapshot baseState, SessionStateSnapshot merged) {
         long nextVersion = baseState == null || baseState.getStateVersion() == null ? 1L : baseState.getStateVersion() + 1;
         return SessionStateSnapshot.builder()
-            .snapshotId("state-" + UUID.randomUUID())
+            .snapshotId(sessionStateSnapshotIdGenerator.nextId())
             .sessionId(merged.getSessionId())
             .stateVersion(nextVersion)
             .taskGoal(merged.getTaskGoal())

@@ -48,7 +48,7 @@ public class RuntimeCompletionHandler {
                 .currentUserMessageId(context.getUserMessage() == null ? null : context.getUserMessage().getMessageId())
                 .assistantMessageId(loopExecutionResult == null || loopExecutionResult.getAssistantMessage() == null
                     ? null : loopExecutionResult.getAssistantMessage().getMessageId())
-                .workingContextSnapshotId(resolveWorkingContextSnapshotId(context))
+                .workingContextSnapshotId(getWorkingContextSnapshotId(context))
                 .agentMode(context.getRunContext().getAgentMode())
                 .build());
         } catch (Exception ex) {
@@ -57,7 +57,7 @@ public class RuntimeCompletionHandler {
         }
     }
 
-    private String resolveWorkingContextSnapshotId(RuntimeExecutionContext context) {
+    private String getWorkingContextSnapshotId(RuntimeExecutionContext context) {
         if (context == null || context.getRunContext() == null || context.getRunContext().getWorkingContextBuildResult() == null) {
             return null;
         }

@@ -46,4 +46,44 @@ public class IdGeneratorConfig {
     public WorkingContextSnapshotIdGenerator workingContextSnapshotIdGenerator() {
         return new WorkingContextSnapshotIdGenerator();
     }
+
+    @Bean
+    public ToolCallRecordIdGenerator toolCallRecordIdGenerator() {
+        return new ToolCallRecordIdGenerator();
+    }
+
+    @Bean
+    public ToolExecutionIdGenerator toolExecutionIdGenerator() {
+        return new ToolExecutionIdGenerator();
+    }
+
+    @Bean
+    public RunEventIdGenerator runEventIdGenerator() {
+        return new RunEventIdGenerator();
+    }
+
+    @Bean
+    public ContextBlockIdGenerator contextBlockIdGenerator() {
+        return new ContextBlockIdGenerator();
+    }
+
+    @Bean
+    public WorkingContextProjectionIdGenerator workingContextProjectionIdGenerator() {
+        return new WorkingContextProjectionIdGenerator();
+    }
+
+    @Bean
+    public SessionStateSnapshotIdGenerator sessionStateSnapshotIdGenerator() {
+        return new SessionStateSnapshotIdGenerator();
+    }
+
+    @Bean
+    public InternalTaskIdGenerator internalTaskIdGenerator() {
+        return new InternalTaskIdGenerator();
+    }
+
+    @Bean
+    public InternalTaskMessageIdGenerator internalTaskMessageIdGenerator() {
+        return new InternalTaskMessageIdGenerator();
+    }
 }

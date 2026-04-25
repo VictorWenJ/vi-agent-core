@@ -3,6 +3,7 @@ package com.vi.agent.core.runtime.memory;
 import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.AnswerStyle;
 import com.vi.agent.core.model.memory.ConfirmedFactRecord;
+import com.vi.agent.core.model.memory.ConstraintScope;
 import com.vi.agent.core.model.memory.ConstraintRecord;
 import com.vi.agent.core.model.memory.DecisionRecord;
 import com.vi.agent.core.model.memory.DetailLevel;
@@ -11,14 +12,17 @@ import com.vi.agent.core.model.memory.OpenLoopKind;
 import com.vi.agent.core.model.memory.OpenLoopStatus;
 import com.vi.agent.core.model.memory.PhaseState;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.StalePolicy;
 import com.vi.agent.core.model.memory.StateDelta;
 import com.vi.agent.core.model.memory.TermFormat;
 import com.vi.agent.core.model.memory.ToolOutcomeDigest;
+import com.vi.agent.core.model.memory.ToolOutcomeFreshnessPolicy;
 import com.vi.agent.core.model.memory.UserPreferenceState;
 import com.vi.agent.core.model.memory.statepatch.PhaseStatePatch;
 import com.vi.agent.core.model.memory.statepatch.UserPreferencePatch;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -80,7 +84,7 @@ class StateDeltaMergerTest {
 
         assertEquals(2, merged.getDecisions().size());
         assertEquals("decision-1", merged.getDecisions().get(0).getDecisionId());
-        assertEquals("old decision", merged.getDecisions().get(0).getDecisionText());
+        assertEquals("old decision", merged.getDecisions().get(0).getContent());
         assertEquals("decision-2", merged.getDecisions().get(1).getDecisionId());
     }
 
@@ -93,7 +97,8 @@ class StateDeltaMergerTest {
 
         assertEquals(2, merged.getOpenLoops().size());
         assertEquals(OpenLoopStatus.CLOSED, merged.getOpenLoops().get(0).getStatus());
-        assertEquals("loop-2", merged.getOpenLoops().get(1).getOpenLoopId());
+        assertEquals("loop-2", merged.getOpenLoops().get(1).getLoopId());
+        assertEquals("content-loop-2", merged.getOpenLoops().get(1).getContent());
     }
 
     @Test
@@ -107,6 +112,10 @@ class StateDeltaMergerTest {
 
         assertEquals(StateDeltaMerger.MAX_RECENT_TOOL_OUTCOMES, merged.getRecentToolOutcomes().size());
         assertEquals("new-2", merged.getRecentToolOutcomes().get(0).getDigestId());
+        assertEquals("summary-new-2", merged.getRecentToolOutcomes().get(0).getSummary());
+        assertEquals(ToolOutcomeFreshnessPolicy.SESSION, merged.getRecentToolOutcomes().get(0).getFreshnessPolicy());
+        assertEquals(Instant.parse("2026-04-27T00:00:00Z"), merged.getRecentToolOutcomes().get(0).getValidUntil());
+        assertEquals(Instant.parse("2026-04-26T00:00:00Z"), merged.getRecentToolOutcomes().get(0).getLastVerifiedAt());
     }
 
     @Test
@@ -187,29 +196,48 @@ class StateDeltaMergerTest {
     }
 
     private ConfirmedFactRecord fact(String id, String content) {
-        return ConfirmedFactRecord.builder().factId(id).content(content).build();
+        return ConfirmedFactRecord.builder()
+            .factId(id)
+            .content(content)
+            .confidence(0.9)
+            .stalePolicy(StalePolicy.SESSION)
+            .build();
     }
 
     private ConstraintRecord constraint(String id, String content) {
-        return ConstraintRecord.builder().constraintId(id).content(content).active(true).build();
+        return ConstraintRecord.builder()
+            .constraintId(id)
+            .content(content)
+            .scope(ConstraintScope.SESSION)
+            .confidence(0.9)
+            .build();
     }
 
     private DecisionRecord decision(String id, String text) {
-        return DecisionRecord.builder().decisionId(id).decisionText(text).build();
+        return DecisionRecord.builder().decisionId(id).content(text).build();
     }
 
     private OpenLoop openLoop(String id, OpenLoopStatus status) {
         return OpenLoop.builder()
-            .openLoopId(id)
+            .loopId(id)
             .kind(OpenLoopKind.FOLLOW_UP_ACTION)
             .status(status)
-            .title("title-" + id)
-            .description("description-" + id)
-            .evidenceIds(List.of("evidence-" + id))
+            .content("content-" + id)
+            .sourceType("USER")
+            .sourceRef("msg-" + id)
             .build();
     }
 
     private ToolOutcomeDigest toolOutcome(String id) {
-        return ToolOutcomeDigest.builder().digestId(id).digestText("digest-" + id).build();
+        return ToolOutcomeDigest.builder()
+            .digestId(id)
+            .toolCallRecordId("tcr-" + id)
+            .toolExecutionId("tex-" + id)
+            .toolName("tool-" + id)
+            .summary("summary-" + id)
+            .freshnessPolicy(ToolOutcomeFreshnessPolicy.SESSION)
+            .validUntil(Instant.parse("2026-04-27T00:00:00Z"))
+            .lastVerifiedAt(Instant.parse("2026-04-26T00:00:00Z"))
+            .build();
     }
 }

@@ -73,7 +73,11 @@ public class SessionStateBlockRenderer {
         if (decision == null) {
             return null;
         }
-        return display(decision.getTitle()) + " - " + display(decision.getDecisionText());
+        return display(decision.getContent())
+            + " [decidedBy=" + display(decision.getDecidedBy())
+            + ", decidedAt=" + display(decision.getDecidedAt() == null ? null : decision.getDecidedAt().toString())
+            + ", confidence=" + display(decision.getConfidence() == null ? null : decision.getConfidence().toString())
+            + "]";
     }
 
     private String renderOpenLoop(OpenLoop openLoop) {
@@ -81,14 +85,24 @@ public class SessionStateBlockRenderer {
             return null;
         }
         return "[" + enumName(openLoop.getStatus()) + "] "
-            + display(openLoop.getTitle()) + " - " + display(openLoop.getDescription());
+            + enumName(openLoop.getKind()) + " - " + display(openLoop.getContent())
+            + " [loopId=" + display(openLoop.getLoopId())
+            + ", sourceType=" + display(openLoop.getSourceType())
+            + ", sourceRef=" + display(openLoop.getSourceRef())
+            + ", createdAt=" + display(openLoop.getCreatedAt() == null ? null : openLoop.getCreatedAt().toString())
+            + ", closedAt=" + display(openLoop.getClosedAt() == null ? null : openLoop.getClosedAt().toString())
+            + "]";
     }
 
     private String renderToolOutcome(ToolOutcomeDigest toolOutcome) {
         if (toolOutcome == null) {
             return null;
         }
-        return display(toolOutcome.getToolName()) + " - " + display(toolOutcome.getDigestText());
+        return display(toolOutcome.getToolName()) + " - " + display(toolOutcome.getSummary())
+            + " [freshnessPolicy=" + enumName(toolOutcome.getFreshnessPolicy())
+            + ", validUntil=" + display(toolOutcome.getValidUntil() == null ? null : toolOutcome.getValidUntil().toString())
+            + ", lastVerifiedAt=" + display(toolOutcome.getLastVerifiedAt() == null ? null : toolOutcome.getLastVerifiedAt().toString())
+            + "]";
     }
 
     private void appendPhaseState(StringBuilder builder, PhaseState phaseState) {

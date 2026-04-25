@@ -37,7 +37,76 @@ public class StateDeltaExtractionOutputParser {
         "patches",
         "operations",
         "memory",
-        "messages"
+        "messages",
+        "title",
+        "decisionText",
+        "rationale",
+        "description",
+        "digestText",
+        "expiresAt",
+        "openLoopId",
+        "evidenceIds",
+        "updatedAt"
+    );
+
+    private static final Set<String> ALLOWED_CONFIRMED_FACT_FIELDS = Set.of(
+        "factId",
+        "content",
+        "confidence",
+        "lastVerifiedAt",
+        "stalePolicy"
+    );
+
+    private static final Set<String> ALLOWED_CONSTRAINT_FIELDS = Set.of(
+        "constraintId",
+        "content",
+        "scope",
+        "confidence",
+        "lastVerifiedAt"
+    );
+
+    private static final Set<String> ALLOWED_DECISION_FIELDS = Set.of(
+        "decisionId",
+        "content",
+        "decidedBy",
+        "decidedAt",
+        "confidence"
+    );
+
+    private static final Set<String> ALLOWED_OPEN_LOOP_FIELDS = Set.of(
+        "loopId",
+        "kind",
+        "content",
+        "status",
+        "sourceType",
+        "sourceRef",
+        "createdAt",
+        "closedAt"
+    );
+
+    private static final Set<String> ALLOWED_TOOL_OUTCOME_FIELDS = Set.of(
+        "digestId",
+        "toolCallRecordId",
+        "toolExecutionId",
+        "toolName",
+        "summary",
+        "freshnessPolicy",
+        "validUntil",
+        "lastVerifiedAt"
+    );
+
+    private static final Set<String> ALLOWED_USER_PREFERENCE_PATCH_FIELDS = Set.of(
+        "answerStyle",
+        "detailLevel",
+        "termFormat"
+    );
+
+    private static final Set<String> ALLOWED_PHASE_STATE_PATCH_FIELDS = Set.of(
+        "promptEngineeringEnabled",
+        "contextAuditEnabled",
+        "summaryEnabled",
+        "stateExtractionEnabled",
+        "compactionEnabled"
     );
 
     public StateDeltaExtractionResult parse(String rawOutput) {
@@ -84,6 +153,47 @@ public class StateDeltaExtractionOutputParser {
             String fieldName = String.valueOf(field);
             if (FORBIDDEN_FIELDS.contains(fieldName) || !ALLOWED_TOP_LEVEL_FIELDS.contains(fieldName)) {
                 invalid.add(fieldName);
+            }
+        }
+        invalid.addAll(invalidListFields("confirmedFactsAppend", root.get("confirmedFactsAppend"), ALLOWED_CONFIRMED_FACT_FIELDS));
+        invalid.addAll(invalidListFields("constraintsAppend", root.get("constraintsAppend"), ALLOWED_CONSTRAINT_FIELDS));
+        invalid.addAll(invalidListFields("decisionsAppend", root.get("decisionsAppend"), ALLOWED_DECISION_FIELDS));
+        invalid.addAll(invalidListFields("openLoopsAppend", root.get("openLoopsAppend"), ALLOWED_OPEN_LOOP_FIELDS));
+        invalid.addAll(invalidListFields("recentToolOutcomesAppend", root.get("recentToolOutcomesAppend"), ALLOWED_TOOL_OUTCOME_FIELDS));
+        invalid.addAll(invalidObjectFields("userPreferencesPatch", root.get("userPreferencesPatch"), ALLOWED_USER_PREFERENCE_PATCH_FIELDS));
+        invalid.addAll(invalidObjectFields("phaseStatePatch", root.get("phaseStatePatch"), ALLOWED_PHASE_STATE_PATCH_FIELDS));
+        return invalid;
+    }
+
+    private Set<String> invalidListFields(String path, Object value, Set<String> allowedFields) {
+        if (!(value instanceof List<?> items)) {
+            return Set.of();
+        }
+        Set<String> invalid = new LinkedHashSet<>();
+        for (int i = 0; i < items.size(); i++) {
+            Object item = items.get(i);
+            if (!(item instanceof Map<?, ?> itemFields)) {
+                continue;
+            }
+            for (Object field : itemFields.keySet()) {
+                String fieldName = String.valueOf(field);
+                if (FORBIDDEN_FIELDS.contains(fieldName) || !allowedFields.contains(fieldName)) {
+                    invalid.add(path + "[" + i + "]." + fieldName);
+                }
+            }
+        }
+        return invalid;
+    }
+
+    private Set<String> invalidObjectFields(String path, Object value, Set<String> allowedFields) {
+        if (!(value instanceof Map<?, ?> fields)) {
+            return Set.of();
+        }
+        Set<String> invalid = new LinkedHashSet<>();
+        for (Object field : fields.keySet()) {
+            String fieldName = String.valueOf(field);
+            if (FORBIDDEN_FIELDS.contains(fieldName) || !allowedFields.contains(fieldName)) {
+                invalid.add(path + "." + fieldName);
             }
         }
         return invalid;

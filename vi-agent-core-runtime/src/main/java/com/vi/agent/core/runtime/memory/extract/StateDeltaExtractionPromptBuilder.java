@@ -26,6 +26,13 @@ public class StateDeltaExtractionPromptBuilder {
         prompt.append("Allowed top-level fields: taskGoalOverride, confirmedFactsAppend, constraintsAppend, ");
         prompt.append("userPreferencesPatch, decisionsAppend, openLoopsAppend, openLoopIdsToClose, ");
         prompt.append("recentToolOutcomesAppend, workingModeOverride, phaseStatePatch, sourceCandidateIds.\n");
+        prompt.append("ConfirmedFactRecord fields are only: factId, content, confidence, lastVerifiedAt, stalePolicy.\n");
+        prompt.append("ConstraintRecord fields are only: constraintId, content, scope, confidence, lastVerifiedAt.\n");
+        prompt.append("DecisionRecord fields are only: decisionId, content, decidedBy, decidedAt, confidence.\n");
+        prompt.append("OpenLoop fields are only: loopId, kind, content, status, sourceType, sourceRef, createdAt, closedAt.\n");
+        prompt.append("ToolOutcomeDigest fields are only: digestId, toolCallRecordId, toolExecutionId, toolName, summary, freshnessPolicy, validUntil, lastVerifiedAt.\n");
+        prompt.append("UserPreferencePatch fields are only: answerStyle, detailLevel, termFormat.\n");
+        prompt.append("PhaseStatePatch fields are only: promptEngineeringEnabled, contextAuditEnabled, summaryEnabled, stateExtractionEnabled, compactionEnabled.\n");
         prompt.append("Do not output upsert. Do not output remove. Do not output patches, operations, memory, or messages.\n");
         prompt.append("If there is no durable state change, output {\"sourceCandidateIds\":[]}.\n\n");
         appendRunMetadata(prompt, command);

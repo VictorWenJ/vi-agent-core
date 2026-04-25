@@ -3,17 +3,23 @@ package com.vi.agent.core.runtime.context.render;
 import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.AnswerStyle;
 import com.vi.agent.core.model.memory.ConfirmedFactRecord;
+import com.vi.agent.core.model.memory.ConstraintScope;
 import com.vi.agent.core.model.memory.ConstraintRecord;
 import com.vi.agent.core.model.memory.DecisionRecord;
 import com.vi.agent.core.model.memory.DetailLevel;
 import com.vi.agent.core.model.memory.OpenLoop;
+import com.vi.agent.core.model.memory.OpenLoopKind;
 import com.vi.agent.core.model.memory.OpenLoopStatus;
 import com.vi.agent.core.model.memory.PhaseState;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.StalePolicy;
 import com.vi.agent.core.model.memory.TermFormat;
 import com.vi.agent.core.model.memory.ToolOutcomeDigest;
+import com.vi.agent.core.model.memory.ToolOutcomeFreshnessPolicy;
 import com.vi.agent.core.model.memory.UserPreferenceState;
 import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,26 +41,40 @@ class SessionStateBlockRendererTest {
             .confirmedFact(ConfirmedFactRecord.builder()
                 .factId("fact-1")
                 .content("User has a valid passport.")
+                .confidence(0.98)
+                .stalePolicy(StalePolicy.SESSION)
                 .build())
             .constraint(ConstraintRecord.builder()
                 .constraintId("constraint-1")
                 .content("Do not expose internal evidence ids.")
+                .scope(ConstraintScope.SESSION)
+                .confidence(0.99)
                 .build())
             .decision(DecisionRecord.builder()
                 .decisionId("decision-1")
-                .title("Use concise format")
-                .decisionText("Answer with checklist.")
+                .content("Answer with checklist.")
+                .decidedBy("USER")
+                .decidedAt(Instant.parse("2026-04-26T00:00:00Z"))
+                .confidence(0.9)
                 .build())
             .openLoop(OpenLoop.builder()
-                .openLoopId("loop-1")
+                .loopId("loop-1")
+                .kind(OpenLoopKind.FOLLOW_UP_ACTION)
                 .status(OpenLoopStatus.OPEN)
-                .title("Collect I-20")
-                .description("Need user to upload I-20.")
+                .content("Need user to upload I-20.")
+                .sourceType("USER")
+                .sourceRef("msg-user-1")
+                .createdAt(Instant.parse("2026-04-26T00:00:00Z"))
                 .build())
             .recentToolOutcome(ToolOutcomeDigest.builder()
                 .digestId("digest-1")
+                .toolCallRecordId("tcr-1")
+                .toolExecutionId("tex-1")
                 .toolName("searchSchools")
-                .digestText("Found three candidate schools.")
+                .summary("Found three candidate schools.")
+                .freshnessPolicy(ToolOutcomeFreshnessPolicy.SESSION)
+                .validUntil(Instant.parse("2026-04-27T00:00:00Z"))
+                .lastVerifiedAt(Instant.parse("2026-04-26T00:00:00Z"))
                 .build())
             .phaseState(PhaseState.builder()
                 .promptEngineeringEnabled(true)
@@ -74,10 +94,14 @@ class SessionStateBlockRendererTest {
         assertTrue(renderedText.contains("ENGLISH_ZH"));
         assertTrue(renderedText.contains("User has a valid passport."));
         assertTrue(renderedText.contains("Do not expose internal evidence ids."));
-        assertTrue(renderedText.contains("Use concise format"));
         assertTrue(renderedText.contains("Answer with checklist."));
-        assertTrue(renderedText.contains("[OPEN] Collect I-20 - Need user to upload I-20."));
+        assertTrue(renderedText.contains("USER"));
+        assertTrue(renderedText.contains("2026-04-26T00:00:00Z"));
+        assertTrue(renderedText.contains("[OPEN] FOLLOW_UP_ACTION - Need user to upload I-20."));
+        assertTrue(renderedText.contains("msg-user-1"));
         assertTrue(renderedText.contains("searchSchools - Found three candidate schools."));
+        assertTrue(renderedText.contains("SESSION"));
+        assertTrue(renderedText.contains("2026-04-27T00:00:00Z"));
         assertTrue(renderedText.contains("promptEngineeringEnabled: true"));
         assertTrue(renderedText.contains("contextAuditEnabled: true"));
         assertTrue(renderedText.contains("summaryEnabled: false"));

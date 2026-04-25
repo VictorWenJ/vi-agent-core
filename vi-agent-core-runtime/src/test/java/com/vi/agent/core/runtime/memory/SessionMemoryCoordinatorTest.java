@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory;
 
+import com.vi.agent.core.common.id.SessionStateSnapshotIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.ConfirmedFactRecord;
@@ -103,6 +104,7 @@ class SessionMemoryCoordinatorTest {
         assertEquals(2L, result.getNewStateVersion());
         assertEquals(1, fixture.stateRepository.saved.size());
         SessionStateSnapshot saved = fixture.stateRepository.saved.get(0);
+        assertEquals("state-fixed-1", saved.getSnapshotId());
         assertEquals("sess-1", saved.getSessionId());
         assertEquals(2L, saved.getStateVersion());
         assertEquals(2, saved.getConfirmedFacts().size());
@@ -306,7 +308,18 @@ class SessionMemoryCoordinatorTest {
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaExtractor", fixture.extractor);
             TestFieldUtils.setField(fixture.coordinator, "internalMemoryTaskService", fixture.taskService);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaMerger", new StateDeltaMerger());
+            TestFieldUtils.setField(fixture.coordinator, "sessionStateSnapshotIdGenerator", new FixedSessionStateSnapshotIdGenerator());
             return fixture;
+        }
+    }
+
+    private static final class FixedSessionStateSnapshotIdGenerator extends SessionStateSnapshotIdGenerator {
+        private int count;
+
+        @Override
+        public String nextId() {
+            count++;
+            return "state-fixed-" + count;
         }
     }
 

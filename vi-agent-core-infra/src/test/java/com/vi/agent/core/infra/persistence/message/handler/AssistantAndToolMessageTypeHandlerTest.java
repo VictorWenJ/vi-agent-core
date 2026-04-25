@@ -1,5 +1,6 @@
 package com.vi.agent.core.infra.persistence.message.handler;
 
+import com.vi.agent.core.common.id.ToolExecutionIdGenerator;
 import com.vi.agent.core.infra.persistence.message.model.MessageAggregateRows;
 import com.vi.agent.core.infra.persistence.message.model.MessageWritePlan;
 import com.vi.agent.core.model.llm.FinishReason;
@@ -80,15 +81,24 @@ class AssistantAndToolMessageTypeHandlerTest {
             "{}"
         );
 
-        ToolMessageTypeHandler handler = new ToolMessageTypeHandler();
+        ToolMessageTypeHandler handler = new ToolMessageTypeHandler(new FixedToolExecutionIdGenerator());
         MessageWritePlan plan = handler.decompose(input);
         ToolMessage restored = handler.assemble(MessageAggregateRows.builder()
             .message(plan.getMessage())
             .toolExecution(plan.getToolExecution())
             .build());
 
+        assertEquals("tex-fixed", plan.getToolExecution().getToolExecutionId());
         assertEquals("tcr-1", restored.getToolCallRecordId());
         assertEquals("call-1", restored.getToolCallId());
         assertEquals(ToolExecutionStatus.SUCCEEDED, restored.getExecutionStatus());
+    }
+
+    private static final class FixedToolExecutionIdGenerator extends ToolExecutionIdGenerator {
+
+        @Override
+        public String nextId() {
+            return "tex-fixed";
+        }
     }
 }

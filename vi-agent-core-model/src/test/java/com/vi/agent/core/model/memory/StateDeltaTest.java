@@ -33,7 +33,7 @@ class StateDeltaTest {
         assertEquals(1, delta.getDecisionsAppend().size());
         assertEquals("decision-1", delta.getDecisionsAppend().get(0).getDecisionId());
         assertEquals(1, delta.getOpenLoopsAppend().size());
-        assertEquals("loop-1", delta.getOpenLoopsAppend().get(0).getOpenLoopId());
+        assertEquals("loop-1", delta.getOpenLoopsAppend().get(0).getLoopId());
         assertEquals(1, delta.getOpenLoopIdsToClose().size());
         assertEquals("loop-2", delta.getOpenLoopIdsToClose().get(0));
         assertEquals(1, delta.getRecentToolOutcomesAppend().size());
@@ -140,6 +140,8 @@ class StateDeltaTest {
         return ConfirmedFactRecord.builder()
             .factId(id)
             .content("content-" + id)
+            .confidence(0.9)
+            .stalePolicy(StalePolicy.SESSION)
             .build();
     }
 
@@ -147,30 +149,37 @@ class StateDeltaTest {
         return ConstraintRecord.builder()
             .constraintId(id)
             .content("content-" + id)
-            .active(true)
+            .scope(ConstraintScope.SESSION)
+            .confidence(0.9)
             .build();
     }
 
     private DecisionRecord decision(String id) {
         return DecisionRecord.builder()
             .decisionId(id)
-            .decisionText("decision-" + id)
+            .content("decision-" + id)
             .build();
     }
 
     private OpenLoop openLoop(String id) {
         return OpenLoop.builder()
-            .openLoopId(id)
+            .loopId(id)
             .kind(OpenLoopKind.FOLLOW_UP_ACTION)
             .status(OpenLoopStatus.OPEN)
-            .title("title-" + id)
+            .content("content-" + id)
+            .sourceType("USER")
+            .sourceRef("msg-" + id)
             .build();
     }
 
     private ToolOutcomeDigest toolOutcome(String id) {
         return ToolOutcomeDigest.builder()
             .digestId(id)
-            .digestText("digest-" + id)
+            .toolCallRecordId("tcr-" + id)
+            .toolExecutionId("tex-" + id)
+            .toolName("tool-" + id)
+            .summary("summary-" + id)
+            .freshnessPolicy(ToolOutcomeFreshnessPolicy.SESSION)
             .build();
     }
 

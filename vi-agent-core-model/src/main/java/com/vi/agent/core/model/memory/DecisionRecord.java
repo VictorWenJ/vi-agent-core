@@ -2,11 +2,9 @@ package com.vi.agent.core.model.memory;
 
 import lombok.Builder;
 import lombok.Getter;
-import lombok.Singular;
 import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * 会话决策记录。
@@ -19,22 +17,15 @@ public class DecisionRecord {
     /** 决策 ID。 */
     private final String decisionId;
 
-    /** 决策标题。 */
-    private final String title;
+    /** 决策内容。 */
+    private final String content;
 
-    /** 决策正文。 */
-    private final String decisionText;
+    /** 决策来源，USER / SYSTEM。 */
+    private final String decidedBy;
 
-    /** 决策依据。 */
-    private final String rationale;
+    /** 决策时间。 */
+    private final Instant decidedAt;
 
-    /** 支撑该决策的 evidence ID 列表。 */
-    @Singular("evidenceId")
-    private final List<String> evidenceIds;
-
-    /** 决策创建时间。 */
-    private final Instant createdAt;
-
-    /** 决策更新时间。 */
-    private final Instant updatedAt;
+    /** 置信度。 */
+    private final Double confidence;
 }
