@@ -1,5 +1,24 @@
 package com.vi.agent.core.model;
 
+import com.vi.agent.core.model.context.AgentMode;
+import com.vi.agent.core.model.context.CheckpointReason;
+import com.vi.agent.core.model.context.CheckpointTrigger;
+import com.vi.agent.core.model.context.ContextAssemblyDecision;
+import com.vi.agent.core.model.context.ContextBlockType;
+import com.vi.agent.core.model.context.ContextPriority;
+import com.vi.agent.core.model.context.ContextViewType;
+import com.vi.agent.core.model.context.WorkingMode;
+import com.vi.agent.core.model.memory.AnswerStyle;
+import com.vi.agent.core.model.memory.DetailLevel;
+import com.vi.agent.core.model.memory.EvidenceSourceType;
+import com.vi.agent.core.model.memory.EvidenceTargetType;
+import com.vi.agent.core.model.memory.InternalTaskStatus;
+import com.vi.agent.core.model.memory.InternalTaskType;
+import com.vi.agent.core.model.memory.MemoryWriteMode;
+import com.vi.agent.core.model.memory.OpenLoopKind;
+import com.vi.agent.core.model.memory.OpenLoopStatus;
+import com.vi.agent.core.model.memory.TermFormat;
+import com.vi.agent.core.model.memory.ToolOutcomeFreshnessPolicy;
 import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.MessageType;
 import com.vi.agent.core.model.runtime.RunEventActorType;
@@ -30,6 +49,26 @@ class EnumContractTest {
         assertEnumContract(ToolCallStatus.class);
         assertEnumContract(ToolExecutionStatus.class);
         assertEnumContract(RunEventActorType.class);
+        assertEnumContract(RunEventType.class);
+        assertEnumContract(AgentMode.class);
+        assertEnumContract(WorkingMode.class);
+        assertEnumContract(ContextViewType.class);
+        assertEnumContract(ContextBlockType.class);
+        assertEnumContract(ContextPriority.class);
+        assertEnumContract(CheckpointTrigger.class);
+        assertEnumContract(CheckpointReason.class);
+        assertEnumContract(ContextAssemblyDecision.class);
+        assertEnumContract(AnswerStyle.class);
+        assertEnumContract(DetailLevel.class);
+        assertEnumContract(TermFormat.class);
+        assertEnumContract(OpenLoopKind.class);
+        assertEnumContract(OpenLoopStatus.class);
+        assertEnumContract(ToolOutcomeFreshnessPolicy.class);
+        assertEnumContract(MemoryWriteMode.class);
+        assertEnumContract(EvidenceTargetType.class);
+        assertEnumContract(EvidenceSourceType.class);
+        assertEnumContract(InternalTaskType.class);
+        assertEnumContract(InternalTaskStatus.class);
     }
 
     @Test
@@ -38,6 +77,25 @@ class EnumContractTest {
         assertChineseDesc(RunEventType.class);
         assertChineseDesc(ToolCallStatus.class);
         assertChineseDesc(ToolExecutionStatus.class);
+        assertChineseDesc(AgentMode.class);
+        assertChineseDesc(WorkingMode.class);
+        assertChineseDesc(ContextViewType.class);
+        assertChineseDesc(ContextBlockType.class);
+        assertChineseDesc(ContextPriority.class);
+        assertChineseDesc(CheckpointTrigger.class);
+        assertChineseDesc(CheckpointReason.class);
+        assertChineseDesc(ContextAssemblyDecision.class);
+        assertChineseDesc(AnswerStyle.class);
+        assertChineseDesc(DetailLevel.class);
+        assertChineseDesc(TermFormat.class);
+        assertChineseDesc(OpenLoopKind.class);
+        assertChineseDesc(OpenLoopStatus.class);
+        assertChineseDesc(ToolOutcomeFreshnessPolicy.class);
+        assertChineseDesc(MemoryWriteMode.class);
+        assertChineseDesc(EvidenceTargetType.class);
+        assertChineseDesc(EvidenceSourceType.class);
+        assertChineseDesc(InternalTaskType.class);
+        assertChineseDesc(InternalTaskStatus.class);
     }
 
     @Test

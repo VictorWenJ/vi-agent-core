@@ -32,7 +32,17 @@ public enum RunEventType {
 
     RUN_COMPLETED("run_completed", "运行完成"),
 
-    RUN_FAILED("run_failed", "运行失败");
+    RUN_FAILED("run_failed", "运行失败"),
+
+    INTERNAL_TASK_STARTED("internal_task_started", "内部任务开始执行"),
+
+    INTERNAL_TASK_SUCCEEDED("internal_task_succeeded", "内部任务执行成功"),
+
+    INTERNAL_TASK_FAILED("internal_task_failed", "内部任务执行失败"),
+
+    INTERNAL_TASK_DEGRADED("internal_task_degraded", "内部任务降级完成"),
+
+    INTERNAL_TASK_SKIPPED("internal_task_skipped", "内部任务策略跳过");
 
     private final String value;
 
