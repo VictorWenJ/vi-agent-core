@@ -83,6 +83,11 @@ public class IdGeneratorConfig {
     }
 
     @Bean
+    public EvidenceIdGenerator evidenceIdGenerator() {
+        return new EvidenceIdGenerator();
+    }
+
+    @Bean
     public InternalTaskIdGenerator internalTaskIdGenerator() {
         return new InternalTaskIdGenerator();
     }

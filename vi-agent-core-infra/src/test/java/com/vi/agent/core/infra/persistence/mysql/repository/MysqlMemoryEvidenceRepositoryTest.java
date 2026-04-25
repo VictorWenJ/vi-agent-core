@@ -42,7 +42,7 @@ class MysqlMemoryEvidenceRepositoryTest {
         AgentMemoryEvidenceEntity entity = captor.getValue();
         assertEquals("ev-1", entity.getEvidenceId());
         assertEquals("sess-1", entity.getSessionId());
-        assertEquals("SESSION_STATE", entity.getTargetType());
+        assertEquals("SESSION_STATE_FIELD", entity.getTargetType());
         assertEquals("state-1", entity.getTargetRef());
         assertEquals("constraints", entity.getTargetField());
         assertEquals("constraint-1", entity.getTargetItemId());
@@ -62,7 +62,7 @@ class MysqlMemoryEvidenceRepositoryTest {
         entity.setSessionId("sess-1");
         entity.setTurnId("turn-1");
         entity.setRunId("run-1");
-        entity.setTargetType("SESSION_STATE");
+        entity.setTargetType("SESSION_STATE_FIELD");
         entity.setTargetRef("state-1");
         entity.setTargetField("constraints");
         entity.setTargetItemId("constraint-1");
@@ -77,7 +77,7 @@ class MysqlMemoryEvidenceRepositoryTest {
         var result = repository.findByEvidenceId("ev-1");
 
         assertTrue(result.isPresent());
-        assertEquals(EvidenceTargetType.SESSION_STATE, result.get().getTarget().getTargetType());
+        assertEquals(EvidenceTargetType.SESSION_STATE_FIELD, result.get().getTarget().getTargetType());
         assertEquals("state-1", result.get().getTarget().getTargetRef());
         assertEquals("constraints", result.get().getTarget().getTargetField());
         assertEquals("constraint-1", result.get().getTarget().getTargetItemId());
@@ -90,7 +90,7 @@ class MysqlMemoryEvidenceRepositoryTest {
         return EvidenceRef.builder()
             .evidenceId("ev-1")
             .target(EvidenceTarget.builder()
-                .targetType(EvidenceTargetType.SESSION_STATE)
+                .targetType(EvidenceTargetType.SESSION_STATE_FIELD)
                 .targetRef("state-1")
                 .targetField("constraints")
                 .targetItemId("constraint-1")

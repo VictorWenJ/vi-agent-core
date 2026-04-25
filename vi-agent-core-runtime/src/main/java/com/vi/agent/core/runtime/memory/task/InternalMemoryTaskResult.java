@@ -3,6 +3,7 @@ package com.vi.agent.core.runtime.memory.task;
 import com.vi.agent.core.model.memory.ConversationSummary;
 import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
+import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.StateDelta;
 import lombok.Builder;
 import lombok.Getter;
@@ -43,6 +44,9 @@ public class InternalMemoryTaskResult {
 
     /** 新状态版本。 */
     private final Long newStateVersion;
+
+    /** 新状态快照。 */
+    private final SessionStateSnapshot newState;
 
     /** 新摘要版本。 */
     private final Long newSummaryVersion;

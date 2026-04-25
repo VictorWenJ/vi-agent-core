@@ -18,9 +18,13 @@ public enum EvidenceSourceType {
 
     SYSTEM_RULE("system_rule", "系统规则"),
 
-    INTERNAL_TASK("internal_task", "内部任务");
+    INTERNAL_TASK("internal_task", "内部任务"),
 
+    WORKING_CONTEXT_SNAPSHOT("working_context_snapshot", "上下文快照");
+
+    /** 稳定外部值。 */
     private final String value;
 
+    /** 中文说明。 */
     private final String desc;
 }

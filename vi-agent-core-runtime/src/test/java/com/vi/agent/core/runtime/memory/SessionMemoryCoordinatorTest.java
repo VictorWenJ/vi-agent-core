@@ -30,6 +30,9 @@ import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractor;
 import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionCommand;
 import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionResult;
 import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractor;
+import com.vi.agent.core.runtime.memory.evidence.EvidenceBindingCommand;
+import com.vi.agent.core.runtime.memory.evidence.EvidenceBindingResult;
+import com.vi.agent.core.runtime.memory.evidence.MemoryEvidenceBinder;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskCommand;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskExecutor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskResult;
@@ -327,6 +330,70 @@ class SessionMemoryCoordinatorTest {
         assertEquals(1L, result.getNewStateVersion());
         assertEquals(1, fixture.stateRepository.saved.size());
         assertTrue(fixture.summaryRepository.saved.isEmpty());
+        assertNotNull(fixture.evidenceBinder.lastCommand);
+        assertNotNull(fixture.evidenceBinder.lastCommand.getNewState());
+        assertNull(fixture.evidenceBinder.lastCommand.getNewSummary());
+    }
+
+    @Test
+    void stateAndSummarySuccessShouldBindEvidenceAndExposeSavedCount() {
+        Fixture fixture = Fixture.create();
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .confirmedFactAppend(ConfirmedFactRecord.builder()
+                    .factId("fact-1")
+                    .content("new fact")
+                    .build())
+                .sourceCandidateId("msg-user-1")
+                .build())
+            .sourceCandidateId("msg-user-1")
+            .build();
+        fixture.summaryExtractor.result = summaryResult("new summary");
+        fixture.evidenceBinder.result = EvidenceBindingResult.builder()
+            .success(true)
+            .evidenceId("evd-1")
+            .savedCount(1)
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertEquals(1, result.getEvidenceSavedCount());
+        assertEquals(List.of("evd-1"), result.getEvidenceIds());
+        assertNotNull(fixture.evidenceBinder.lastCommand);
+        assertNotNull(fixture.evidenceBinder.lastCommand.getStateDelta());
+        assertNotNull(fixture.evidenceBinder.lastCommand.getNewState());
+        assertNotNull(fixture.evidenceBinder.lastCommand.getNewSummary());
+        assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.evidenceBinder.lastCommand.getTurnMessages().stream().map(Message::getMessageId).toList());
+    }
+
+    @Test
+    void evidenceFailureShouldDegradeWithoutRollingBackStateOrSummary() {
+        Fixture fixture = Fixture.create();
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .confirmedFactAppend(ConfirmedFactRecord.builder()
+                    .factId("fact-1")
+                    .content("new fact")
+                    .build())
+                .build())
+            .build();
+        fixture.summaryExtractor.result = summaryResult("new summary");
+        fixture.evidenceBinder.result = EvidenceBindingResult.builder()
+            .success(false)
+            .degraded(true)
+            .failureReason("evidence save failed")
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertEquals(1, fixture.stateRepository.saved.size());
+        assertEquals(1, fixture.summaryRepository.saved.size());
+        assertTrue(result.getFailureReason().contains("evidence save failed"));
     }
 
     @Test
@@ -428,6 +495,7 @@ class SessionMemoryCoordinatorTest {
         private final StubMessageRepository messageRepository = new StubMessageRepository();
         private final StubStateDeltaExtractor extractor = new StubStateDeltaExtractor();
         private final StubConversationSummaryExtractor summaryExtractor = new StubConversationSummaryExtractor();
+        private final StubMemoryEvidenceBinder evidenceBinder = new StubMemoryEvidenceBinder();
         private final StubInternalMemoryTaskService taskService = new StubInternalMemoryTaskService();
         private final StubEvidenceRepository evidenceRepository = new StubEvidenceRepository();
 
@@ -442,6 +510,7 @@ class SessionMemoryCoordinatorTest {
             TestFieldUtils.setField(fixture.coordinator, "messageRepository", fixture.messageRepository);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaExtractor", fixture.extractor);
             TestFieldUtils.setField(fixture.coordinator, "conversationSummaryExtractor", fixture.summaryExtractor);
+            TestFieldUtils.setField(fixture.coordinator, "memoryEvidenceBinder", fixture.evidenceBinder);
             TestFieldUtils.setField(fixture.coordinator, "internalMemoryTaskService", fixture.taskService);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaMerger", new StateDeltaMerger());
             TestFieldUtils.setField(fixture.coordinator, "sessionStateSnapshotIdGenerator", new FixedSessionStateSnapshotIdGenerator());
@@ -656,6 +725,20 @@ class SessionMemoryCoordinatorTest {
         @Override
         public ConversationSummaryExtractionResult extract(ConversationSummaryExtractionCommand command) {
             extractCalls++;
+            lastCommand = command;
+            return result;
+        }
+    }
+
+    private static final class StubMemoryEvidenceBinder extends MemoryEvidenceBinder {
+        private EvidenceBindingResult result = EvidenceBindingResult.builder()
+            .success(true)
+            .skipped(true)
+            .build();
+        private EvidenceBindingCommand lastCommand;
+
+        @Override
+        public EvidenceBindingResult bind(EvidenceBindingCommand command) {
             lastCommand = command;
             return result;
         }

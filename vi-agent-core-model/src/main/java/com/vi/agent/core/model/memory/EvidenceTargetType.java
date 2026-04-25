@@ -10,9 +10,9 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum EvidenceTargetType {
 
-    SESSION_STATE("session_state", "会话状态"),
+    SESSION_STATE_FIELD("session_state_field", "会话状态字段"),
 
-    CONVERSATION_SUMMARY("conversation_summary", "会话摘要"),
+    SUMMARY_SEGMENT("summary_segment", "会话摘要段落"),
 
     CONTEXT_BLOCK("context_block", "上下文块"),
 
@@ -20,7 +20,9 @@ public enum EvidenceTargetType {
 
     OPEN_LOOP("open_loop", "未闭环事项");
 
+    /** 稳定外部值。 */
     private final String value;
 
+    /** 中文说明。 */
     private final String desc;
 }

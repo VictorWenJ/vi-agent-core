@@ -22,6 +22,9 @@ import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractor;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionCommand;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionResult;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractor;
+import com.vi.agent.core.runtime.memory.evidence.EvidenceBindingCommand;
+import com.vi.agent.core.runtime.memory.evidence.EvidenceBindingResult;
+import com.vi.agent.core.runtime.memory.evidence.MemoryEvidenceBinder;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskCommand;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskResult;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskService;
@@ -71,6 +74,10 @@ public class SessionMemoryCoordinator {
     @Resource
     private ConversationSummaryExtractor conversationSummaryExtractor;
 
+    /** memory evidence 绑定器。 */
+    @Resource
+    private MemoryEvidenceBinder memoryEvidenceBinder;
+
     @Resource
     private InternalMemoryTaskService internalMemoryTaskService;
 
@@ -101,6 +108,10 @@ public class SessionMemoryCoordinator {
         List<String> failureReasons = new ArrayList<>();
         MemoryUpdatePartial stateUpdate = MemoryUpdatePartial.empty();
         MemoryUpdatePartial summaryUpdate = MemoryUpdatePartial.empty();
+        EvidenceBindingResult evidenceBindingResult = EvidenceBindingResult.builder()
+            .success(true)
+            .skipped(true)
+            .build();
 
         try {
             if (properties == null || properties.isStateExtractionEnabled()) {
@@ -111,6 +122,8 @@ public class SessionMemoryCoordinator {
                 summaryUpdate = updateSummary(command);
                 collectFailure(failureReasons, summaryUpdate.failureReason());
             }
+            evidenceBindingResult = bindEvidence(command, stateUpdate, summaryUpdate);
+            collectFailure(failureReasons, evidenceBindingResult.getFailureReason());
         } catch (Exception ex) {
             log.warn("Post-turn session memory update failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -119,7 +132,10 @@ public class SessionMemoryCoordinator {
             failureReasons.add(ex.getMessage());
         }
 
-        boolean degraded = !failureReasons.isEmpty() || stateUpdate.degraded() || summaryUpdate.degraded();
+        boolean degraded = !failureReasons.isEmpty()
+            || stateUpdate.degraded()
+            || summaryUpdate.degraded()
+            || evidenceBindingResult.isDegraded();
         return SessionMemoryUpdateResult.builder()
             .success(!degraded)
             .degraded(degraded)
@@ -128,6 +144,8 @@ public class SessionMemoryCoordinator {
             .summaryTaskId(summaryUpdate.taskId())
             .newStateVersion(stateUpdate.newVersion())
             .newSummaryVersion(summaryUpdate.newVersion())
+            .evidenceIds(evidenceBindingResult.getEvidenceIds())
+            .evidenceSavedCount(evidenceBindingResult.getSavedCount())
             .failureReason(String.join("; ", failureReasons))
             .build();
     }
@@ -151,13 +169,28 @@ public class SessionMemoryCoordinator {
                 return MemoryUpdatePartial.degraded(
                     taskResult.getInternalTaskId(),
                     taskResult.getNewStateVersion(),
-                    taskResult.getFailureReason()
+                    taskResult.getFailureReason(),
+                    latestState.orElse(null),
+                    taskResult.getNewState(),
+                    taskResult.getStateDelta(),
+                    null,
+                    null,
+                    taskResult.getSourceCandidateIds()
                 );
             }
             if (!taskResult.isSuccess()) {
                 return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), taskResult.getFailureReason());
             }
-            return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), taskResult.getNewStateVersion());
+            return MemoryUpdatePartial.success(
+                taskResult.getInternalTaskId(),
+                taskResult.getNewStateVersion(),
+                latestState.orElse(null),
+                taskResult.getNewState(),
+                taskResult.getStateDelta(),
+                null,
+                null,
+                taskResult.getSourceCandidateIds()
+            );
         } catch (Exception ex) {
             log.warn("Post-turn state memory update failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -186,7 +219,13 @@ public class SessionMemoryCoordinator {
                 return MemoryUpdatePartial.degraded(
                     taskResult.getInternalTaskId(),
                     taskResult.getNewSummaryVersion(),
-                    taskResult.getFailureReason()
+                    taskResult.getFailureReason(),
+                    null,
+                    null,
+                    null,
+                    latestSummary.orElse(null),
+                    taskResult.getSummary(),
+                    List.of()
                 );
             }
             if (!taskResult.isSuccess()) {
@@ -195,7 +234,16 @@ public class SessionMemoryCoordinator {
             if (taskResult.isSkipped()) {
                 return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), null);
             }
-            return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), taskResult.getNewSummaryVersion());
+            return MemoryUpdatePartial.success(
+                taskResult.getInternalTaskId(),
+                taskResult.getNewSummaryVersion(),
+                null,
+                null,
+                null,
+                latestSummary.orElse(null),
+                taskResult.getSummary(),
+                List.of()
+            );
         } catch (Exception ex) {
             log.warn("Post-turn summary memory update failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -257,6 +305,50 @@ public class SessionMemoryCoordinator {
         return messageRepository.findCompletedMessagesByTurnId(command.getTurnId());
     }
 
+    private EvidenceBindingResult bindEvidence(
+        SessionMemoryUpdateCommand command,
+        MemoryUpdatePartial stateUpdate,
+        MemoryUpdatePartial summaryUpdate
+    ) {
+        if (memoryEvidenceBinder == null) {
+            return EvidenceBindingResult.builder()
+                .success(true)
+                .skipped(true)
+                .build();
+        }
+        if ((stateUpdate == null || stateUpdate.newState() == null)
+            && (summaryUpdate == null || summaryUpdate.newSummary() == null)) {
+            return EvidenceBindingResult.builder()
+                .success(true)
+                .skipped(true)
+                .build();
+        }
+        EvidenceBindingCommand.EvidenceBindingCommandBuilder builder = EvidenceBindingCommand.builder()
+            .conversationId(command == null ? null : command.getConversationId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .turnId(command == null ? null : command.getTurnId())
+            .runId(command == null ? null : command.getRunId())
+            .traceId(command == null ? null : command.getTraceId())
+            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
+            .stateTaskId(stateUpdate == null ? null : stateUpdate.taskId())
+            .summaryTaskId(summaryUpdate == null ? null : summaryUpdate.taskId())
+            .latestState(stateUpdate == null ? null : stateUpdate.latestState())
+            .newState(stateUpdate == null ? null : stateUpdate.newState())
+            .stateDelta(stateUpdate == null ? null : stateUpdate.stateDelta())
+            .latestSummary(summaryUpdate == null ? null : summaryUpdate.latestSummary())
+            .newSummary(summaryUpdate == null ? null : summaryUpdate.newSummary())
+            .agentMode(resolveAgentMode(command));
+        for (Message message : loadCompletedTurnMessages(command)) {
+            builder.turnMessage(message);
+        }
+        if (stateUpdate != null && stateUpdate.sourceCandidateIds() != null) {
+            for (String sourceCandidateId : stateUpdate.sourceCandidateIds()) {
+                builder.sourceCandidateId(sourceCandidateId);
+            }
+        }
+        return memoryEvidenceBinder.bind(builder.build());
+    }
+
     private InternalMemoryTaskResult executeStateExtractTask(
         SessionMemoryUpdateCommand command,
         String internalTaskId,
@@ -279,6 +371,7 @@ public class SessionMemoryCoordinator {
                     true,
                     stateDelta,
                     null,
+                    null,
                     failureReason,
                     sourceCandidateIds
                 );
@@ -290,6 +383,7 @@ public class SessionMemoryCoordinator {
                     true,
                     false,
                     stateDelta == null ? StateDelta.builder().build() : stateDelta,
+                    null,
                     null,
                     null,
                     sourceCandidateIds
@@ -313,6 +407,7 @@ public class SessionMemoryCoordinator {
                     true,
                     stateDelta,
                     null,
+                    null,
                     ex.getMessage(),
                     sourceCandidateIds
                 );
@@ -326,6 +421,7 @@ public class SessionMemoryCoordinator {
                     false,
                     true,
                     stateDelta,
+                    nextState,
                     nextState.getStateVersion(),
                     redisFailure,
                     sourceCandidateIds
@@ -337,6 +433,7 @@ public class SessionMemoryCoordinator {
                 true,
                 false,
                 stateDelta,
+                nextState,
                 nextState.getStateVersion(),
                 null,
                 sourceCandidateIds
@@ -351,6 +448,7 @@ public class SessionMemoryCoordinator {
                 InternalTaskStatus.FAILED,
                 false,
                 true,
+                null,
                 null,
                 null,
                 ex.getMessage(),
@@ -551,6 +649,7 @@ public class SessionMemoryCoordinator {
         boolean success,
         boolean degraded,
         StateDelta stateDelta,
+        SessionStateSnapshot newState,
         Long newStateVersion,
         String failureReason,
         List<String> sourceCandidateIds
@@ -563,6 +662,7 @@ public class SessionMemoryCoordinator {
             .success(success)
             .degraded(degraded)
             .stateDelta(stateDelta)
+            .newState(newState)
             .newStateVersion(newStateVersion)
             .sourceCandidateIds(sourceCandidateIds == null ? List.of() : sourceCandidateIds)
             .failureReason(failureReason)
@@ -610,6 +710,9 @@ public class SessionMemoryCoordinator {
         output.put("summaryUpdated", summaryUpdated);
         output.put("newSummaryVersion", newSummaryVersion);
         output.put("failureReason", failureReason);
+        output.put("summaryEvidenceIds", List.of());
+        output.put("summaryEvidenceSavedCount", 0);
+        output.put("evidenceBindingDegraded", false);
         return JsonUtils.toJson(output);
     }
 
@@ -628,6 +731,9 @@ public class SessionMemoryCoordinator {
         output.put("newStateVersion", newStateVersion);
         output.put("failureReason", failureReason);
         output.put("sourceCandidateIds", sourceCandidateIds == null ? List.of() : sourceCandidateIds);
+        output.put("stateEvidenceIds", List.of());
+        output.put("stateEvidenceSavedCount", 0);
+        output.put("evidenceBindingDegraded", false);
         return JsonUtils.toJson(output);
     }
 
@@ -735,22 +841,82 @@ public class SessionMemoryCoordinator {
         }
     }
 
-    private record MemoryUpdatePartial(String taskId, Long newVersion, boolean degraded, String failureReason) {
+    private record MemoryUpdatePartial(
+        String taskId,
+        Long newVersion,
+        boolean degraded,
+        String failureReason,
+        SessionStateSnapshot latestState,
+        SessionStateSnapshot newState,
+        StateDelta stateDelta,
+        ConversationSummary latestSummary,
+        ConversationSummary newSummary,
+        List<String> sourceCandidateIds
+    ) {
 
         private static MemoryUpdatePartial empty() {
-            return new MemoryUpdatePartial(null, null, false, null);
+            return new MemoryUpdatePartial(null, null, false, null, null, null, null, null, null, List.of());
         }
 
         private static MemoryUpdatePartial success(String taskId, Long newVersion) {
-            return new MemoryUpdatePartial(taskId, newVersion, false, null);
+            return new MemoryUpdatePartial(taskId, newVersion, false, null, null, null, null, null, null, List.of());
+        }
+
+        private static MemoryUpdatePartial success(
+            String taskId,
+            Long newVersion,
+            SessionStateSnapshot latestState,
+            SessionStateSnapshot newState,
+            StateDelta stateDelta,
+            ConversationSummary latestSummary,
+            ConversationSummary newSummary,
+            List<String> sourceCandidateIds
+        ) {
+            return new MemoryUpdatePartial(
+                taskId,
+                newVersion,
+                false,
+                null,
+                latestState,
+                newState,
+                stateDelta,
+                latestSummary,
+                newSummary,
+                sourceCandidateIds == null ? List.of() : sourceCandidateIds
+            );
         }
 
         private static MemoryUpdatePartial degraded(String taskId, String failureReason) {
-            return new MemoryUpdatePartial(taskId, null, true, failureReason);
+            return new MemoryUpdatePartial(taskId, null, true, failureReason, null, null, null, null, null, List.of());
         }
 
         private static MemoryUpdatePartial degraded(String taskId, Long newVersion, String failureReason) {
-            return new MemoryUpdatePartial(taskId, newVersion, true, failureReason);
+            return new MemoryUpdatePartial(taskId, newVersion, true, failureReason, null, null, null, null, null, List.of());
+        }
+
+        private static MemoryUpdatePartial degraded(
+            String taskId,
+            Long newVersion,
+            String failureReason,
+            SessionStateSnapshot latestState,
+            SessionStateSnapshot newState,
+            StateDelta stateDelta,
+            ConversationSummary latestSummary,
+            ConversationSummary newSummary,
+            List<String> sourceCandidateIds
+        ) {
+            return new MemoryUpdatePartial(
+                taskId,
+                newVersion,
+                true,
+                failureReason,
+                latestState,
+                newState,
+                stateDelta,
+                latestSummary,
+                newSummary,
+                sourceCandidateIds == null ? List.of() : sourceCandidateIds
+            );
         }
     }
 }

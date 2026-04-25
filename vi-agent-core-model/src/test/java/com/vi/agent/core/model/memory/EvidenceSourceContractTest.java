@@ -31,7 +31,7 @@ class EvidenceSourceContractTest {
             .turnId("turn-1")
             .runId("run-1")
             .toolCallRecordId("tcr-1")
-            .workingContextSnapshotId("wcs-1")
+            .workingContextSnapshotId("wctx-1")
             .internalTaskId("it-1")
             .excerptText("工具摘要")
             .build();
@@ -41,5 +41,20 @@ class EvidenceSourceContractTest {
         assertEquals(EvidenceSourceType.TOOL_RESULT, restored.getSourceType());
         assertEquals("tcr-1", restored.getToolCallRecordId());
         assertEquals("工具摘要", restored.getExcerptText());
+    }
+
+    @Test
+    void shouldSupportWorkingContextSnapshotSourceType() {
+        EvidenceSource source = EvidenceSource.builder()
+            .sourceType(EvidenceSourceType.WORKING_CONTEXT_SNAPSHOT)
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .workingContextSnapshotId("wctx-1")
+            .excerptText("context snapshot")
+            .build();
+
+        assertEquals(EvidenceSourceType.WORKING_CONTEXT_SNAPSHOT, source.getSourceType());
+        assertEquals("wctx-1", source.getWorkingContextSnapshotId());
     }
 }
