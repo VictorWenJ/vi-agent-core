@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -107,8 +108,8 @@ class SessionWorkingSetLoaderTest {
         }
 
         @Override
-        public Message findByMessageId(String messageId) {
-            return null;
+        public Optional<Message> findByMessageId(String messageId) {
+            return Optional.empty();
         }
 
         @Override
@@ -124,8 +125,8 @@ class SessionWorkingSetLoaderTest {
         }
 
         @Override
-        public Message findFinalAssistantMessageByTurnId(String turnId) {
-            return null;
+        public Optional<Message> findFinalAssistantMessageByTurnId(String turnId) {
+            return Optional.empty();
         }
 
         @Override
@@ -140,8 +141,8 @@ class SessionWorkingSetLoaderTest {
         SessionWorkingSetSnapshot lastSaved;
 
         @Override
-        public SessionWorkingSetSnapshot findBySessionId(String sessionId) {
-            return cached;
+        public Optional<SessionWorkingSetSnapshot> findBySessionId(String sessionId) {
+            return Optional.ofNullable(cached);
         }
 
         @Override

@@ -10,6 +10,8 @@ import com.vi.agent.core.model.turn.TurnStatus;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public class MysqlTurnRepository implements TurnRepository {
 
@@ -20,23 +22,23 @@ public class MysqlTurnRepository implements TurnRepository {
     private TurnMysqlConvertor convertor;
 
     @Override
-    public Turn findByRequestId(String requestId) {
+    public Optional<Turn> findByRequestId(String requestId) {
         AgentTurnEntity entity = mapper.selectOne(
             Wrappers.lambdaQuery(AgentTurnEntity.class)
                 .eq(AgentTurnEntity::getRequestId, requestId)
                 .last("limit 1")
         );
-        return convertor.toModel(entity);
+        return Optional.ofNullable(convertor.toModel(entity));
     }
 
     @Override
-    public Turn findByTurnId(String turnId) {
+    public Optional<Turn> findByTurnId(String turnId) {
         AgentTurnEntity entity = mapper.selectOne(
             Wrappers.lambdaQuery(AgentTurnEntity.class)
                 .eq(AgentTurnEntity::getTurnId, turnId)
                 .last("limit 1")
         );
-        return convertor.toModel(entity);
+        return Optional.ofNullable(convertor.toModel(entity));
     }
 
     @Override

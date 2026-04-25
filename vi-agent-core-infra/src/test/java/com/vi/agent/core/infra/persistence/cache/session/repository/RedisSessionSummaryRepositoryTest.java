@@ -16,7 +16,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,12 +54,14 @@ class RedisSessionSummaryRepositoryTest {
 
         when(hashOps.entries("agent:session:summary:sess-1")).thenReturn(validHash());
 
-        ConversationSummary result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNotNull(result);
-        assertEquals("sum-1", result.getSummaryId());
-        assertEquals(2L, result.getSummaryVersion());
-        assertEquals(10L, result.getCoveredToSequenceNo());
+        assertTrue(result.isPresent());
+        ConversationSummary summary = result.orElseThrow();
+        assertNotNull(summary);
+        assertEquals("sum-1", summary.getSummaryId());
+        assertEquals(2L, summary.getSummaryVersion());
+        assertEquals(10L, summary.getCoveredToSequenceNo());
     }
 
     @Test
@@ -73,9 +75,9 @@ class RedisSessionSummaryRepositoryTest {
         hash.put("snapshotVersion", "2");
         when(hashOps.entries("agent:session:summary:sess-1")).thenReturn(hash);
 
-        ConversationSummary result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNull(result);
+        assertTrue(result.isEmpty());
         verify(redisTemplate).delete("agent:session:summary:sess-1");
     }
 

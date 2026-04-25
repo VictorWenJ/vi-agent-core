@@ -14,7 +14,7 @@ import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.AgentRunContextFactory;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
 import com.vi.agent.core.runtime.failure.RuntimeFailureHandler;
-import com.vi.agent.core.runtime.lifecycle.TurnInitializationService;
+import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.lifecycle.TurnStartResult;
 import com.vi.agent.core.runtime.loop.LoopInvocationService;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
@@ -48,7 +48,7 @@ public class RuntimeOrchestrator {
     private RuntimeRunScopeManager runScopeManager;
 
     @Resource
-    private TurnInitializationService turnInitializationService;
+    private TurnLifecycleService turnLifecycleService;
 
     @Resource
     private AgentRunContextFactory agentRunContextFactory;
@@ -91,7 +91,7 @@ public class RuntimeOrchestrator {
         log.info("RuntimeOrchestrator executeInternal runtimeEventSink:{}", JsonUtils.toJson(runtimeEventSink));
 
         try (RuntimeRunScope ignored = runScopeManager.open(context)) {
-            TurnStartResult turnStartResult = turnInitializationService.start(context);
+            TurnStartResult turnStartResult = turnLifecycleService.startTurn(context);
             log.info("RuntimeOrchestrator executeInternal turnStartResult:{}", JsonUtils.toJson(turnStartResult));
 
             context.setTurn(turnStartResult.getTurn());
@@ -112,6 +112,7 @@ public class RuntimeOrchestrator {
 
             AgentExecutionResult agentExecutionResult = completionHandler.complete(context, runtimeEventSink);
             log.info("RuntimeOrchestrator executeInternal agentExecutionResult:{}", JsonUtils.toJson(agentExecutionResult));
+
             return agentExecutionResult;
         } catch (Throwable throwable) {
             log.error("RuntimeOrchestrator executeInternal error", throwable);

@@ -108,6 +108,7 @@
 - [ ] `insert(entity)` 是否仅作为标准新增写法保留，而未继续扩散可由链式写法替代的 MyBatis 逻辑？
 - [ ] 是否仍残留可被链式函数写法替代的 XML / 字符串 SQL / 注解 SQL？
 - [ ] `Optional` 是否只在提升可读性时使用？
+- [ ] Repository 层单实体查询方法是否统一返回 `Optional<T>`，调用方是否直接使用 `orElse(...)` / `orElseThrow(...)` / `map(...)` / `flatMap(...)` 而不是再包 `Optional.ofNullable(...)`？
 - [ ] `Stream` 是否只在确实更清晰时使用？
 
 ### 3.10 占位 / 预留能力检查

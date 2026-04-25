@@ -206,6 +206,7 @@
 ### 5.3 Persistence 收口
 - Transcript / State / Summary 都应遵循 Redis（热态层）+ MySQL（事实源）双层治理。
 - transcript Redis 相关实现统一进入 `infra/persistence/cache/transcript/*`。
+- Repository 对外单实体查询契约统一为 `Optional<T>`，由 repository 边界表达缺失语义，runtime / app 调用方不依赖 `null`。
 - MySQL 持久化默认采用 MyBatis-Plus Lambda Wrapper 链式函数写法表达查询、更新、删除条件（`Wrappers.lambdaQuery(...)` / `Wrappers.lambdaUpdate(...)`）。
 - `insert(entity)` 作为标准新增写法允许保留。
 - 只有 SQL 复杂到链式写法明显不可读时，才允许 XML / 字符串 SQL / 注解 SQL。

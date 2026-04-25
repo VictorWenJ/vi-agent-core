@@ -19,7 +19,7 @@ public class ContextPlan {
     private final List<ContextBlock> blocks;
 
     /** 本次计划的 token 预算快照。 */
-    private final ContextBudgetSnapshot budgetSnapshot;
+    private final ContextBudgetSnapshot budget;
 
     /** 计划是否超出 token 预算。 */
     private final Boolean overBudget;

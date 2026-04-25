@@ -9,7 +9,7 @@ import java.util.Optional;
  */
 public interface SessionWorkingSetRepository {
 
-    SessionWorkingSetSnapshot findBySessionId(String sessionId);
+    Optional<SessionWorkingSetSnapshot> findBySessionId(String sessionId);
 
     void save(SessionWorkingSetSnapshot snapshot);
 

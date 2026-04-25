@@ -49,6 +49,13 @@ vi:
       session-working-set:
         max-completed-turns: 5
 
+    context:
+      budget:
+        model-max-input-tokens: ${CONTEXT_MODEL_MAX_INPUT_TOKENS:8192}
+        reserved-output-tokens: ${CONTEXT_RESERVED_OUTPUT_TOKENS:1024}
+        reserved-tool-loop-tokens: ${CONTEXT_RESERVED_TOOL_LOOP_TOKENS:1024}
+        safety-margin-tokens: ${CONTEXT_SAFETY_MARGIN_TOKENS:512}
+
     provider:
       routing:
         default-provider: ${DEFAULT_LLM_PROVIDER:deepseek}

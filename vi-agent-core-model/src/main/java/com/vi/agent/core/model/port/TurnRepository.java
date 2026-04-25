@@ -9,9 +9,9 @@ import java.util.Optional;
  */
 public interface TurnRepository {
 
-    Turn findByRequestId(String requestId);
+    Optional<Turn> findByRequestId(String requestId);
 
-    Turn findByTurnId(String turnId);
+    Optional<Turn> findByTurnId(String turnId);
 
     boolean existsRunningBySessionId(String sessionId);
 

@@ -86,18 +86,27 @@ public class MysqlMessageRepository implements MessageRepository {
     }
 
     @Override
-    public Message findByMessageId(String messageId) {
+    public Optional<Message> findByMessageId(String messageId) {
         AgentMessageEntity entity = messageMapper.selectOne(
             Wrappers.lambdaQuery(AgentMessageEntity.class)
                 .eq(AgentMessageEntity::getMessageId, messageId)
                 .last("limit 1")
         );
         if (entity == null) {
-            return null;
+            return Optional.empty();
         }
-        return handlerRegistry.assemble(buildAggregateRow(entity));
+        return Optional.ofNullable(handlerRegistry.assemble(buildAggregateRow(entity)));
     }
 
+    /**
+     * 1、查询当前sessionId下完成的turn
+     * 2、按maxTurns截取
+     * 3、组装tool call和executions数据
+     * 4、返回完整带有tool call和executions的总数居
+     * @param sessionId
+     * @param maxTurns
+     * @return
+     */
     @Override
     public List<Message> findCompletedContextBySessionId(String sessionId, int maxTurns) {
         List<AgentTurnEntity> completedTurns = turnMapper.selectList(
@@ -171,7 +180,7 @@ public class MysqlMessageRepository implements MessageRepository {
     }
 
     @Override
-    public Message findFinalAssistantMessageByTurnId(String turnId) {
+    public Optional<Message> findFinalAssistantMessageByTurnId(String turnId) {
         AgentMessageEntity entity = messageMapper.selectOne(
             Wrappers.lambdaQuery(AgentMessageEntity.class)
                 .eq(AgentMessageEntity::getTurnId, turnId)
@@ -181,9 +190,9 @@ public class MysqlMessageRepository implements MessageRepository {
                 .last("limit 1")
         );
         if (entity == null) {
-            return null;
+            return Optional.empty();
         }
-        return handlerRegistry.assemble(buildAggregateRow(entity));
+        return Optional.ofNullable(handlerRegistry.assemble(buildAggregateRow(entity)));
     }
 
     @Override

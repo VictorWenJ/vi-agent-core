@@ -26,8 +26,8 @@ class WorkingContextModelTest {
         ContextBlockSet blockSet = ContextBlockSet.of(List.of(block));
 
         assertEquals(1, blockSet.size());
-        assertEquals(ContextBlockType.RUNTIME_INSTRUCTION, blockSet.getBlocks().get(0).getBlockType());
-        assertThrows(UnsupportedOperationException.class, () -> blockSet.getBlocks().add(block));
+        assertEquals(ContextBlockType.RUNTIME_INSTRUCTION, blockSet.getOrderedBlocks().get(0).getBlockType());
+        assertThrows(UnsupportedOperationException.class, () -> blockSet.getOrderedBlocks().add(block));
     }
 
     @Test

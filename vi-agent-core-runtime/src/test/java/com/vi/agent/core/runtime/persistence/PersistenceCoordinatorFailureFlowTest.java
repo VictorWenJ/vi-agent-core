@@ -436,8 +436,8 @@ class PersistenceCoordinatorFailureFlowTest {
         }
 
         @Override
-        public Message findByMessageId(String messageId) {
-            return null;
+        public Optional<Message> findByMessageId(String messageId) {
+            return Optional.empty();
         }
 
         @Override
@@ -451,8 +451,8 @@ class PersistenceCoordinatorFailureFlowTest {
         }
 
         @Override
-        public Message findFinalAssistantMessageByTurnId(String turnId) {
-            return null;
+        public Optional<Message> findFinalAssistantMessageByTurnId(String turnId) {
+            return Optional.empty();
         }
 
         @Override
@@ -496,13 +496,13 @@ class PersistenceCoordinatorFailureFlowTest {
         private Turn lastUpdatedTurn;
 
         @Override
-        public Turn findByRequestId(String requestId) {
-            return null;
+        public Optional<Turn> findByRequestId(String requestId) {
+            return Optional.empty();
         }
 
         @Override
-        public Turn findByTurnId(String turnId) {
-            return null;
+        public Optional<Turn> findByTurnId(String turnId) {
+            return Optional.empty();
         }
 
         @Override
@@ -562,8 +562,8 @@ class PersistenceCoordinatorFailureFlowTest {
         private String lastEvictedSessionId;
 
         @Override
-        public SessionWorkingSetSnapshot findBySessionId(String sessionId) {
-            return null;
+        public Optional<SessionWorkingSetSnapshot> findBySessionId(String sessionId) {
+            return Optional.empty();
         }
 
         @Override

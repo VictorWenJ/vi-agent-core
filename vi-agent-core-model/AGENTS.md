@@ -73,6 +73,7 @@ com.vi.agent.core.model
 
 ### 4.1 包规则
 - `port/` 只放真正接口；值对象、结果对象、DTO、record、builder 不得进入 `port`。
+- `port/` 中 Repository 类接口的单实体查询方法必须返回 `Optional<T>`；列表查询返回 `List<T>`，存在性判断返回 `boolean`，写入 / 更新 / 删除保持语义化返回或 `void`。
 - `provider/` 放 LLM 调用结果对象与配套值对象；不放 provider 实现逻辑。
 - `memory/` 放 Summary / State / Evidence 对象；`StateDelta` 必须具备正式序列化 / 反序列化闭环。
 - `prompt/` 中 `PromptTemplateType` 与模板 key 语义保持一致（`runtime_instruction`、`response_guardrails`、`summary_extract`、`state_extract`）。

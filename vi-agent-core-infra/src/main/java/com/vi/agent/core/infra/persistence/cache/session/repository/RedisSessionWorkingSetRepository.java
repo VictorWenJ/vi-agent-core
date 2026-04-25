@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Redis Session Working Set snapshot cache 仓储。
@@ -38,12 +39,17 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
     @Value("${vi.agent.redis.ttl.session-working-set-seconds:1800}")
     private long sessionWorkingSetTtlSeconds;
 
+    /**
+     * 获取当前work set快照数据
+     * @param sessionId
+     * @return
+     */
     @Override
-    public SessionWorkingSetSnapshot findBySessionId(String sessionId) {
+    public Optional<SessionWorkingSetSnapshot> findBySessionId(String sessionId) {
         String key = keyBuilder.sessionWorkingSetKey(sessionId);
         Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(key);
         if (MapUtils.isEmpty(entries)) {
-            return null;
+            return Optional.empty();
         }
 
         try {
@@ -51,18 +57,18 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
             if (document.getSnapshotVersion() == null || document.getSnapshotVersion() != SNAPSHOT_VERSION) {
                 log.warn("Redis session working set snapshotVersion invalid, sessionId={}, version={}", sessionId, document.getSnapshotVersion());
                 evict(sessionId);
-                return null;
+                return Optional.empty();
             }
             if (hasMissingRequiredField(document)) {
                 log.warn("Redis session working set required field missing, sessionId={}", sessionId);
                 evict(sessionId);
-                return null;
+                return Optional.empty();
             }
-            return sessionWorkingSetRedisMapper.toModel(document);
+            return Optional.ofNullable(sessionWorkingSetRedisMapper.toModel(document));
         } catch (Exception ex) {
             log.warn("Redis session working set parse failed, sessionId={}", sessionId, ex);
             evict(sessionId);
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -145,4 +151,3 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
         return StringUtils.isBlank(value) ? null : Integer.parseInt(value);
     }
 }
-

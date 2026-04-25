@@ -30,7 +30,6 @@ import com.vi.agent.core.runtime.factory.AgentRunContextFactory;
 import com.vi.agent.core.runtime.factory.MessageFactory;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
 import com.vi.agent.core.runtime.failure.RuntimeFailureHandler;
-import com.vi.agent.core.runtime.lifecycle.TurnInitializationService;
 import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.lifecycle.TurnStartResult;
 import com.vi.agent.core.runtime.loop.LoopInvocationService;
@@ -133,7 +132,7 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
             TestFieldUtils.setField(orchestrator, "sessionResolutionService", new StubSessionResolutionService(conversation, session));
             TestFieldUtils.setField(orchestrator, "runIdentityFactory", new StubRunIdentityFactory());
             TestFieldUtils.setField(orchestrator, "runScopeManager", new StubRunScopeManager());
-            TestFieldUtils.setField(orchestrator, "turnInitializationService", new StubTurnInitializationService(turn, userMessage));
+            TestFieldUtils.setField(orchestrator, "turnLifecycleService", new StubTurnStartLifecycleService(turn, userMessage));
             TestFieldUtils.setField(orchestrator, "agentRunContextFactory", new StubAgentRunContextFactory(conversation, session, turn));
             TestFieldUtils.setField(orchestrator, "eventSinkFactory", eventSinkFactory);
             TestFieldUtils.setField(orchestrator, "loopInvocationService", new StubLoopInvocationService());
@@ -205,17 +204,17 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
         }
     }
 
-    private static final class StubTurnInitializationService extends TurnInitializationService {
+    private static final class StubTurnStartLifecycleService extends TurnLifecycleService {
         private final Turn turn;
         private final UserMessage userMessage;
 
-        private StubTurnInitializationService(Turn turn, UserMessage userMessage) {
+        private StubTurnStartLifecycleService(Turn turn, UserMessage userMessage) {
             this.turn = turn;
             this.userMessage = userMessage;
         }
 
         @Override
-        public TurnStartResult start(RuntimeExecutionContext context) {
+        public TurnStartResult startTurn(RuntimeExecutionContext context) {
             return new TurnStartResult(turn, userMessage);
         }
     }

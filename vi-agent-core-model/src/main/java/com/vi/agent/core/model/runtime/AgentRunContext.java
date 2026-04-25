@@ -1,6 +1,8 @@
 package com.vi.agent.core.model.runtime;
 
 import com.vi.agent.core.model.conversation.Conversation;
+import com.vi.agent.core.model.context.AgentMode;
+import com.vi.agent.core.model.context.WorkingContextBuildResult;
 import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.session.Session;
@@ -31,6 +33,10 @@ public class AgentRunContext {
 
     private final String userInput;
 
+    private final AgentMode agentMode;
+
+    private final WorkingContextBuildResult workingContextBuildResult;
+
     private final List<Message> workingMessages;
 
     private final List<ToolDefinition> availableTools;
@@ -52,6 +58,8 @@ public class AgentRunContext {
         Session session,
         Turn turn,
         String userInput,
+        AgentMode agentMode,
+        WorkingContextBuildResult workingContextBuildResult,
         List<Message> workingMessages,
         List<ToolDefinition> availableTools,
         List<AssistantToolCall> toolCalls,
@@ -65,6 +73,8 @@ public class AgentRunContext {
         this.session = session;
         this.turn = turn;
         this.userInput = userInput;
+        this.agentMode = agentMode;
+        this.workingContextBuildResult = workingContextBuildResult;
         this.workingMessages = workingMessages == null ? new ArrayList<>() : new ArrayList<>(workingMessages);
         this.availableTools = availableTools == null ? new ArrayList<>() : new ArrayList<>(availableTools);
         this.toolCalls = toolCalls == null ? new ArrayList<>() : new ArrayList<>(toolCalls);

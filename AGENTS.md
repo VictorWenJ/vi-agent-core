@@ -195,6 +195,8 @@
 - 对象判空、默认值提供、非空约束等，必须优先使用 `Objects.isNull(...)`、`Objects.nonNull(...)`、`Objects.requireNonNull(...)`、`Objects.requireNonNullElse(...)` 等 JDK API；不得长期散落风格不一致的手写判空模板。
 - `Optional` 只在确实提升语义表达时使用；优先用于方法返回值表达“可能无值”的场景，不得把 `Optional` 当作字段、方法参数或序列化对象的默认容器滥用。
 - `Optional` 一旦使用，禁止再让其本身为 `null`。
+- Repository 层对外暴露的单实体查询方法必须统一返回 `Optional<T>` 表达“可能无值”，包括 `model.port` 接口以及无对应 port 但作为 repository 对外调用的 concrete repository；禁止返回 `null` 作为正式查询契约。
+- Repository 实现内部可接收 mapper / Redis 的空值结果，但必须在 repository 边界转换为 `Optional.empty()`，调用方不得再包一层 `Optional.ofNullable(repository.findXxx(...))`。
 - 只要成熟工具类或现成 JDK API 能完整等价替代手写模板代码，必须优先使用，不得新增重复实现。
 - MySQL 持久化默认采用 MyBatis-Plus Lambda Wrapper 链式函数写法表达查询、更新、删除条件（`Wrappers.lambdaQuery(...)` / `Wrappers.lambdaUpdate(...)`）。
 - `insert(entity)` 作为标准新增写法允许保留。

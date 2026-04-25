@@ -39,6 +39,25 @@ class SessionSnapshotConfigurationContractTest {
     }
 
     @Test
+    void contextBudgetPropertiesShouldBindAsFineGrainedFields() {
+        contextRunner
+            .withPropertyValues(
+                "vi.agent.context.budget.model-max-input-tokens=4096",
+                "vi.agent.context.budget.reserved-output-tokens=512",
+                "vi.agent.context.budget.reserved-tool-loop-tokens=256",
+                "vi.agent.context.budget.safety-margin-tokens=128"
+            )
+            .run(context -> {
+                ConfigurationProbe probe = context.getBean(ConfigurationProbe.class);
+
+                assertEquals(4096, probe.modelMaxInputTokens);
+                assertEquals(512, probe.reservedOutputTokens);
+                assertEquals(256, probe.reservedToolLoopTokens);
+                assertEquals(128, probe.safetyMarginTokens);
+            });
+    }
+
+    @Test
     void oldSessionContextPropertiesShouldNotBindAsFormalEntry() {
         contextRunner
             .withPropertyValues(
@@ -80,6 +99,10 @@ class SessionSnapshotConfigurationContractTest {
         assertTrue(application.contains("session-working-set-seconds"));
         assertTrue(application.contains("session-state-seconds"));
         assertTrue(application.contains("session-summary-seconds"));
+        assertTrue(application.contains("model-max-input-tokens"));
+        assertTrue(application.contains("reserved-output-tokens"));
+        assertTrue(application.contains("reserved-tool-loop-tokens"));
+        assertTrue(application.contains("safety-margin-tokens"));
     }
 
     private String readResource(String resourcePath) throws IOException {
@@ -102,5 +125,17 @@ class SessionSnapshotConfigurationContractTest {
 
         @Value("${vi.agent.redis.ttl.session-summary-seconds:1800}")
         long sessionSummaryTtlSeconds;
+
+        @Value("${vi.agent.context.budget.model-max-input-tokens:8192}")
+        int modelMaxInputTokens;
+
+        @Value("${vi.agent.context.budget.reserved-output-tokens:1024}")
+        int reservedOutputTokens;
+
+        @Value("${vi.agent.context.budget.reserved-tool-loop-tokens:1024}")
+        int reservedToolLoopTokens;
+
+        @Value("${vi.agent.context.budget.safety-margin-tokens:512}")
+        int safetyMarginTokens;
     }
 }

@@ -99,6 +99,8 @@ com.vi.agent.core.infra
 ### 4.3 Persistence 规则
 - Transcript / State / Summary 均遵循 Redis（热态层）+ MySQL（事实源）双层治理。
 - transcript MySQL 写入必须具备增量 / 幂等语义。
+- Repository 实现必须遵守 `model.port` 的 Optional 查询契约：对外单实体查询返回 `Optional<T>`，将 mapper / Redis miss / 解析失败统一转换为 `Optional.empty()`，不得把 `null` 透出到 repository 边界。
+- 无对应 `model.port` 的 concrete repository 若暴露 public 单实体查询，也必须按 `Optional<T>` 处理。
 - MySQL 持久化默认采用 MyBatis-Plus Lambda Wrapper 链式函数写法表达查询、更新、删除条件（`Wrappers.lambdaQuery(...)` / `Wrappers.lambdaUpdate(...)`）。
 - `insert(entity)` 作为标准新增写法允许保留。
 - 只有 SQL 复杂到链式写法明显不可读时，才允许 XML / 字符串 SQL / 注解 SQL。

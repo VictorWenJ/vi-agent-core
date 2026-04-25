@@ -41,4 +41,9 @@ public class IdGeneratorConfig {
     public ToolCallIdGenerator toolCallIdGenerator() {
         return new ToolCallIdGenerator();
     }
+
+    @Bean
+    public WorkingContextSnapshotIdGenerator workingContextSnapshotIdGenerator() {
+        return new WorkingContextSnapshotIdGenerator();
+    }
 }

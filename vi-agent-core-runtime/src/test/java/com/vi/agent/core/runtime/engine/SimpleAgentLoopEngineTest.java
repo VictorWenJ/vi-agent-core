@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -316,8 +317,8 @@ class SimpleAgentLoopEngineTest {
         }
 
         @Override
-        public Message findByMessageId(String messageId) {
-            return null;
+        public Optional<Message> findByMessageId(String messageId) {
+            return Optional.empty();
         }
 
         @Override
@@ -331,8 +332,8 @@ class SimpleAgentLoopEngineTest {
         }
 
         @Override
-        public Message findFinalAssistantMessageByTurnId(String turnId) {
-            return null;
+        public Optional<Message> findFinalAssistantMessageByTurnId(String turnId) {
+            return Optional.empty();
         }
 
         @Override

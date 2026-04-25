@@ -3,8 +3,6 @@ package com.vi.agent.core.model.context;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.time.Instant;
-
 /**
  * WorkingContext 元数据。
  */
@@ -36,18 +34,9 @@ public class WorkingContextMetadata {
     /** 触发 checkpoint 的来源。 */
     private final CheckpointTrigger checkpointTrigger;
 
-    /** 触发 checkpoint 的原因。 */
-    private final CheckpointReason checkpointReason;
-
     /** 上下文视图类型。 */
     private final ContextViewType contextViewType;
 
     /** Agent 运行模式。 */
     private final AgentMode agentMode;
-
-    /** 工作模式。 */
-    private final WorkingMode workingMode;
-
-    /** 上下文创建时间。 */
-    private final Instant createdAt;
 }

@@ -7,6 +7,7 @@ import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Message persistence port.
@@ -19,13 +20,13 @@ public interface MessageRepository {
         saveBatch(List.of(message));
     }
 
-    Message findByMessageId(String messageId);
+    Optional<Message> findByMessageId(String messageId);
 
     List<Message> findCompletedContextBySessionId(String sessionId, int maxTurns);
 
     List<Message> findByTurnId(String turnId);
 
-    Message findFinalAssistantMessageByTurnId(String turnId);
+    Optional<Message> findFinalAssistantMessageByTurnId(String turnId);
 
     long nextSequenceNo(String sessionId);
 

@@ -17,7 +17,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,12 +63,14 @@ class RedisSessionStateRepositoryTest {
         Map<Object, Object> hash = validHash();
         when(hashOps.entries("agent:session:state:sess-1")).thenReturn(hash);
 
-        SessionStateSnapshot result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNotNull(result);
-        assertEquals("state-1", result.getSnapshotId());
-        assertEquals(3L, result.getStateVersion());
-        assertEquals(WorkingMode.TASK_EXECUTION, result.getWorkingMode());
+        assertTrue(result.isPresent());
+        SessionStateSnapshot snapshot = result.orElseThrow();
+        assertNotNull(snapshot);
+        assertEquals("state-1", snapshot.getSnapshotId());
+        assertEquals(3L, snapshot.getStateVersion());
+        assertEquals(WorkingMode.TASK_EXECUTION, snapshot.getWorkingMode());
     }
 
     @Test
@@ -82,9 +84,9 @@ class RedisSessionStateRepositoryTest {
         hash.remove("stateJson");
         when(hashOps.entries("agent:session:state:sess-1")).thenReturn(hash);
 
-        SessionStateSnapshot result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNull(result);
+        assertTrue(result.isEmpty());
         verify(redisTemplate).delete("agent:session:state:sess-1");
     }
 

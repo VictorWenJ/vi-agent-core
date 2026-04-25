@@ -1,10 +1,12 @@
 package com.vi.agent.core.runtime.persistence;
 
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionWorkingSetRepository;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +18,7 @@ import java.util.Optional;
 /**
  * Session working set loader.
  */
+@Slf4j
 @Component
 public class SessionWorkingSetLoader {
 
@@ -37,12 +40,17 @@ public class SessionWorkingSetLoader {
      */
     public List<Message> refreshFromMysql(String conversationId, String sessionId) {
         List<Message> completedMessages = messageRepository.findCompletedContextBySessionId(sessionId, maxCompletedTurns);
-        SessionWorkingSetSnapshot currentSnapshot = sessionWorkingSetRepository.findBySessionId(sessionId);
-        Long workingSetVersion = Optional.ofNullable(currentSnapshot)
+
+        // 获取最新work set快照数据版本
+        Optional<SessionWorkingSetSnapshot> oldSessionWorkingSetSnapshot = sessionWorkingSetRepository.findBySessionId(sessionId);
+        log.info("SessionWorkingSetLoader refreshFromMysql oldSessionWorkingSetSnapshot:{}", JsonUtils.toJson(oldSessionWorkingSetSnapshot.orElse(null)));
+
+        Long workingSetVersion = oldSessionWorkingSetSnapshot
             .map(SessionWorkingSetSnapshot::getWorkingSetVersion)
             .orElse(0L) + 1L;
 
-        SessionWorkingSetSnapshot newSnapshot = SessionWorkingSetSnapshot.builder()
+
+        SessionWorkingSetSnapshot newSessionWorkingSetSnapshot = SessionWorkingSetSnapshot.builder()
             .sessionId(sessionId)
             .conversationId(conversationId)
             .workingSetVersion(workingSetVersion)
@@ -51,8 +59,10 @@ public class SessionWorkingSetLoader {
             .rawMessageIds(completedMessages.stream().map(Message::getMessageId).toList())
             .updatedAt(Instant.now())
             .build();
+        log.info("SessionWorkingSetLoader refreshFromMysql newSessionWorkingSetSnapshot:{}", JsonUtils.toJson(newSessionWorkingSetSnapshot));
 
-        sessionWorkingSetRepository.save(newSnapshot);
+        // 回写最新版本work set快照数据
+        sessionWorkingSetRepository.save(newSessionWorkingSetSnapshot);
         return new ArrayList<>(completedMessages);
     }
 

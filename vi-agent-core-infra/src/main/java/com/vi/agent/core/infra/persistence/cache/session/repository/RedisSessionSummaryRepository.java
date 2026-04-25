@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Redis Session Summary snapshot cache 仓储。
@@ -47,11 +48,11 @@ public class RedisSessionSummaryRepository {
      * @param sessionId session ID
      * @return session summary；cache 缺失或损坏时返回 null
      */
-    public ConversationSummary findBySessionId(String sessionId) {
+    public Optional<ConversationSummary> findBySessionId(String sessionId) {
         String key = keyBuilder.sessionSummaryKey(sessionId);
         Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(key);
         if (MapUtils.isEmpty(entries)) {
-            return null;
+            return Optional.empty();
         }
 
         try {
@@ -59,18 +60,18 @@ public class RedisSessionSummaryRepository {
             if (document.getSnapshotVersion() == null || document.getSnapshotVersion() != SNAPSHOT_VERSION) {
                 log.warn("Redis session summary snapshotVersion invalid, sessionId={}, version={}", sessionId, document.getSnapshotVersion());
                 evict(sessionId);
-                return null;
+                return Optional.empty();
             }
             if (hasMissingRequiredField(document)) {
                 log.warn("Redis session summary required field missing, sessionId={}", sessionId);
                 evict(sessionId);
-                return null;
+                return Optional.empty();
             }
-            return sessionSummaryRedisMapper.toModel(document);
+            return Optional.ofNullable(sessionSummaryRedisMapper.toModel(document));
         } catch (Exception ex) {
             log.warn("Redis session summary parse failed, sessionId={}", sessionId, ex);
             evict(sessionId);
-            return null;
+            return Optional.empty();
         }
     }
 

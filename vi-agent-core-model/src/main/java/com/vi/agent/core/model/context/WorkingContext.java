@@ -17,9 +17,9 @@ public class WorkingContext {
     /** WorkingContext 来源版本信息。 */
     private final WorkingContextSource source;
 
+    /** token 预算快照。 */
+    private final ContextBudgetSnapshot budget;
+
     /** 上下文 block 集合。 */
     private final ContextBlockSet blockSet;
-
-    /** token 预算快照。 */
-    private final ContextBudgetSnapshot budgetSnapshot;
 }

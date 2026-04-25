@@ -18,7 +18,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,9 +77,9 @@ class RedisSessionWorkingSetRepositoryTest {
         hash.put("snapshotVersion", "2");
         when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(hash);
 
-        SessionWorkingSetSnapshot result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNull(result);
+        assertTrue(result.isEmpty());
         verify(redisTemplate).delete("agent:session:working-set:sess-1");
     }
 
@@ -94,9 +94,9 @@ class RedisSessionWorkingSetRepositoryTest {
         hash.remove("workingSetVersion");
         when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(hash);
 
-        SessionWorkingSetSnapshot result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNull(result);
+        assertTrue(result.isEmpty());
         verify(redisTemplate).delete("agent:session:working-set:sess-1");
     }
 
@@ -109,14 +109,16 @@ class RedisSessionWorkingSetRepositoryTest {
 
         when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(validHash());
 
-        SessionWorkingSetSnapshot result = repository.findBySessionId("sess-1");
+        var result = repository.findBySessionId("sess-1");
 
-        assertNotNull(result);
-        assertEquals("sess-1", result.getSessionId());
-        assertEquals(8L, result.getWorkingSetVersion());
-        assertEquals(6, result.getMaxCompletedTurns());
-        assertEquals(9L, result.getSummaryCoveredToSequenceNo());
-        assertEquals(List.of("msg-a", "msg-b"), result.getRawMessageIds());
+        assertTrue(result.isPresent());
+        SessionWorkingSetSnapshot snapshot = result.orElseThrow();
+        assertNotNull(snapshot);
+        assertEquals("sess-1", snapshot.getSessionId());
+        assertEquals(8L, snapshot.getWorkingSetVersion());
+        assertEquals(6, snapshot.getMaxCompletedTurns());
+        assertEquals(9L, snapshot.getSummaryCoveredToSequenceNo());
+        assertEquals(List.of("msg-a", "msg-b"), snapshot.getRawMessageIds());
     }
 
     private Map<Object, Object> validHash() {
