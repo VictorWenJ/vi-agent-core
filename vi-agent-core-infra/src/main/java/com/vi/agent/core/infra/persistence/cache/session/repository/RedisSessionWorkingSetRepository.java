@@ -16,8 +16,10 @@ import org.springframework.stereotype.Repository;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+
 /**
- * Redis 浼氳瘽涓婁笅鏂囧揩鐓т粨鍌紙hash 缁撴瀯锛夈€? */
+ * Redis Session Working Set snapshot cache 仓储。
+ */
 @Slf4j
 @Repository
 public class RedisSessionWorkingSetRepository implements SessionWorkingSetRepository {
