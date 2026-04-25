@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory;
 
+import com.vi.agent.core.common.id.ConversationSummaryIdGenerator;
 import com.vi.agent.core.common.id.SessionStateSnapshotIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.context.WorkingMode;
@@ -26,6 +27,9 @@ import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionCommand;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionResult;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractor;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionCommand;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionResult;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskCommand;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskExecutor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskResult;
@@ -61,8 +65,11 @@ class SessionMemoryCoordinatorTest {
         assertNull(result.getNewSummaryVersion());
         assertEquals(List.of(InternalTaskType.STATE_EXTRACT, InternalTaskType.SUMMARY_EXTRACT), fixture.taskService.invokedTypes);
         assertEquals(1, fixture.extractor.extractCalls);
+        assertEquals(1, fixture.summaryExtractor.extractCalls);
         assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.taskService.stateCommand.getMessageIds());
+        assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.taskService.summaryCommand.getMessageIds());
         assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.extractor.lastCommand.getTurnMessages().stream().map(Message::getMessageId).toList());
+        assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.summaryExtractor.lastCommand.getTurnMessages().stream().map(Message::getMessageId).toList());
         assertTrue(fixture.stateRepository.saved.isEmpty());
         assertTrue(fixture.summaryRepository.saved.isEmpty());
     }
@@ -208,6 +215,121 @@ class SessionMemoryCoordinatorTest {
     }
 
     @Test
+    void validSummaryExtractionShouldCreateVersionOneWhenLatestSummaryMissing() {
+        Fixture fixture = Fixture.create();
+        fixture.summaryExtractor.result = summaryResult("new summary");
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertFalse(result.isDegraded());
+        assertEquals(1L, result.getNewSummaryVersion());
+        assertEquals(1, fixture.summaryRepository.saved.size());
+        ConversationSummary saved = fixture.summaryRepository.saved.get(0);
+        assertEquals("summary-fixed-1", saved.getSummaryId());
+        assertEquals("sess-1", saved.getSessionId());
+        assertEquals(1L, saved.getSummaryVersion());
+        assertEquals(1L, saved.getCoveredFromSequenceNo());
+        assertEquals(2L, saved.getCoveredToSequenceNo());
+        assertEquals("new summary", saved.getSummaryText());
+        assertEquals("summary_extract_inline", saved.getSummaryTemplateKey());
+        assertEquals("p2-d-3-v1", saved.getSummaryTemplateVersion());
+        assertEquals("fake-provider", saved.getGeneratorProvider());
+        assertEquals("fake-model", saved.getGeneratorModel());
+        assertEquals(saved, fixture.summaryCache.saved.get(0));
+    }
+
+    @Test
+    void validSummaryExtractionShouldIncrementLatestSummaryVersionAndExtendCoverage() {
+        Fixture fixture = Fixture.create();
+        fixture.summaryRepository.latest = Optional.of(baseSummary());
+        fixture.summaryExtractor.result = summaryResult("updated summary");
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertEquals(2L, result.getNewSummaryVersion());
+        ConversationSummary saved = fixture.summaryRepository.saved.get(0);
+        assertEquals(2L, saved.getSummaryVersion());
+        assertEquals(1L, saved.getCoveredFromSequenceNo());
+        assertEquals(2L, saved.getCoveredToSequenceNo());
+        assertEquals("updated summary", saved.getSummaryText());
+    }
+
+    @Test
+    void invalidSummaryExtractionShouldDegradeAndNotSaveNewSummary() {
+        Fixture fixture = Fixture.create();
+        fixture.summaryExtractor.result = ConversationSummaryExtractionResult.builder()
+            .success(false)
+            .degraded(true)
+            .failureReason("invalid summary json")
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertTrue(result.getFailureReason().contains("invalid summary json"));
+        assertTrue(fixture.summaryRepository.saved.isEmpty());
+        assertTrue(fixture.summaryCache.saved.isEmpty());
+    }
+
+    @Test
+    void mysqlSummarySaveFailureShouldDegradeWithoutThrowing() {
+        Fixture fixture = Fixture.create();
+        fixture.summaryRepository.throwOnSave = true;
+        fixture.summaryExtractor.result = summaryResult("new summary");
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertTrue(result.getFailureReason().contains("summary save failed"));
+        assertTrue(fixture.summaryCache.saved.isEmpty());
+    }
+
+    @Test
+    void redisSummaryRefreshFailureShouldDegradeWithoutRollingBackMysqlSummarySave() {
+        Fixture fixture = Fixture.create();
+        fixture.summaryCache.throwOnSave = true;
+        fixture.summaryExtractor.result = summaryResult("new summary");
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertEquals(1, fixture.summaryRepository.saved.size());
+        assertTrue(result.getFailureReason().contains("Redis summary snapshot refresh failed"));
+    }
+
+    @Test
+    void stateSuccessAndSummaryFailureShouldNotRollbackStateUpdate() {
+        Fixture fixture = Fixture.create();
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .confirmedFactAppend(ConfirmedFactRecord.builder()
+                    .factId("fact-1")
+                    .content("persisted state fact")
+                    .build())
+                .build())
+            .build();
+        fixture.summaryExtractor.result = ConversationSummaryExtractionResult.builder()
+            .success(false)
+            .degraded(true)
+            .failureReason("summary failed")
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertEquals(1L, result.getNewStateVersion());
+        assertEquals(1, fixture.stateRepository.saved.size());
+        assertTrue(fixture.summaryRepository.saved.isEmpty());
+    }
+
+    @Test
     void memoryUpdateExceptionShouldReturnDegradedWithoutThrowing() {
         Fixture fixture = Fixture.create();
         fixture.taskService.throwOnExecute = true;
@@ -285,6 +407,18 @@ class SessionMemoryCoordinatorTest {
             .build();
     }
 
+    private static ConversationSummaryExtractionResult summaryResult(String summaryText) {
+        return ConversationSummaryExtractionResult.builder()
+            .success(true)
+            .conversationSummary(ConversationSummary.builder()
+                .summaryText(summaryText)
+                .build())
+            .generatorProvider("fake-provider")
+            .generatorModel("fake-model")
+            .rawOutput("{\"summaryText\":\"" + summaryText + "\"}")
+            .build();
+    }
+
     private static final class Fixture {
         private final SessionMemoryCoordinator coordinator = new SessionMemoryCoordinator();
         private final StubStateRepository stateRepository = new StubStateRepository();
@@ -293,6 +427,7 @@ class SessionMemoryCoordinatorTest {
         private final StubSummaryCache summaryCache = new StubSummaryCache();
         private final StubMessageRepository messageRepository = new StubMessageRepository();
         private final StubStateDeltaExtractor extractor = new StubStateDeltaExtractor();
+        private final StubConversationSummaryExtractor summaryExtractor = new StubConversationSummaryExtractor();
         private final StubInternalMemoryTaskService taskService = new StubInternalMemoryTaskService();
         private final StubEvidenceRepository evidenceRepository = new StubEvidenceRepository();
 
@@ -306,9 +441,11 @@ class SessionMemoryCoordinatorTest {
             TestFieldUtils.setField(fixture.coordinator, "memoryEvidenceRepository", fixture.evidenceRepository);
             TestFieldUtils.setField(fixture.coordinator, "messageRepository", fixture.messageRepository);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaExtractor", fixture.extractor);
+            TestFieldUtils.setField(fixture.coordinator, "conversationSummaryExtractor", fixture.summaryExtractor);
             TestFieldUtils.setField(fixture.coordinator, "internalMemoryTaskService", fixture.taskService);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaMerger", new StateDeltaMerger());
             TestFieldUtils.setField(fixture.coordinator, "sessionStateSnapshotIdGenerator", new FixedSessionStateSnapshotIdGenerator());
+            TestFieldUtils.setField(fixture.coordinator, "conversationSummaryIdGenerator", new FixedConversationSummaryIdGenerator());
             return fixture;
         }
     }
@@ -323,9 +460,20 @@ class SessionMemoryCoordinatorTest {
         }
     }
 
+    private static final class FixedConversationSummaryIdGenerator extends ConversationSummaryIdGenerator {
+        private int count;
+
+        @Override
+        public String nextId() {
+            count++;
+            return "summary-fixed-" + count;
+        }
+    }
+
     private static final class StubInternalMemoryTaskService extends InternalMemoryTaskService {
         private final List<InternalTaskType> invokedTypes = new ArrayList<>();
         private InternalMemoryTaskCommand stateCommand;
+        private InternalMemoryTaskCommand summaryCommand;
         private boolean throwOnExecute;
 
         @Override
@@ -343,13 +491,8 @@ class SessionMemoryCoordinatorTest {
                 stateCommand = command;
                 return executor.execute("task-state", "{}");
             }
-            return InternalMemoryTaskResult.builder()
-                .internalTaskId("task-summary")
-                .taskType(command.getTaskType())
-                .status(InternalTaskStatus.SKIPPED)
-                .success(true)
-                .skipped(true)
-                .build();
+            summaryCommand = command;
+            return executor.execute("task-summary", "{}");
         }
     }
 
@@ -386,9 +529,13 @@ class SessionMemoryCoordinatorTest {
     private static final class StubSummaryRepository implements SessionSummaryRepository {
         private Optional<ConversationSummary> latest = Optional.empty();
         private final List<ConversationSummary> saved = new ArrayList<>();
+        private boolean throwOnSave;
 
         @Override
         public void save(ConversationSummary summary) {
+            if (throwOnSave) {
+                throw new IllegalStateException("summary save failed");
+            }
             saved.add(summary);
             latest = Optional.of(summary);
         }
@@ -433,6 +580,7 @@ class SessionMemoryCoordinatorTest {
 
     private static final class StubSummaryCache implements SessionSummaryCacheRepository {
         private final List<ConversationSummary> saved = new ArrayList<>();
+        private boolean throwOnSave;
 
         @Override
         public Optional<ConversationSummary> findBySessionId(String sessionId) {
@@ -441,6 +589,9 @@ class SessionMemoryCoordinatorTest {
 
         @Override
         public void save(ConversationSummary summary) {
+            if (throwOnSave) {
+                throw new IllegalStateException("redis summary down");
+            }
             saved.add(summary);
         }
 
@@ -488,6 +639,22 @@ class SessionMemoryCoordinatorTest {
 
         @Override
         public StateDeltaExtractionResult extract(StateDeltaExtractionCommand command) {
+            extractCalls++;
+            lastCommand = command;
+            return result;
+        }
+    }
+
+    private static final class StubConversationSummaryExtractor implements ConversationSummaryExtractor {
+        private ConversationSummaryExtractionResult result = ConversationSummaryExtractionResult.builder()
+            .success(true)
+            .skipped(true)
+            .build();
+        private int extractCalls;
+        private ConversationSummaryExtractionCommand lastCommand;
+
+        @Override
+        public ConversationSummaryExtractionResult extract(ConversationSummaryExtractionCommand command) {
             extractCalls++;
             lastCommand = command;
             return result;

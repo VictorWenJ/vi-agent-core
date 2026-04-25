@@ -71,7 +71,7 @@ class InternalMemoryTaskServiceTest {
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
         TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
 
-        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.SUMMARY_EXTRACT));
+        InternalMemoryTaskResult result = service.execute(summaryCommand());
 
         assertTrue(result.isSuccess());
         assertEquals("itask-fixed", result.getInternalTaskId());
@@ -80,7 +80,38 @@ class InternalMemoryTaskServiceTest {
         assertEquals(3, repository.saved.size());
         assertEquals(InternalTaskStatus.SKIPPED, repository.saved.get(2).getStatus());
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"skipped\":true"));
-        assertPromptTemplate(repository.saved, "summary_extract_noop", "p2-d-1-v1");
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"messageIds\":[\"msg-user-1\",\"msg-assistant-1\"]"));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"latestSummaryVersion\":3"));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"latestStateVersion\":2"));
+        assertPromptTemplate(repository.saved, "summary_extract_inline", "p2-d-3-v1");
+    }
+
+    @Test
+    void summaryExtractExecutorShouldRecordSucceededOutputWithNewSummaryVersion() {
+        InternalMemoryTaskService service = new InternalMemoryTaskService();
+        RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
+        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
+        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+
+        InternalMemoryTaskResult result = service.execute(
+            summaryCommand(),
+            (internalTaskId, inputJson) -> InternalMemoryTaskResult.builder()
+                .internalTaskId(internalTaskId)
+                .taskType(InternalTaskType.SUMMARY_EXTRACT)
+                .status(InternalTaskStatus.SUCCEEDED)
+                .success(true)
+                .newSummaryVersion(4L)
+                .outputJson("""
+                    {"success":true,"degraded":false,"skipped":false,"summaryUpdated":true,"newSummaryVersion":4,"failureReason":null}
+                    """)
+                .build()
+        );
+
+        assertTrue(result.isSuccess());
+        assertEquals(4L, result.getNewSummaryVersion());
+        assertEquals(InternalTaskStatus.SUCCEEDED, repository.saved.get(2).getStatus());
+        assertTrue(repository.saved.get(2).getResponseJson().contains("\"newSummaryVersion\":4"));
+        assertPromptTemplate(repository.saved, "summary_extract_inline", "p2-d-3-v1");
     }
 
     @Test
@@ -150,6 +181,25 @@ class InternalMemoryTaskServiceTest {
             .messageId("msg-user-1")
             .messageId("msg-assistant-1")
             .currentStateVersion(1L)
+            .build();
+    }
+
+    private InternalMemoryTaskCommand summaryCommand() {
+        return InternalMemoryTaskCommand.builder()
+            .taskType(InternalTaskType.SUMMARY_EXTRACT)
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .traceId("trace-1")
+            .currentUserMessageId("msg-user-1")
+            .assistantMessageId("msg-assistant-1")
+            .workingContextSnapshotId("wctx-1")
+            .agentMode(AgentMode.GENERAL)
+            .messageId("msg-user-1")
+            .messageId("msg-assistant-1")
+            .latestSummaryVersion(3L)
+            .latestStateVersion(2L)
             .build();
     }
 

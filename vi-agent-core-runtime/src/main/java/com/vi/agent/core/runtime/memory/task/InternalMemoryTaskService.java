@@ -8,6 +8,8 @@ import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.StateDelta;
 import com.vi.agent.core.model.port.InternalLlmTaskRepository;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionPromptBuilder;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionPromptBuilder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,14 +26,22 @@ import java.util.Map;
 @Service
 public class InternalMemoryTaskService {
 
-    private static final String STATE_EXTRACT_TEMPLATE_KEY = "state_extract_inline";
+    /** STATE_EXTRACT 审计 prompt key。 */
+    private static final String STATE_EXTRACT_TEMPLATE_KEY = StateDeltaExtractionPromptBuilder.PROMPT_TEMPLATE_KEY;
 
-    private static final String SUMMARY_EXTRACT_TEMPLATE_KEY = "summary_extract_noop";
+    /** SUMMARY_EXTRACT 审计 prompt key。 */
+    private static final String SUMMARY_EXTRACT_TEMPLATE_KEY = ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_KEY;
 
-    private static final String P2_D_2_STATE_TEMPLATE_VERSION = "p2-d-2-v1";
+    /** STATE_EXTRACT 审计 prompt 版本。 */
+    private static final String P2_D_2_STATE_TEMPLATE_VERSION = StateDeltaExtractionPromptBuilder.PROMPT_TEMPLATE_VERSION;
 
+    /** SUMMARY_EXTRACT 审计 prompt 版本。 */
+    private static final String P2_D_3_SUMMARY_TEMPLATE_VERSION = ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_VERSION;
+
+    /** D-1 预留任务审计 prompt 版本。 */
     private static final String P2_D_1_TEMPLATE_VERSION = "p2-d-1-v1";
 
+    /** 未知内部任务审计 prompt key。 */
     private static final String UNKNOWN_TEMPLATE_KEY = "internal_memory_task_noop";
 
     @Resource
@@ -143,10 +153,14 @@ public class InternalMemoryTaskService {
                 .build();
         }
         if (command.getTaskType() == InternalTaskType.SUMMARY_EXTRACT) {
-            String outputJson = JsonUtils.toJson(Map.of(
-                "skipped", true,
-                "reason", "summary extract is deterministic no-op in P2-D-1"
-            ));
+            Map<String, Object> output = new LinkedHashMap<>();
+            output.put("success", true);
+            output.put("degraded", false);
+            output.put("skipped", true);
+            output.put("summaryUpdated", false);
+            output.put("newSummaryVersion", null);
+            output.put("failureReason", "summary extract has no executor");
+            String outputJson = JsonUtils.toJson(output);
             return InternalMemoryTaskResult.builder()
                 .internalTaskId(internalTaskId)
                 .taskType(command.getTaskType())
@@ -168,6 +182,15 @@ public class InternalMemoryTaskService {
             output.put("newStateVersion", null);
             output.put("failureReason", ex.getMessage());
             output.put("sourceCandidateIds", java.util.List.of());
+            return JsonUtils.toJson(output);
+        }
+        if (command != null && command.getTaskType() == InternalTaskType.SUMMARY_EXTRACT) {
+            output.put("success", false);
+            output.put("degraded", true);
+            output.put("skipped", false);
+            output.put("summaryUpdated", false);
+            output.put("newSummaryVersion", null);
+            output.put("failureReason", ex.getMessage());
             return JsonUtils.toJson(output);
         }
         output.put("failed", true);
@@ -233,6 +256,9 @@ public class InternalMemoryTaskService {
         if (taskType == InternalTaskType.STATE_EXTRACT) {
             return P2_D_2_STATE_TEMPLATE_VERSION;
         }
+        if (taskType == InternalTaskType.SUMMARY_EXTRACT) {
+            return P2_D_3_SUMMARY_TEMPLATE_VERSION;
+        }
         return P2_D_1_TEMPLATE_VERSION;
     }
 
@@ -263,6 +289,8 @@ public class InternalMemoryTaskService {
         input.put("agentMode", command == null || command.getAgentMode() == null ? null : command.getAgentMode().name());
         input.put("messageIds", command == null ? null : command.getMessageIds());
         input.put("currentStateVersion", command == null ? null : command.getCurrentStateVersion());
+        input.put("latestStateVersion", command == null ? null : command.getLatestStateVersion());
+        input.put("latestSummaryVersion", command == null ? null : command.getLatestSummaryVersion());
         return JsonUtils.toJson(input);
     }
 

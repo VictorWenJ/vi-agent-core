@@ -78,6 +78,11 @@ public class IdGeneratorConfig {
     }
 
     @Bean
+    public ConversationSummaryIdGenerator conversationSummaryIdGenerator() {
+        return new ConversationSummaryIdGenerator();
+    }
+
+    @Bean
     public InternalTaskIdGenerator internalTaskIdGenerator() {
         return new InternalTaskIdGenerator();
     }

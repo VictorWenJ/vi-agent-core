@@ -1,5 +1,6 @@
 package com.vi.agent.core.runtime.memory;
 
+import com.vi.agent.core.common.id.ConversationSummaryIdGenerator;
 import com.vi.agent.core.common.id.SessionStateSnapshotIdGenerator;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.context.AgentMode;
@@ -15,6 +16,9 @@ import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.SessionSummaryCacheRepository;
 import com.vi.agent.core.model.port.SessionSummaryRepository;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionCommand;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionResult;
+import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractor;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionCommand;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionResult;
 import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractor;
@@ -63,6 +67,10 @@ public class SessionMemoryCoordinator {
     @Resource
     private StateDeltaExtractor stateDeltaExtractor;
 
+    /** 会话摘要抽取器。 */
+    @Resource
+    private ConversationSummaryExtractor conversationSummaryExtractor;
+
     @Resource
     private InternalMemoryTaskService internalMemoryTaskService;
 
@@ -71,6 +79,10 @@ public class SessionMemoryCoordinator {
 
     @Resource
     private SessionStateSnapshotIdGenerator sessionStateSnapshotIdGenerator;
+
+    /** 会话摘要 ID 生成器。 */
+    @Resource
+    private ConversationSummaryIdGenerator conversationSummaryIdGenerator;
 
     public SessionMemoryUpdateResult updateAfterTurn(SessionMemoryUpdateCommand command) {
         if (properties != null && !properties.isPostTurnUpdateEnabled()) {
@@ -157,21 +169,33 @@ public class SessionMemoryCoordinator {
 
     private MemoryUpdatePartial updateSummary(SessionMemoryUpdateCommand command) {
         try {
-            sessionSummaryRepository.findLatestBySessionId(command.getSessionId());
-            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(toTaskCommand(command, InternalTaskType.SUMMARY_EXTRACT));
-            if (!taskResult.isSuccess() || taskResult.isDegraded()) {
+            Optional<ConversationSummary> latestSummary = sessionSummaryRepository.findLatestBySessionId(command.getSessionId());
+            Optional<SessionStateSnapshot> latestState = sessionStateRepository.findLatestBySessionId(command.getSessionId());
+            List<Message> turnMessages = loadCompletedTurnMessages(command);
+            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(
+                toSummaryTaskCommand(command, latestSummary.orElse(null), latestState.orElse(null), turnMessages),
+                (internalTaskId, inputJson) -> executeSummaryExtractTask(
+                    command,
+                    internalTaskId,
+                    latestSummary.orElse(null),
+                    latestState.orElse(null),
+                    turnMessages
+                )
+            );
+            if (taskResult.isDegraded()) {
+                return MemoryUpdatePartial.degraded(
+                    taskResult.getInternalTaskId(),
+                    taskResult.getNewSummaryVersion(),
+                    taskResult.getFailureReason()
+                );
+            }
+            if (!taskResult.isSuccess()) {
                 return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), taskResult.getFailureReason());
             }
-            ConversationSummary summary = taskResult.getSummary();
-            if (summary == null || taskResult.isSkipped()) {
+            if (taskResult.isSkipped()) {
                 return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), null);
             }
-            sessionSummaryRepository.save(summary);
-            String redisFailure = refreshSummaryCache(summary);
-            if (redisFailure != null) {
-                return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), summary.getSummaryVersion(), redisFailure);
-            }
-            return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), summary.getSummaryVersion());
+            return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), taskResult.getNewSummaryVersion());
         } catch (Exception ex) {
             log.warn("Post-turn summary memory update failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -179,21 +203,6 @@ public class SessionMemoryCoordinator {
                 ex);
             return MemoryUpdatePartial.degraded(null, ex.getMessage());
         }
-    }
-
-    private InternalMemoryTaskCommand toTaskCommand(SessionMemoryUpdateCommand command, InternalTaskType taskType) {
-        return InternalMemoryTaskCommand.builder()
-            .taskType(taskType)
-            .conversationId(command == null ? null : command.getConversationId())
-            .sessionId(command == null ? null : command.getSessionId())
-            .turnId(command == null ? null : command.getTurnId())
-            .runId(command == null ? null : command.getRunId())
-            .traceId(command == null ? null : command.getTraceId())
-            .currentUserMessageId(command == null ? null : command.getCurrentUserMessageId())
-            .assistantMessageId(command == null ? null : command.getAssistantMessageId())
-            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
-            .agentMode(resolveAgentMode(command))
-            .build();
     }
 
     private InternalMemoryTaskCommand toStateTaskCommand(SessionMemoryUpdateCommand command, SessionStateSnapshot latestState, List<Message> turnMessages) {
@@ -208,7 +217,33 @@ public class SessionMemoryCoordinator {
             .assistantMessageId(command == null ? null : command.getAssistantMessageId())
             .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
             .agentMode(resolveAgentMode(command))
-            .currentStateVersion(latestState == null ? null : latestState.getStateVersion());
+            .currentStateVersion(latestState == null ? null : latestState.getStateVersion())
+            .latestStateVersion(latestState == null ? null : latestState.getStateVersion());
+        for (Message message : nullSafeMessages(turnMessages)) {
+            builder.messageId(message.getMessageId());
+        }
+        return builder.build();
+    }
+
+    private InternalMemoryTaskCommand toSummaryTaskCommand(
+        SessionMemoryUpdateCommand command,
+        ConversationSummary latestSummary,
+        SessionStateSnapshot latestState,
+        List<Message> turnMessages
+    ) {
+        InternalMemoryTaskCommand.InternalMemoryTaskCommandBuilder builder = InternalMemoryTaskCommand.builder()
+            .taskType(InternalTaskType.SUMMARY_EXTRACT)
+            .conversationId(command == null ? null : command.getConversationId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .turnId(command == null ? null : command.getTurnId())
+            .runId(command == null ? null : command.getRunId())
+            .traceId(command == null ? null : command.getTraceId())
+            .currentUserMessageId(command == null ? null : command.getCurrentUserMessageId())
+            .assistantMessageId(command == null ? null : command.getAssistantMessageId())
+            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
+            .agentMode(resolveAgentMode(command))
+            .latestSummaryVersion(latestSummary == null ? null : latestSummary.getSummaryVersion())
+            .latestStateVersion(latestState == null ? null : latestState.getStateVersion());
         for (Message message : nullSafeMessages(turnMessages)) {
             builder.messageId(message.getMessageId());
         }
@@ -351,6 +386,165 @@ public class SessionMemoryCoordinator {
             .build());
     }
 
+    private InternalMemoryTaskResult executeSummaryExtractTask(
+        SessionMemoryUpdateCommand command,
+        String internalTaskId,
+        ConversationSummary latestSummary,
+        SessionStateSnapshot latestState,
+        List<Message> turnMessages
+    ) {
+        try {
+            ConversationSummaryExtractionResult extractionResult = extractConversationSummary(command, latestSummary, latestState, turnMessages);
+            if (extractionResult == null || !extractionResult.isSuccess() || extractionResult.isDegraded()) {
+                String failureReason = extractionResult == null
+                    ? "summary extraction returned null result"
+                    : extractionResult.getFailureReason();
+                return summaryTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.DEGRADED,
+                    false,
+                    true,
+                    false,
+                    null,
+                    null,
+                    failureReason
+                );
+            }
+            if (extractionResult.isSkipped() || extractionResult.getConversationSummary() == null
+                || extractionResult.getConversationSummary().getSummaryText() == null
+                || extractionResult.getConversationSummary().getSummaryText().isBlank()) {
+                return summaryTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.SKIPPED,
+                    true,
+                    false,
+                    true,
+                    null,
+                    null,
+                    extractionResult.getFailureReason()
+                );
+            }
+
+            ConversationSummary nextSummary = buildNextSummary(command, latestSummary, extractionResult, turnMessages);
+            try {
+                sessionSummaryRepository.save(nextSummary);
+            } catch (Exception ex) {
+                log.warn("Post-turn summary save failed, sessionId={}, turnId={}",
+                    command == null ? null : command.getSessionId(),
+                    command == null ? null : command.getTurnId(),
+                    ex);
+                return summaryTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.FAILED,
+                    false,
+                    true,
+                    false,
+                    null,
+                    null,
+                    ex.getMessage()
+                );
+            }
+
+            String redisFailure = refreshSummaryCache(nextSummary);
+            if (redisFailure != null) {
+                return summaryTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.DEGRADED,
+                    false,
+                    true,
+                    false,
+                    nextSummary,
+                    nextSummary.getSummaryVersion(),
+                    redisFailure
+                );
+            }
+            return summaryTaskResult(
+                internalTaskId,
+                InternalTaskStatus.SUCCEEDED,
+                true,
+                false,
+                false,
+                nextSummary,
+                nextSummary.getSummaryVersion(),
+                null
+            );
+        } catch (Exception ex) {
+            log.warn("SUMMARY_EXTRACT task execution failed, sessionId={}, turnId={}",
+                command == null ? null : command.getSessionId(),
+                command == null ? null : command.getTurnId(),
+                ex);
+            return summaryTaskResult(
+                internalTaskId,
+                InternalTaskStatus.FAILED,
+                false,
+                true,
+                false,
+                null,
+                null,
+                ex.getMessage()
+            );
+        }
+    }
+
+    private ConversationSummaryExtractionResult extractConversationSummary(
+        SessionMemoryUpdateCommand command,
+        ConversationSummary latestSummary,
+        SessionStateSnapshot latestState,
+        List<Message> turnMessages
+    ) {
+        if (conversationSummaryExtractor == null) {
+            return ConversationSummaryExtractionResult.builder()
+                .success(false)
+                .degraded(true)
+                .failureReason("conversation summary extractor is not configured")
+                .build();
+        }
+        return conversationSummaryExtractor.extract(ConversationSummaryExtractionCommand.builder()
+            .conversationId(command == null ? null : command.getConversationId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .turnId(command == null ? null : command.getTurnId())
+            .runId(command == null ? null : command.getRunId())
+            .traceId(command == null ? null : command.getTraceId())
+            .agentMode(resolveAgentMode(command))
+            .latestSummary(latestSummary)
+            .latestState(latestState)
+            .turnMessages(nullSafeMessages(turnMessages))
+            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
+            .build());
+    }
+
+    private ConversationSummary buildNextSummary(
+        SessionMemoryUpdateCommand command,
+        ConversationSummary latestSummary,
+        ConversationSummaryExtractionResult extractionResult,
+        List<Message> turnMessages
+    ) {
+        if (conversationSummaryIdGenerator == null) {
+            throw new IllegalStateException("conversation summary id generator is not configured");
+        }
+        long nextVersion = latestSummary == null || latestSummary.getSummaryVersion() == null
+            ? 1L
+            : latestSummary.getSummaryVersion() + 1;
+        Long coveredFromSequenceNo = coveredFromSequenceNo(latestSummary, turnMessages);
+        Long coveredToSequenceNo = coveredToSequenceNo(latestSummary, turnMessages);
+        if (coveredFromSequenceNo == null || coveredToSequenceNo == null) {
+            throw new IllegalStateException("summary coverage sequence range cannot be computed");
+        }
+        return ConversationSummary.builder()
+            .summaryId(conversationSummaryIdGenerator.nextId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .summaryVersion(nextVersion)
+            .coveredFromSequenceNo(coveredFromSequenceNo)
+            .coveredToSequenceNo(coveredToSequenceNo)
+            .summaryText(extractionResult.getConversationSummary().getSummaryText())
+            .summaryTemplateKey(com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_KEY)
+            .summaryTemplateVersion(com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_VERSION)
+            .generatorProvider(extractionResult.getGeneratorProvider())
+            .generatorModel(extractionResult.getGeneratorModel())
+            .createdAt(Instant.now())
+            .build();
+    }
+
     private InternalMemoryTaskResult stateTaskResult(
         String internalTaskId,
         InternalTaskStatus status,
@@ -374,6 +568,49 @@ public class SessionMemoryCoordinator {
             .failureReason(failureReason)
             .outputJson(outputJson)
             .build();
+    }
+
+    private InternalMemoryTaskResult summaryTaskResult(
+        String internalTaskId,
+        InternalTaskStatus status,
+        boolean success,
+        boolean degraded,
+        boolean skipped,
+        ConversationSummary summary,
+        Long newSummaryVersion,
+        String failureReason
+    ) {
+        String outputJson = buildSummaryTaskOutputJson(success, degraded, skipped, summary != null, newSummaryVersion, failureReason);
+        return InternalMemoryTaskResult.builder()
+            .internalTaskId(internalTaskId)
+            .taskType(InternalTaskType.SUMMARY_EXTRACT)
+            .status(status)
+            .success(success)
+            .degraded(degraded)
+            .skipped(skipped)
+            .summary(summary)
+            .newSummaryVersion(newSummaryVersion)
+            .failureReason(failureReason)
+            .outputJson(outputJson)
+            .build();
+    }
+
+    private String buildSummaryTaskOutputJson(
+        boolean success,
+        boolean degraded,
+        boolean skipped,
+        boolean summaryUpdated,
+        Long newSummaryVersion,
+        String failureReason
+    ) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("success", success);
+        output.put("degraded", degraded);
+        output.put("skipped", skipped);
+        output.put("summaryUpdated", summaryUpdated);
+        output.put("newSummaryVersion", newSummaryVersion);
+        output.put("failureReason", failureReason);
+        return JsonUtils.toJson(output);
     }
 
     private String buildStateTaskOutputJson(
@@ -406,6 +643,38 @@ public class SessionMemoryCoordinator {
 
     private List<Message> nullSafeMessages(List<Message> messages) {
         return messages == null ? List.of() : messages;
+    }
+
+    private Long coveredFromSequenceNo(ConversationSummary latestSummary, List<Message> turnMessages) {
+        Long minTurnSequence = nullSafeMessages(turnMessages).stream()
+            .filter(message -> message != null)
+            .map(Message::getSequenceNo)
+            .min(Long::compareTo)
+            .orElse(null);
+        Long latestCoveredFrom = latestSummary == null ? null : latestSummary.getCoveredFromSequenceNo();
+        if (latestCoveredFrom == null) {
+            return minTurnSequence;
+        }
+        if (minTurnSequence == null) {
+            return latestCoveredFrom;
+        }
+        return Math.min(latestCoveredFrom, minTurnSequence);
+    }
+
+    private Long coveredToSequenceNo(ConversationSummary latestSummary, List<Message> turnMessages) {
+        Long maxTurnSequence = nullSafeMessages(turnMessages).stream()
+            .filter(message -> message != null)
+            .map(Message::getSequenceNo)
+            .max(Long::compareTo)
+            .orElse(null);
+        Long latestCoveredTo = latestSummary == null ? null : latestSummary.getCoveredToSequenceNo();
+        if (latestCoveredTo == null) {
+            return maxTurnSequence;
+        }
+        if (maxTurnSequence == null) {
+            return latestCoveredTo;
+        }
+        return Math.max(latestCoveredTo, maxTurnSequence);
     }
 
     private AgentMode resolveAgentMode(SessionMemoryUpdateCommand command) {
