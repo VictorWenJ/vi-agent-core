@@ -34,8 +34,6 @@ class UserPreferencePatchTest {
             .answerStyle(AnswerStyle.DIRECT)
             .detailLevel(DetailLevel.DETAILED)
             .termFormat(TermFormat.BILINGUAL)
-            .locale("zh-CN")
-            .timezone("Asia/Shanghai")
             .build();
 
         UserPreferencePatch restored = JsonUtils.jsonToBean(JsonUtils.toJson(patch), UserPreferencePatch.class);
@@ -43,7 +41,5 @@ class UserPreferencePatchTest {
         assertEquals(AnswerStyle.DIRECT, restored.getAnswerStyle());
         assertEquals(DetailLevel.DETAILED, restored.getDetailLevel());
         assertEquals(TermFormat.BILINGUAL, restored.getTermFormat());
-        assertEquals("zh-CN", restored.getLocale());
-        assertEquals("Asia/Shanghai", restored.getTimezone());
     }
 }

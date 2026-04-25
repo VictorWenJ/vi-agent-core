@@ -4,25 +4,26 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
 
-import java.time.Instant;
-
 /**
- * 当前任务阶段状态。
+ * 当前任务阶段与功能开关状态。
  */
 @Getter
 @Builder
 @Jacksonized
 public class PhaseState {
 
-    /** 阶段 key。 */
-    private final String phaseKey;
+    /** 是否启用 prompt 管理。 */
+    private final Boolean promptEngineeringEnabled;
 
-    /** 阶段名称。 */
-    private final String phaseName;
+    /** 是否启用 context 审计。 */
+    private final Boolean contextAuditEnabled;
 
-    /** 阶段状态。 */
-    private final String status;
+    /** 是否启用 summary。 */
+    private final Boolean summaryEnabled;
 
-    /** 阶段状态更新时间。 */
-    private final Instant updatedAt;
+    /** 是否启用 state extraction。 */
+    private final Boolean stateExtractionEnabled;
+
+    /** 是否启用 compaction。 */
+    private final Boolean compactionEnabled;
 }

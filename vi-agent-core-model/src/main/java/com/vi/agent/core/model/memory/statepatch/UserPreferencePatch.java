@@ -20,19 +20,13 @@ import java.util.Objects;
 public class UserPreferencePatch {
 
     /** 回答风格更新值，null 表示不修改。 */
-    private final AnswerStyle answerStyle;
+    AnswerStyle answerStyle;
 
     /** 细节程度更新值，null 表示不修改。 */
-    private final DetailLevel detailLevel;
+    DetailLevel detailLevel;
 
     /** 术语表达格式更新值，null 表示不修改。 */
-    private final TermFormat termFormat;
-
-    /** 语言区域更新值，使用已有用户偏好模型中的 locale 规范，null 表示不修改。 */
-    private final String locale;
-
-    /** 时区更新值，使用已有用户偏好模型中的 timezone 规范，null 表示不修改。 */
-    private final String timezone;
+    TermFormat termFormat;
 
     /**
      * 判断该偏好补丁是否没有任何显式更新字段。
@@ -42,8 +36,6 @@ public class UserPreferencePatch {
     public boolean isEmpty() {
         return Objects.isNull(answerStyle)
             && Objects.isNull(detailLevel)
-            && Objects.isNull(termFormat)
-            && Objects.isNull(locale)
-            && Objects.isNull(timezone);
+            && Objects.isNull(termFormat);
     }
 }

@@ -20,10 +20,4 @@ public class UserPreferenceState {
 
     /** 用户偏好的术语格式。 */
     private final TermFormat termFormat;
-
-    /** 用户偏好的语言区域。 */
-    private final String locale;
-
-    /** 用户偏好的时区。 */
-    private final String timezone;
 }

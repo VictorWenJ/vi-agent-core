@@ -141,12 +141,6 @@ public class StateDeltaMerger {
             .termFormat(Objects.nonNull(patch.getTermFormat())
                 ? patch.getTermFormat()
                 : Objects.nonNull(current) ? current.getTermFormat() : null)
-            .locale(Objects.nonNull(patch.getLocale())
-                ? patch.getLocale()
-                : Objects.nonNull(current) ? current.getLocale() : null)
-            .timezone(Objects.nonNull(patch.getTimezone())
-                ? patch.getTimezone()
-                : Objects.nonNull(current) ? current.getTimezone() : null)
             .build();
     }
 
@@ -194,18 +188,21 @@ public class StateDeltaMerger {
             return current;
         }
         return PhaseState.builder()
-            .phaseKey(Objects.nonNull(patch.getPhaseKey())
-                ? patch.getPhaseKey()
-                : Objects.nonNull(current) ? current.getPhaseKey() : null)
-            .phaseName(Objects.nonNull(patch.getPhaseName())
-                ? patch.getPhaseName()
-                : Objects.nonNull(current) ? current.getPhaseName() : null)
-            .status(Objects.nonNull(patch.getStatus())
-                ? patch.getStatus()
-                : Objects.nonNull(current) ? current.getStatus() : null)
-            .updatedAt(Objects.nonNull(patch.getUpdatedAt())
-                ? patch.getUpdatedAt()
-                : Objects.nonNull(current) ? current.getUpdatedAt() : null)
+            .promptEngineeringEnabled(Objects.nonNull(patch.getPromptEngineeringEnabled())
+                ? patch.getPromptEngineeringEnabled()
+                : Objects.nonNull(current) ? current.getPromptEngineeringEnabled() : null)
+            .contextAuditEnabled(Objects.nonNull(patch.getContextAuditEnabled())
+                ? patch.getContextAuditEnabled()
+                : Objects.nonNull(current) ? current.getContextAuditEnabled() : null)
+            .summaryEnabled(Objects.nonNull(patch.getSummaryEnabled())
+                ? patch.getSummaryEnabled()
+                : Objects.nonNull(current) ? current.getSummaryEnabled() : null)
+            .stateExtractionEnabled(Objects.nonNull(patch.getStateExtractionEnabled())
+                ? patch.getStateExtractionEnabled()
+                : Objects.nonNull(current) ? current.getStateExtractionEnabled() : null)
+            .compactionEnabled(Objects.nonNull(patch.getCompactionEnabled())
+                ? patch.getCompactionEnabled()
+                : Objects.nonNull(current) ? current.getCompactionEnabled() : null)
             .build();
     }
 

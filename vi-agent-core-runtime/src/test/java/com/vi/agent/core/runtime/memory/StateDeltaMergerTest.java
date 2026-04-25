@@ -19,7 +19,6 @@ import com.vi.agent.core.model.memory.statepatch.PhaseStatePatch;
 import com.vi.agent.core.model.memory.statepatch.UserPreferencePatch;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,10 +42,10 @@ class StateDeltaMergerTest {
     @Test
     void shouldAppendConfirmedFactsAndConstraintsWithoutDuplicateIds() {
         SessionStateSnapshot merged = merger.merge(baseState(), StateDelta.builder()
-            .confirmedFact(fact("fact-1", "duplicate"))
-            .confirmedFact(fact("fact-2", "new"))
-            .constraint(constraint("constraint-1", "duplicate"))
-            .constraint(constraint("constraint-2", "new"))
+            .confirmedFactAppend(fact("fact-1", "duplicate"))
+            .confirmedFactAppend(fact("fact-2", "new"))
+            .constraintAppend(constraint("constraint-1", "duplicate"))
+            .constraintAppend(constraint("constraint-2", "new"))
             .build());
 
         assertEquals(2, merged.getConfirmedFacts().size());
@@ -64,22 +63,19 @@ class StateDeltaMergerTest {
         SessionStateSnapshot merged = merger.merge(baseState(), StateDelta.builder()
             .userPreferencesPatch(UserPreferencePatch.builder()
                 .detailLevel(DetailLevel.DETAILED)
-                .timezone("Asia/Shanghai")
                 .build())
             .build());
 
         assertEquals(AnswerStyle.DIRECT, merged.getUserPreference().getAnswerStyle());
         assertEquals(DetailLevel.DETAILED, merged.getUserPreference().getDetailLevel());
         assertEquals(TermFormat.ORIGINAL, merged.getUserPreference().getTermFormat());
-        assertEquals("en-US", merged.getUserPreference().getLocale());
-        assertEquals("Asia/Shanghai", merged.getUserPreference().getTimezone());
     }
 
     @Test
     void shouldAppendDecisionsWithoutDuplicateIds() {
         SessionStateSnapshot merged = merger.merge(baseState(), StateDelta.builder()
-            .decision(decision("decision-1", "duplicate"))
-            .decision(decision("decision-2", "new"))
+            .decisionAppend(decision("decision-1", "duplicate"))
+            .decisionAppend(decision("decision-2", "new"))
             .build());
 
         assertEquals(2, merged.getDecisions().size());
@@ -92,7 +88,7 @@ class StateDeltaMergerTest {
     void shouldAppendOpenLoopsAndCloseOpenLoopsByLoopId() {
         SessionStateSnapshot merged = merger.merge(baseState(), StateDelta.builder()
             .openLoopIdToClose("loop-1")
-            .openLoop(openLoop("loop-2", OpenLoopStatus.OPEN))
+            .openLoopAppend(openLoop("loop-2", OpenLoopStatus.OPEN))
             .build());
 
         assertEquals(2, merged.getOpenLoops().size());
@@ -104,7 +100,7 @@ class StateDeltaMergerTest {
     void shouldKeepOnlyMostRecentToolOutcomes() {
         StateDelta.StateDeltaBuilder builder = StateDelta.builder();
         for (int i = 0; i < StateDeltaMerger.MAX_RECENT_TOOL_OUTCOMES + 2; i++) {
-            builder.recentToolOutcome(toolOutcome("new-" + i));
+            builder.recentToolOutcomeAppend(toolOutcome("new-" + i));
         }
 
         SessionStateSnapshot merged = merger.merge(baseState(), builder.build());
@@ -115,18 +111,18 @@ class StateDeltaMergerTest {
 
     @Test
     void shouldPatchPhaseStateWithNonNullFieldsOnly() {
-        Instant updatedAt = Instant.parse("2026-04-25T00:00:00Z");
         SessionStateSnapshot merged = merger.merge(baseState(), StateDelta.builder()
             .phaseStatePatch(PhaseStatePatch.builder()
-                .status("done")
-                .updatedAt(updatedAt)
+                .summaryEnabled(true)
+                .compactionEnabled(true)
                 .build())
             .build());
 
-        assertEquals("old-phase", merged.getPhaseState().getPhaseKey());
-        assertEquals("Old Phase", merged.getPhaseState().getPhaseName());
-        assertEquals("done", merged.getPhaseState().getStatus());
-        assertEquals(updatedAt, merged.getPhaseState().getUpdatedAt());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getPromptEngineeringEnabled());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getContextAuditEnabled());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getSummaryEnabled());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getStateExtractionEnabled());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getCompactionEnabled());
     }
 
     @Test
@@ -142,7 +138,7 @@ class StateDeltaMergerTest {
         assertEquals(1, merged.getDecisions().size());
         assertEquals(1, merged.getOpenLoops().size());
         assertEquals(1, merged.getToolOutcomeDigests().size());
-        assertEquals("old-phase", merged.getPhaseState().getPhaseKey());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getPromptEngineeringEnabled());
     }
 
     @Test
@@ -154,12 +150,13 @@ class StateDeltaMergerTest {
 
         SessionStateSnapshot merged = merger.merge(base, StateDelta.builder()
             .userPreferencesPatch(UserPreferencePatch.builder().answerStyle(AnswerStyle.STRUCTURED).build())
-            .phaseStatePatch(PhaseStatePatch.builder().status("started").build())
+            .phaseStatePatch(PhaseStatePatch.builder().stateExtractionEnabled(true).build())
             .build());
 
         assertEquals(AnswerStyle.STRUCTURED, merged.getUserPreference().getAnswerStyle());
         assertNull(merged.getUserPreference().getDetailLevel());
-        assertEquals("started", merged.getPhaseState().getStatus());
+        assertEquals(Boolean.TRUE, merged.getPhaseState().getStateExtractionEnabled());
+        assertNull(merged.getPhaseState().getSummaryEnabled());
     }
 
     private SessionStateSnapshot baseState() {
@@ -176,15 +173,15 @@ class StateDeltaMergerTest {
                 .answerStyle(AnswerStyle.DIRECT)
                 .detailLevel(DetailLevel.BRIEF)
                 .termFormat(TermFormat.ORIGINAL)
-                .locale("en-US")
-                .timezone("UTC")
                 .build())
             .openLoop(openLoop("loop-1", OpenLoopStatus.OPEN))
             .toolOutcomeDigest(toolOutcome("old-tool"))
             .phaseState(PhaseState.builder()
-                .phaseKey("old-phase")
-                .phaseName("Old Phase")
-                .status("running")
+                .promptEngineeringEnabled(true)
+                .contextAuditEnabled(true)
+                .summaryEnabled(false)
+                .stateExtractionEnabled(true)
+                .compactionEnabled(false)
                 .build())
             .build();
     }

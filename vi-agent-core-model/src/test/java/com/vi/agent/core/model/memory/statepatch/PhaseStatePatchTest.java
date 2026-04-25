@@ -3,8 +3,6 @@ package com.vi.agent.core.model.memory.statepatch;
 import com.vi.agent.core.common.util.JsonUtils;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,7 +19,7 @@ class PhaseStatePatchTest {
     @Test
     void isEmptyShouldReturnFalseWhenAnyFieldIsExplicitlyUpdated() {
         PhaseStatePatch patch = PhaseStatePatch.builder()
-            .status("ready")
+            .contextAuditEnabled(false)
             .build();
 
         assertFalse(patch.isEmpty());
@@ -29,19 +27,20 @@ class PhaseStatePatchTest {
 
     @Test
     void shouldKeepPatchFieldsAfterJsonRoundTrip() {
-        Instant updatedAt = Instant.parse("2026-04-25T00:00:00Z");
         PhaseStatePatch patch = PhaseStatePatch.builder()
-            .phaseKey("p2-a")
-            .phaseName("P2-A")
-            .status("ready")
-            .updatedAt(updatedAt)
+            .promptEngineeringEnabled(true)
+            .contextAuditEnabled(false)
+            .summaryEnabled(true)
+            .stateExtractionEnabled(true)
+            .compactionEnabled(false)
             .build();
 
         PhaseStatePatch restored = JsonUtils.jsonToBean(JsonUtils.toJson(patch), PhaseStatePatch.class);
 
-        assertEquals("p2-a", restored.getPhaseKey());
-        assertEquals("P2-A", restored.getPhaseName());
-        assertEquals("ready", restored.getStatus());
-        assertEquals(updatedAt, restored.getUpdatedAt());
+        assertEquals(Boolean.TRUE, restored.getPromptEngineeringEnabled());
+        assertEquals(Boolean.FALSE, restored.getContextAuditEnabled());
+        assertEquals(Boolean.TRUE, restored.getSummaryEnabled());
+        assertEquals(Boolean.TRUE, restored.getStateExtractionEnabled());
+        assertEquals(Boolean.FALSE, restored.getCompactionEnabled());
     }
 }

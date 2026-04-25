@@ -4,7 +4,6 @@ import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
-import java.time.Instant;
 import java.util.Objects;
 
 /**
@@ -17,17 +16,20 @@ import java.util.Objects;
 @Jacksonized
 public class PhaseStatePatch {
 
-    /** 阶段 key 更新值，使用既有 PhaseState 字段口径，null 表示不修改。 */
-    private final String phaseKey;
+    /** prompt 管理开关更新值，null 表示不修改。 */
+    Boolean promptEngineeringEnabled;
 
-    /** 阶段名称更新值，使用既有 PhaseState 字段口径，null 表示不修改。 */
-    private final String phaseName;
+    /** context 审计开关更新值，null 表示不修改。 */
+    Boolean contextAuditEnabled;
 
-    /** 阶段状态更新值，使用既有 PhaseState 字段口径，null 表示不修改。 */
-    private final String status;
+    /** summary 开关更新值，null 表示不修改。 */
+    Boolean summaryEnabled;
 
-    /** 阶段状态更新时间更新值，null 表示不修改。 */
-    private final Instant updatedAt;
+    /** state extraction 开关更新值，null 表示不修改。 */
+    Boolean stateExtractionEnabled;
+
+    /** compaction 开关更新值，null 表示不修改。 */
+    Boolean compactionEnabled;
 
     /**
      * 判断该阶段补丁是否没有任何显式更新字段。
@@ -35,9 +37,10 @@ public class PhaseStatePatch {
      * @return 没有显式更新字段时返回 true
      */
     public boolean isEmpty() {
-        return Objects.isNull(phaseKey)
-            && Objects.isNull(phaseName)
-            && Objects.isNull(status)
-            && Objects.isNull(updatedAt);
+        return Objects.isNull(promptEngineeringEnabled)
+            && Objects.isNull(contextAuditEnabled)
+            && Objects.isNull(summaryEnabled)
+            && Objects.isNull(stateExtractionEnabled)
+            && Objects.isNull(compactionEnabled);
     }
 }
