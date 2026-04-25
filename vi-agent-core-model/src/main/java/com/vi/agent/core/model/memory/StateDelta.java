@@ -4,6 +4,7 @@ import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.statepatch.PhaseStatePatch;
 import com.vi.agent.core.model.memory.statepatch.UserPreferencePatch;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.Singular;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
@@ -16,6 +17,7 @@ import java.util.Objects;
  *
  * <p>该对象只表达本轮识别出的状态变更意图，不再承载通用 CRUD 或 upsert/remove 语义。</p>
  */
+@Getter
 @Builder(toBuilder = true)
 @Jacksonized
 public class StateDelta {
