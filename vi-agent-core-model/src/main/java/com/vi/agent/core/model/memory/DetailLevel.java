@@ -10,11 +10,11 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum DetailLevel {
 
-    BRIEF("brief", "简略"),
+    LOW("low", "简略"),
 
-    NORMAL("normal", "常规"),
+    MEDIUM("medium", "常规"),
 
-    DETAILED("detailed", "详细");
+    HIGH("high", "详细");
 
     private final String value;
 

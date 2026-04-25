@@ -6,6 +6,8 @@ import com.vi.agent.core.model.memory.statepatch.PhaseStatePatch;
 import com.vi.agent.core.model.memory.statepatch.UserPreferencePatch;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,12 +50,16 @@ class StateDeltaTest {
     }
 
     @Test
+    void shouldOnlyExposeFrozenDomainPatchContract() {
+        assertFalse(hasPublicMethod("getSessionId"));
+        assertFalse(hasPublicMethod("getSourceRunId"));
+        assertFalse(hasPublicMethod("getPreviousStateVersion"));
+        assertFalse(hasPublicMethod("getTargetStateVersion"));
+    }
+
+    @Test
     void sourceCandidateIdsOnlyShouldNotCountAsBusinessChange() {
         StateDelta delta = StateDelta.builder()
-            .sessionId("session-1")
-            .sourceRunId("run-1")
-            .previousStateVersion(1L)
-            .targetStateVersion(2L)
             .sourceCandidateId("candidate-1")
             .build();
 
@@ -116,10 +122,6 @@ class StateDeltaTest {
     @Test
     void shouldKeepValueFieldsAfterJsonRoundTrip() {
         StateDelta delta = StateDelta.builder()
-            .sessionId("session-1")
-            .sourceRunId("run-1")
-            .previousStateVersion(1L)
-            .targetStateVersion(2L)
             .taskGoalOverride("new goal")
             .confirmedFactAppend(fact("fact-1"))
             .workingModeOverride(WorkingMode.TASK_EXECUTION)
@@ -128,10 +130,6 @@ class StateDeltaTest {
 
         StateDelta restored = JsonUtils.jsonToBean(JsonUtils.toJson(delta), StateDelta.class);
 
-        assertEquals("session-1", restored.getSessionId());
-        assertEquals("run-1", restored.getSourceRunId());
-        assertEquals(1L, restored.getPreviousStateVersion());
-        assertEquals(2L, restored.getTargetStateVersion());
         assertEquals("new goal", restored.getTaskGoalOverride());
         assertEquals("fact-1", restored.getConfirmedFactsAppend().get(0).getFactId());
         assertEquals(WorkingMode.TASK_EXECUTION, restored.getWorkingModeOverride());
@@ -174,5 +172,10 @@ class StateDeltaTest {
             .digestId(id)
             .digestText("digest-" + id)
             .build();
+    }
+
+    private boolean hasPublicMethod(String methodName) {
+        return Arrays.stream(StateDelta.class.getMethods())
+            .anyMatch(method -> method.getName().equals(methodName));
     }
 }

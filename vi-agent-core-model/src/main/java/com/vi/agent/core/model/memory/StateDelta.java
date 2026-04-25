@@ -21,18 +21,6 @@ import java.util.Objects;
 @Jacksonized
 public class StateDelta {
 
-    /** 当前 session ID，用于标识补丁归属的会话。 */
-    String sessionId;
-
-    /** 产生该补丁的 run ID，用于审计和问题追踪。 */
-    String sourceRunId;
-
-    /** 应用补丁前的 session state 版本。 */
-    Long previousStateVersion;
-
-    /** 应用补丁后的目标 session state 版本。 */
-    Long targetStateVersion;
-
     /** 任务目标覆盖值，存在时覆盖旧任务目标。 */
     String taskGoalOverride;
 
@@ -76,7 +64,7 @@ public class StateDelta {
     /**
      * 判断该补丁是否没有任何状态变更。
      *
-     * <p>元数据字段和候选项来源只用于审计，不计入状态变更判断。</p>
+     * <p>候选项来源只用于审计，不计入状态变更判断。</p>
      *
      * @return 没有状态变更时返回 true
      */

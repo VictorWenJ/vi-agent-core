@@ -32,14 +32,14 @@ class UserPreferencePatchTest {
     void shouldKeepTypedPatchFieldsAfterJsonRoundTrip() {
         UserPreferencePatch patch = UserPreferencePatch.builder()
             .answerStyle(AnswerStyle.DIRECT)
-            .detailLevel(DetailLevel.DETAILED)
-            .termFormat(TermFormat.BILINGUAL)
+            .detailLevel(DetailLevel.HIGH)
+            .termFormat(TermFormat.ENGLISH_ZH)
             .build();
 
         UserPreferencePatch restored = JsonUtils.jsonToBean(JsonUtils.toJson(patch), UserPreferencePatch.class);
 
         assertEquals(AnswerStyle.DIRECT, restored.getAnswerStyle());
-        assertEquals(DetailLevel.DETAILED, restored.getDetailLevel());
-        assertEquals(TermFormat.BILINGUAL, restored.getTermFormat());
+        assertEquals(DetailLevel.HIGH, restored.getDetailLevel());
+        assertEquals(TermFormat.ENGLISH_ZH, restored.getTermFormat());
     }
 }

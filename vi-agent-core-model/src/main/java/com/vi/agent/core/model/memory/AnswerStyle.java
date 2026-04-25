@@ -14,7 +14,7 @@ public enum AnswerStyle {
 
     STRUCTURED("structured", "结构化回答"),
 
-    EXPLORATORY("exploratory", "探索式回答");
+    DECISIVE("decisive", "高决策回答");
 
     private final String value;
 

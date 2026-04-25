@@ -47,7 +47,7 @@ public class StateDeltaMerger {
         return SessionStateSnapshot.builder()
             .snapshotId(current.getSnapshotId())
             .sessionId(current.getSessionId())
-            .stateVersion(resolveStateVersion(current, delta))
+            .stateVersion(current.getStateVersion())
             .taskGoal(resolveTaskGoal(current, delta))
             .workingMode(resolveWorkingMode(current, delta))
             .confirmedFacts(appendDistinctById(
@@ -72,17 +72,10 @@ public class StateDeltaMerger {
                 delta.getRecentToolOutcomesAppend()
             ))
             .phaseState(mergePhaseState(current.getPhaseState(), delta.getPhaseStatePatch()))
-            .sourceRunId(resolveSourceRunId(current, delta))
+            .sourceRunId(current.getSourceRunId())
             .createdAt(current.getCreatedAt())
             .updatedAt(current.getUpdatedAt())
             .build();
-    }
-
-    private Long resolveStateVersion(SessionStateSnapshot current, StateDelta delta) {
-        if (Objects.nonNull(delta.getTargetStateVersion())) {
-            return delta.getTargetStateVersion();
-        }
-        return current.getStateVersion();
     }
 
     private String resolveTaskGoal(SessionStateSnapshot current, StateDelta delta) {
@@ -100,13 +93,6 @@ public class StateDeltaMerger {
             return delta.getWorkingModeOverride();
         }
         return current.getWorkingMode();
-    }
-
-    private String resolveSourceRunId(SessionStateSnapshot current, StateDelta delta) {
-        if (Objects.nonNull(delta.getSourceRunId())) {
-            return delta.getSourceRunId();
-        }
-        return current.getSourceRunId();
     }
 
     private <T> List<T> appendDistinctById(List<T> current, List<T> appended, Function<T, String> idExtractor) {

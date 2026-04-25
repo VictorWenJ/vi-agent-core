@@ -62,13 +62,13 @@ class StateDeltaMergerTest {
     void shouldPatchUserPreferencesWithNonNullFieldsOnly() {
         SessionStateSnapshot merged = merger.merge(baseState(), StateDelta.builder()
             .userPreferencesPatch(UserPreferencePatch.builder()
-                .detailLevel(DetailLevel.DETAILED)
+                .detailLevel(DetailLevel.HIGH)
                 .build())
             .build());
 
         assertEquals(AnswerStyle.DIRECT, merged.getUserPreference().getAnswerStyle());
-        assertEquals(DetailLevel.DETAILED, merged.getUserPreference().getDetailLevel());
-        assertEquals(TermFormat.ORIGINAL, merged.getUserPreference().getTermFormat());
+        assertEquals(DetailLevel.HIGH, merged.getUserPreference().getDetailLevel());
+        assertEquals(TermFormat.ENGLISH_ONLY, merged.getUserPreference().getTermFormat());
     }
 
     @Test
@@ -171,8 +171,8 @@ class StateDeltaMergerTest {
             .decision(decision("decision-1", "old decision"))
             .userPreference(UserPreferenceState.builder()
                 .answerStyle(AnswerStyle.DIRECT)
-                .detailLevel(DetailLevel.BRIEF)
-                .termFormat(TermFormat.ORIGINAL)
+                .detailLevel(DetailLevel.LOW)
+                .termFormat(TermFormat.ENGLISH_ONLY)
                 .build())
             .openLoop(openLoop("loop-1", OpenLoopStatus.OPEN))
             .toolOutcomeDigest(toolOutcome("old-tool"))

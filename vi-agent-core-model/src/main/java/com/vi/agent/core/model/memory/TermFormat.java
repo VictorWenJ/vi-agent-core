@@ -10,11 +10,11 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum TermFormat {
 
-    ORIGINAL("original", "保留原文"),
+    ENGLISH_ONLY("englishOnly", "保留原文"),
 
-    TRANSLATED("translated", "翻译表达"),
+    CHINESE_ONLY("chineseOnly", "翻译表达"),
 
-    BILINGUAL("bilingual", "双语表达");
+    ENGLISH_ZH("englishZh", "双语表达");
 
     private final String value;
 
