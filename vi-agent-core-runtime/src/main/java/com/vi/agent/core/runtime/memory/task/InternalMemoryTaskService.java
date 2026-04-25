@@ -24,6 +24,14 @@ import java.util.UUID;
 @Service
 public class InternalMemoryTaskService {
 
+    private static final String STATE_EXTRACT_TEMPLATE_KEY = "state_extract_noop";
+
+    private static final String SUMMARY_EXTRACT_TEMPLATE_KEY = "summary_extract_noop";
+
+    private static final String P2_D_1_TEMPLATE_VERSION = "p2-d-1-v1";
+
+    private static final String UNKNOWN_TEMPLATE_KEY = "internal_memory_task_noop";
+
     @Resource
     private InternalLlmTaskRepository internalLlmTaskRepository;
 
@@ -101,7 +109,7 @@ public class InternalMemoryTaskService {
         if (command == null || command.getTaskType() == null) {
             throw new IllegalArgumentException("internal memory task type is required");
         }
-        if (command.getTaskType() == InternalTaskType.STATE_EXTRACTION) {
+        if (command.getTaskType() == InternalTaskType.STATE_EXTRACT) {
             String outputJson = JsonUtils.toJson(Map.of(
                 "noop", true,
                 "stateDeltaEmpty", true
@@ -115,10 +123,10 @@ public class InternalMemoryTaskService {
                 .outputJson(outputJson)
                 .build();
         }
-        if (command.getTaskType() == InternalTaskType.SUMMARY_UPDATE) {
+        if (command.getTaskType() == InternalTaskType.SUMMARY_EXTRACT) {
             String outputJson = JsonUtils.toJson(Map.of(
                 "skipped", true,
-                "reason", "summary update is deterministic no-op in P2-D-1"
+                "reason", "summary extract is deterministic no-op in P2-D-1"
             ));
             return InternalMemoryTaskResult.builder()
                 .internalTaskId(internalTaskId)
@@ -163,8 +171,8 @@ public class InternalMemoryTaskService {
             .turnId(command == null ? null : command.getTurnId())
             .runId(command == null ? null : command.getRunId())
             .checkpointTrigger(CheckpointTrigger.POST_TURN)
-            .promptTemplateKey(null)
-            .promptTemplateVersion(null)
+            .promptTemplateKey(resolvePromptTemplateKey(command == null ? null : command.getTaskType()))
+            .promptTemplateVersion(P2_D_1_TEMPLATE_VERSION)
             .requestJson(inputJson)
             .responseJson(outputJson)
             .status(status)
@@ -174,6 +182,16 @@ public class InternalMemoryTaskService {
             .createdAt(createdAt)
             .completedAt(completedAt)
             .build();
+    }
+
+    private String resolvePromptTemplateKey(InternalTaskType taskType) {
+        if (taskType == InternalTaskType.STATE_EXTRACT) {
+            return STATE_EXTRACT_TEMPLATE_KEY;
+        }
+        if (taskType == InternalTaskType.SUMMARY_EXTRACT) {
+            return SUMMARY_EXTRACT_TEMPLATE_KEY;
+        }
+        return UNKNOWN_TEMPLATE_KEY;
     }
 
     private String buildInputJson(InternalMemoryTaskCommand command) {

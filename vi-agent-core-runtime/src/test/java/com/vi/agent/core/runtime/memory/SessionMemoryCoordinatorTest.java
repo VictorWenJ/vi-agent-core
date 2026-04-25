@@ -47,7 +47,7 @@ class SessionMemoryCoordinatorTest {
         assertEquals("task-summary", result.getSummaryTaskId());
         assertNull(result.getNewStateVersion());
         assertNull(result.getNewSummaryVersion());
-        assertEquals(List.of(InternalTaskType.STATE_EXTRACTION, InternalTaskType.SUMMARY_UPDATE), fixture.taskService.invokedTypes);
+        assertEquals(List.of(InternalTaskType.STATE_EXTRACT, InternalTaskType.SUMMARY_EXTRACT), fixture.taskService.invokedTypes);
         assertTrue(fixture.stateRepository.saved.isEmpty());
         assertTrue(fixture.summaryRepository.saved.isEmpty());
     }
@@ -211,7 +211,7 @@ class SessionMemoryCoordinatorTest {
                 throw new IllegalStateException("task failed");
             }
             invokedTypes.add(command.getTaskType());
-            if (command.getTaskType() == InternalTaskType.STATE_EXTRACTION) {
+            if (command.getTaskType() == InternalTaskType.STATE_EXTRACT) {
                 return InternalMemoryTaskResult.builder()
                     .internalTaskId("task-state")
                     .taskType(command.getTaskType())

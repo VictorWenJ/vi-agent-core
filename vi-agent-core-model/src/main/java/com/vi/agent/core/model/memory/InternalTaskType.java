@@ -10,10 +10,6 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum InternalTaskType {
 
-    STATE_EXTRACTION("state_extraction", "状态抽取"),
-
-    SUMMARY_UPDATE("summary_update", "摘要更新"),
-
     STATE_EXTRACT("state_extract", "状态抽取"),
 
     SUMMARY_EXTRACT("summary_extract", "摘要抽取"),

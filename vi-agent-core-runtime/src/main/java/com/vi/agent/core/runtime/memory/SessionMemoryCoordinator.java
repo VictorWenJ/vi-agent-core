@@ -107,7 +107,7 @@ public class SessionMemoryCoordinator {
     private MemoryUpdatePartial updateState(SessionMemoryUpdateCommand command) {
         try {
             Optional<SessionStateSnapshot> latestState = sessionStateRepository.findLatestBySessionId(command.getSessionId());
-            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(toTaskCommand(command, InternalTaskType.STATE_EXTRACTION));
+            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(toTaskCommand(command, InternalTaskType.STATE_EXTRACT));
             if (!taskResult.isSuccess() || taskResult.isDegraded()) {
                 return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), taskResult.getFailureReason());
             }
@@ -138,7 +138,7 @@ public class SessionMemoryCoordinator {
     private MemoryUpdatePartial updateSummary(SessionMemoryUpdateCommand command) {
         try {
             sessionSummaryRepository.findLatestBySessionId(command.getSessionId());
-            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(toTaskCommand(command, InternalTaskType.SUMMARY_UPDATE));
+            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(toTaskCommand(command, InternalTaskType.SUMMARY_EXTRACT));
             if (!taskResult.isSuccess() || taskResult.isDegraded()) {
                 return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), taskResult.getFailureReason());
             }

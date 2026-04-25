@@ -21,12 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InternalMemoryTaskServiceTest {
 
     @Test
-    void stateExtractionShouldRecordPendingRunningAndSucceededNoopTask() {
+    void stateExtractShouldRecordPendingRunningAndSucceededNoopTask() {
         InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
 
-        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACTION));
+        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACT));
 
         assertTrue(result.isSuccess());
         assertFalse(result.isDegraded());
@@ -39,15 +39,16 @@ class InternalMemoryTaskServiceTest {
         assertEquals(InternalTaskStatus.SUCCEEDED, repository.saved.get(2).getStatus());
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"sessionId\":\"sess-1\""));
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"noop\":true"));
+        assertPromptTemplate(repository.saved, "state_extract_noop", "p2-d-1-v1");
     }
 
     @Test
-    void summaryUpdateShouldRecordSkippedDeterministicTask() {
+    void summaryExtractShouldRecordSkippedDeterministicTask() {
         InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
 
-        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.SUMMARY_UPDATE));
+        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.SUMMARY_EXTRACT));
 
         assertTrue(result.isSuccess());
         assertTrue(result.isSkipped());
@@ -55,6 +56,7 @@ class InternalMemoryTaskServiceTest {
         assertEquals(3, repository.saved.size());
         assertEquals(InternalTaskStatus.SKIPPED, repository.saved.get(2).getStatus());
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"skipped\":true"));
+        assertPromptTemplate(repository.saved, "summary_extract_noop", "p2-d-1-v1");
     }
 
     @Test
@@ -68,7 +70,7 @@ class InternalMemoryTaskServiceTest {
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
 
-        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACTION));
+        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACT));
 
         assertFalse(result.isSuccess());
         assertTrue(result.isDegraded());
@@ -78,6 +80,19 @@ class InternalMemoryTaskServiceTest {
         assertEquals(InternalTaskStatus.PENDING, repository.saved.get(0).getStatus());
         assertEquals(InternalTaskStatus.RUNNING, repository.saved.get(1).getStatus());
         assertEquals(InternalTaskStatus.FAILED, repository.saved.get(2).getStatus());
+        assertPromptTemplate(repository.saved, "state_extract_noop", "p2-d-1-v1");
+    }
+
+    private void assertPromptTemplate(List<InternalLlmTaskRecord> records, String expectedKey, String expectedVersion) {
+        assertFalse(records.isEmpty());
+        for (InternalLlmTaskRecord record : records) {
+            assertNotNull(record.getPromptTemplateKey());
+            assertFalse(record.getPromptTemplateKey().isBlank());
+            assertEquals(expectedKey, record.getPromptTemplateKey());
+            assertNotNull(record.getPromptTemplateVersion());
+            assertFalse(record.getPromptTemplateVersion().isBlank());
+            assertEquals(expectedVersion, record.getPromptTemplateVersion());
+        }
     }
 
     private InternalMemoryTaskCommand command(InternalTaskType taskType) {

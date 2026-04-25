@@ -41,6 +41,8 @@ class MysqlInternalLlmTaskRepositoryTest {
         assertEquals("task-1", entity.getInternalTaskId());
         assertEquals("STATE_EXTRACT", entity.getTaskType());
         assertEquals("POST_TURN", entity.getCheckpointTrigger());
+        assertEquals("state_extract_noop", entity.getPromptTemplateKey());
+        assertEquals("p2-d-1-v1", entity.getPromptTemplateVersion());
         assertEquals("SUCCEEDED", entity.getStatus());
         assertEquals("{\"request\":true}", entity.getRequestJson());
         assertEquals("{\"response\":true}", entity.getResponseJson());
@@ -59,8 +61,8 @@ class MysqlInternalLlmTaskRepositoryTest {
         entity.setTurnId("turn-1");
         entity.setRunId("run-1");
         entity.setCheckpointTrigger("POST_TURN");
-        entity.setPromptTemplateKey("state_extract");
-        entity.setPromptTemplateVersion("v1");
+        entity.setPromptTemplateKey("state_extract_noop");
+        entity.setPromptTemplateVersion("p2-d-1-v1");
         entity.setRequestJson("{\"request\":true}");
         entity.setResponseJson("{\"response\":true}");
         entity.setStatus("SUCCEEDED");
@@ -74,6 +76,8 @@ class MysqlInternalLlmTaskRepositoryTest {
         assertTrue(result.isPresent());
         assertEquals(CheckpointTrigger.POST_TURN, result.get().getCheckpointTrigger());
         assertEquals(InternalTaskStatus.SUCCEEDED, result.get().getStatus());
+        assertEquals("state_extract_noop", result.get().getPromptTemplateKey());
+        assertEquals("p2-d-1-v1", result.get().getPromptTemplateVersion());
         assertEquals(33L, result.get().getDurationMs());
     }
 
@@ -85,8 +89,8 @@ class MysqlInternalLlmTaskRepositoryTest {
             .turnId("turn-1")
             .runId("run-1")
             .checkpointTrigger(CheckpointTrigger.POST_TURN)
-            .promptTemplateKey("state_extract")
-            .promptTemplateVersion("v1")
+            .promptTemplateKey("state_extract_noop")
+            .promptTemplateVersion("p2-d-1-v1")
             .requestJson("{\"request\":true}")
             .responseJson("{\"response\":true}")
             .status(InternalTaskStatus.SUCCEEDED)

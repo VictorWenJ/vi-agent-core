@@ -58,8 +58,8 @@ vi:
 
     memory:
       post-turn-update-enabled: ${MEMORY_POST_TURN_UPDATE_ENABLED:true}
-      state-extraction-enabled: ${MEMORY_STATE_EXTRACTION_ENABLED:true}
-      summary-update-enabled: ${MEMORY_SUMMARY_UPDATE_ENABLED:true}
+      state-extraction-enabled: ${MEMORY_STATE_EXTRACT_ENABLED:true}
+      summary-update-enabled: ${MEMORY_SUMMARY_EXTRACT_ENABLED:true}
 
     provider:
       routing:

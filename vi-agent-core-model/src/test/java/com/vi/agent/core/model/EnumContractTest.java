@@ -113,6 +113,24 @@ class EnumContractTest {
     }
 
     @Test
+    void internalTaskTypeShouldContainFrozenP2ValuesOnly() {
+        Set<String> expected = Set.of(
+            "STATE_EXTRACT",
+            "SUMMARY_EXTRACT",
+            "STATE_REPAIR",
+            "SUMMARY_REPAIR",
+            "EVIDENCE_ENRICH"
+        );
+        Set<String> actual = Arrays.stream(InternalTaskType.values())
+            .map(Enum::name)
+            .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(expected, actual);
+        assertThrows(IllegalArgumentException.class, () -> InternalTaskType.valueOf("STATE_EXTRACTION"));
+        assertThrows(IllegalArgumentException.class, () -> InternalTaskType.valueOf("SUMMARY_UPDATE"));
+    }
+
+    @Test
     void messageTypeShouldNotContainToolCall() {
         assertThrows(IllegalArgumentException.class, () -> MessageType.valueOf("TOOL_CALL"));
         assertFalse(java.util.Arrays.stream(MessageType.values()).anyMatch(value -> "TOOL_CALL".equals(value.name())));
