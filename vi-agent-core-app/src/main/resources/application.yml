@@ -38,14 +38,16 @@ vi:
   agent:
     redis:
       ttl:
-        session-context-seconds: ${SESSION_CONTEXT_TTL_SECONDS:1800}
+        session-working-set-seconds: ${SESSION_WORKING_SET_TTL_SECONDS:1800}
+        session-state-seconds: ${SESSION_STATE_TTL_SECONDS:1800}
+        session-summary-seconds: ${SESSION_SUMMARY_TTL_SECONDS:1800}
         request-cache-seconds: ${REQUEST_CACHE_TTL_SECONDS:3600}
         session-lock-seconds: ${SESSION_LOCK_TTL_SECONDS:60}
 
     runtime:
       max-iterations: 6
-      session-context:
-        max-turns: 5
+      session-working-set:
+        max-completed-turns: 5
 
     provider:
       routing:

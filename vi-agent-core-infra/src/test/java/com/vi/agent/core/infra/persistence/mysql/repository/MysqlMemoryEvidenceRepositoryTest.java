@@ -43,7 +43,10 @@ class MysqlMemoryEvidenceRepositoryTest {
         assertEquals("ev-1", entity.getEvidenceId());
         assertEquals("sess-1", entity.getSessionId());
         assertEquals("SESSION_STATE", entity.getTargetType());
-        assertEquals("constraints", entity.getFieldPath());
+        assertEquals("state-1", entity.getTargetRef());
+        assertEquals("constraints", entity.getTargetField());
+        assertEquals("constraint-1", entity.getTargetItemId());
+        assertEquals("constraints[0]", entity.getDisplayPath());
         assertEquals("USER_MESSAGE", entity.getSourceType());
         assertEquals(new BigDecimal("0.99"), entity.getConfidence());
     }
@@ -61,7 +64,9 @@ class MysqlMemoryEvidenceRepositoryTest {
         entity.setRunId("run-1");
         entity.setTargetType("SESSION_STATE");
         entity.setTargetRef("state-1");
-        entity.setFieldPath("constraints");
+        entity.setTargetField("constraints");
+        entity.setTargetItemId("constraint-1");
+        entity.setDisplayPath("constraints[0]");
         entity.setSourceType("USER_MESSAGE");
         entity.setMessageId("msg-1");
         entity.setExcerptText("用户明确要求");
@@ -73,7 +78,10 @@ class MysqlMemoryEvidenceRepositoryTest {
 
         assertTrue(result.isPresent());
         assertEquals(EvidenceTargetType.SESSION_STATE, result.get().getTarget().getTargetType());
+        assertEquals("state-1", result.get().getTarget().getTargetRef());
         assertEquals("constraints", result.get().getTarget().getTargetField());
+        assertEquals("constraint-1", result.get().getTarget().getTargetItemId());
+        assertEquals("constraints[0]", result.get().getTarget().getDisplayPath());
         assertEquals(EvidenceSourceType.USER_MESSAGE, result.get().getSource().getSourceType());
         assertEquals(0.99D, result.get().getConfidence());
     }

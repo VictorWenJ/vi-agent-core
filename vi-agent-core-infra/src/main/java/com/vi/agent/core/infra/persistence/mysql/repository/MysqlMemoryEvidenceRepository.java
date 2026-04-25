@@ -131,7 +131,9 @@ public class MysqlMemoryEvidenceRepository implements MemoryEvidenceRepository {
         entity.setRunId(source == null ? null : source.getRunId());
         entity.setTargetType(target == null || target.getTargetType() == null ? null : target.getTargetType().name());
         entity.setTargetRef(target == null ? null : target.getTargetRef());
-        entity.setFieldPath(target == null ? null : target.getTargetField());
+        entity.setTargetField(target == null ? null : target.getTargetField());
+        entity.setTargetItemId(target == null ? null : target.getTargetItemId());
+        entity.setDisplayPath(target == null ? null : target.getDisplayPath());
         entity.setSourceType(source == null || source.getSourceType() == null ? null : source.getSourceType().name());
         entity.setMessageId(source == null ? null : source.getMessageId());
         entity.setToolCallRecordId(source == null ? null : source.getToolCallRecordId());
@@ -153,7 +155,9 @@ public class MysqlMemoryEvidenceRepository implements MemoryEvidenceRepository {
             .target(EvidenceTarget.builder()
                 .targetType(parseEnum(EvidenceTargetType.class, entity.getTargetType()))
                 .targetRef(entity.getTargetRef())
-                .targetField(entity.getFieldPath())
+                .targetField(entity.getTargetField())
+                .targetItemId(entity.getTargetItemId())
+                .displayPath(entity.getDisplayPath())
                 .build())
             .source(EvidenceSource.builder()
                 .sourceType(parseEnum(EvidenceSourceType.class, entity.getSourceType()))

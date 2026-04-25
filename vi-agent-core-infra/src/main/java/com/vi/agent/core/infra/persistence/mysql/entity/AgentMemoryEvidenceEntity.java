@@ -37,8 +37,14 @@ public class AgentMemoryEvidenceEntity {
     /** 目标对象 ID。 */
     private String targetRef;
 
-    /** 字段路径。 */
-    private String fieldPath;
+    /** 目标字段，用于定位 state、summary 或 context 内的字段。 */
+    private String targetField;
+
+    /** 目标字段内稳定条目 ID，用于定位列表或集合中的具体项。 */
+    private String targetItemId;
+
+    /** 审计展示路径，仅用于人工查看，不作为稳定定位主键。 */
+    private String displayPath;
 
     /** 来源类型。 */
     private String sourceType;
