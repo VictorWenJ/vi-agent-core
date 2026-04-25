@@ -3,10 +3,12 @@ package com.vi.agent.core.model.port;
 import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.MessageStatus;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -25,6 +27,17 @@ public interface MessageRepository {
     List<Message> findCompletedContextBySessionId(String sessionId, int maxTurns);
 
     List<Message> findByTurnId(String turnId);
+
+    default List<Message> findCompletedMessagesByTurnId(String turnId) {
+        List<Message> messages = findByTurnId(turnId);
+        if (messages == null) {
+            return List.of();
+        }
+        return messages.stream()
+            .filter(Objects::nonNull)
+            .filter(message -> message.getStatus() == MessageStatus.COMPLETED)
+            .toList();
+    }
 
     Optional<Message> findFinalAssistantMessageByTurnId(String turnId);
 

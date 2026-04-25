@@ -1,15 +1,22 @@
 package com.vi.agent.core.runtime.memory;
 
+import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.memory.ConversationSummary;
+import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.StateDelta;
+import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.port.MemoryEvidenceRepository;
+import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.SessionSummaryCacheRepository;
 import com.vi.agent.core.model.port.SessionSummaryRepository;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionCommand;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionResult;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskCommand;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskResult;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskService;
@@ -19,7 +26,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,6 +58,12 @@ public class SessionMemoryCoordinator {
     private MemoryEvidenceRepository memoryEvidenceRepository;
 
     @Resource
+    private MessageRepository messageRepository;
+
+    @Resource
+    private StateDeltaExtractor stateDeltaExtractor;
+
+    @Resource
     private InternalMemoryTaskService internalMemoryTaskService;
 
     @Resource
@@ -61,9 +76,7 @@ public class SessionMemoryCoordinator {
                 .skipped(true)
                 .build();
         }
-        if (properties != null
-            && !properties.isStateExtractionEnabled()
-            && !properties.isSummaryUpdateEnabled()) {
+        if (properties != null && !properties.isStateExtractionEnabled() && !properties.isSummaryUpdateEnabled()) {
             return SessionMemoryUpdateResult.builder()
                 .success(true)
                 .skipped(true)
@@ -107,25 +120,29 @@ public class SessionMemoryCoordinator {
     private MemoryUpdatePartial updateState(SessionMemoryUpdateCommand command) {
         try {
             Optional<SessionStateSnapshot> latestState = sessionStateRepository.findLatestBySessionId(command.getSessionId());
-            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(toTaskCommand(command, InternalTaskType.STATE_EXTRACT));
-            if (!taskResult.isSuccess() || taskResult.isDegraded()) {
+            Optional<ConversationSummary> latestSummary = sessionSummaryRepository.findLatestBySessionId(command.getSessionId());
+            List<Message> turnMessages = loadCompletedTurnMessages(command);
+            InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(
+                toStateTaskCommand(command, latestState.orElse(null), turnMessages),
+                (internalTaskId, inputJson) -> executeStateExtractTask(
+                    command,
+                    internalTaskId,
+                    latestState.orElse(null),
+                    latestSummary.orElse(null),
+                    turnMessages
+                )
+            );
+            if (taskResult.isDegraded()) {
+                return MemoryUpdatePartial.degraded(
+                    taskResult.getInternalTaskId(),
+                    taskResult.getNewStateVersion(),
+                    taskResult.getFailureReason()
+                );
+            }
+            if (!taskResult.isSuccess()) {
                 return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), taskResult.getFailureReason());
             }
-
-            StateDelta stateDelta = taskResult.getStateDelta();
-            if (stateDelta == null || stateDelta.isEmpty()) {
-                return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), null);
-            }
-
-            SessionStateSnapshot baseState = latestState.orElseGet(() -> emptyState(command));
-            SessionStateSnapshot merged = stateDeltaMerger.merge(baseState, stateDelta);
-            SessionStateSnapshot nextState = copyAsNextState(baseState, merged);
-            sessionStateRepository.save(nextState);
-            String redisFailure = refreshStateCache(nextState);
-            if (redisFailure != null) {
-                return MemoryUpdatePartial.degraded(taskResult.getInternalTaskId(), nextState.getStateVersion(), redisFailure);
-            }
-            return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), nextState.getStateVersion());
+            return MemoryUpdatePartial.success(taskResult.getInternalTaskId(), taskResult.getNewStateVersion());
         } catch (Exception ex) {
             log.warn("Post-turn state memory update failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -174,6 +191,218 @@ public class SessionMemoryCoordinator {
             .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
             .agentMode(resolveAgentMode(command))
             .build();
+    }
+
+    private InternalMemoryTaskCommand toStateTaskCommand(SessionMemoryUpdateCommand command, SessionStateSnapshot latestState, List<Message> turnMessages) {
+        InternalMemoryTaskCommand.InternalMemoryTaskCommandBuilder builder = InternalMemoryTaskCommand.builder()
+            .taskType(InternalTaskType.STATE_EXTRACT)
+            .conversationId(command == null ? null : command.getConversationId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .turnId(command == null ? null : command.getTurnId())
+            .runId(command == null ? null : command.getRunId())
+            .traceId(command == null ? null : command.getTraceId())
+            .currentUserMessageId(command == null ? null : command.getCurrentUserMessageId())
+            .assistantMessageId(command == null ? null : command.getAssistantMessageId())
+            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
+            .agentMode(resolveAgentMode(command))
+            .currentStateVersion(latestState == null ? null : latestState.getStateVersion());
+        for (Message message : nullSafeMessages(turnMessages)) {
+            builder.messageId(message.getMessageId());
+        }
+        return builder.build();
+    }
+
+    private List<Message> loadCompletedTurnMessages(SessionMemoryUpdateCommand command) {
+        if (messageRepository == null || command == null) {
+            return List.of();
+        }
+        return messageRepository.findCompletedMessagesByTurnId(command.getTurnId());
+    }
+
+    private InternalMemoryTaskResult executeStateExtractTask(
+        SessionMemoryUpdateCommand command,
+        String internalTaskId,
+        SessionStateSnapshot latestState,
+        ConversationSummary latestSummary,
+        List<Message> turnMessages
+    ) {
+        try {
+            StateDeltaExtractionResult extractionResult = extractStateDelta(command, latestState, latestSummary, turnMessages);
+            StateDelta stateDelta = extractionResult == null ? null : extractionResult.getStateDelta();
+            List<String> sourceCandidateIds = sourceCandidateIds(extractionResult, stateDelta);
+            if (extractionResult == null || !extractionResult.isSuccess() || extractionResult.isDegraded()) {
+                String failureReason = extractionResult == null
+                    ? "state delta extraction returned null result"
+                    : extractionResult.getFailureReason();
+                return stateTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.DEGRADED,
+                    false,
+                    true,
+                    stateDelta,
+                    null,
+                    failureReason,
+                    sourceCandidateIds
+                );
+            }
+            if (stateDelta == null || stateDelta.isEmpty()) {
+                return stateTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.SUCCEEDED,
+                    true,
+                    false,
+                    stateDelta == null ? StateDelta.builder().build() : stateDelta,
+                    null,
+                    null,
+                    sourceCandidateIds
+                );
+            }
+
+            SessionStateSnapshot baseState = latestState == null ? emptyState(command) : latestState;
+            SessionStateSnapshot merged = stateDeltaMerger.merge(baseState, stateDelta);
+            SessionStateSnapshot nextState = copyAsNextState(baseState, merged);
+            try {
+                sessionStateRepository.save(nextState);
+            } catch (Exception ex) {
+                log.warn("Post-turn state save failed, sessionId={}, turnId={}",
+                    command == null ? null : command.getSessionId(),
+                    command == null ? null : command.getTurnId(),
+                    ex);
+                return stateTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.FAILED,
+                    false,
+                    true,
+                    stateDelta,
+                    null,
+                    ex.getMessage(),
+                    sourceCandidateIds
+                );
+            }
+
+            String redisFailure = refreshStateCache(nextState);
+            if (redisFailure != null) {
+                return stateTaskResult(
+                    internalTaskId,
+                    InternalTaskStatus.DEGRADED,
+                    false,
+                    true,
+                    stateDelta,
+                    nextState.getStateVersion(),
+                    redisFailure,
+                    sourceCandidateIds
+                );
+            }
+            return stateTaskResult(
+                internalTaskId,
+                InternalTaskStatus.SUCCEEDED,
+                true,
+                false,
+                stateDelta,
+                nextState.getStateVersion(),
+                null,
+                sourceCandidateIds
+            );
+        } catch (Exception ex) {
+            log.warn("STATE_EXTRACT task execution failed, sessionId={}, turnId={}",
+                command == null ? null : command.getSessionId(),
+                command == null ? null : command.getTurnId(),
+                ex);
+            return stateTaskResult(
+                internalTaskId,
+                InternalTaskStatus.FAILED,
+                false,
+                true,
+                null,
+                null,
+                ex.getMessage(),
+                List.of()
+            );
+        }
+    }
+
+    private StateDeltaExtractionResult extractStateDelta(
+        SessionMemoryUpdateCommand command,
+        SessionStateSnapshot latestState,
+        ConversationSummary latestSummary,
+        List<Message> turnMessages
+    ) {
+        if (stateDeltaExtractor == null) {
+            return StateDeltaExtractionResult.builder()
+                .success(false)
+                .degraded(true)
+                .failureReason("state delta extractor is not configured")
+                .build();
+        }
+        return stateDeltaExtractor.extract(StateDeltaExtractionCommand.builder()
+            .conversationId(command == null ? null : command.getConversationId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .turnId(command == null ? null : command.getTurnId())
+            .runId(command == null ? null : command.getRunId())
+            .traceId(command == null ? null : command.getTraceId())
+            .agentMode(resolveAgentMode(command))
+            .currentState(latestState)
+            .conversationSummary(latestSummary)
+            .turnMessages(nullSafeMessages(turnMessages))
+            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
+            .build());
+    }
+
+    private InternalMemoryTaskResult stateTaskResult(
+        String internalTaskId,
+        InternalTaskStatus status,
+        boolean success,
+        boolean degraded,
+        StateDelta stateDelta,
+        Long newStateVersion,
+        String failureReason,
+        List<String> sourceCandidateIds
+    ) {
+        String outputJson = buildStateTaskOutputJson(success, degraded, stateDelta, newStateVersion, failureReason, sourceCandidateIds);
+        return InternalMemoryTaskResult.builder()
+            .internalTaskId(internalTaskId)
+            .taskType(InternalTaskType.STATE_EXTRACT)
+            .status(status)
+            .success(success)
+            .degraded(degraded)
+            .stateDelta(stateDelta)
+            .newStateVersion(newStateVersion)
+            .sourceCandidateIds(sourceCandidateIds == null ? List.of() : sourceCandidateIds)
+            .failureReason(failureReason)
+            .outputJson(outputJson)
+            .build();
+    }
+
+    private String buildStateTaskOutputJson(
+        boolean success,
+        boolean degraded,
+        StateDelta stateDelta,
+        Long newStateVersion,
+        String failureReason,
+        List<String> sourceCandidateIds
+    ) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("success", success);
+        output.put("degraded", degraded);
+        output.put("stateDeltaEmpty", stateDelta == null || stateDelta.isEmpty());
+        output.put("newStateVersion", newStateVersion);
+        output.put("failureReason", failureReason);
+        output.put("sourceCandidateIds", sourceCandidateIds == null ? List.of() : sourceCandidateIds);
+        return JsonUtils.toJson(output);
+    }
+
+    private List<String> sourceCandidateIds(StateDeltaExtractionResult extractionResult, StateDelta stateDelta) {
+        if (extractionResult != null && extractionResult.getSourceCandidateIds() != null) {
+            return extractionResult.getSourceCandidateIds();
+        }
+        if (stateDelta != null && stateDelta.getSourceCandidateIds() != null) {
+            return stateDelta.getSourceCandidateIds();
+        }
+        return List.of();
+    }
+
+    private List<Message> nullSafeMessages(List<Message> messages) {
+        return messages == null ? List.of() : messages;
     }
 
     private AgentMode resolveAgentMode(SessionMemoryUpdateCommand command) {

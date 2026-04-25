@@ -6,6 +6,9 @@ import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.StateDelta;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Singular;
+
+import java.util.List;
 
 /**
  * Result of an internal memory task audit execution.
@@ -29,6 +32,11 @@ public class InternalMemoryTaskResult {
     private final StateDelta stateDelta;
 
     private final ConversationSummary summary;
+
+    private final Long newStateVersion;
+
+    @Singular("sourceCandidateId")
+    private final List<String> sourceCandidateIds;
 
     private final String failureReason;
 

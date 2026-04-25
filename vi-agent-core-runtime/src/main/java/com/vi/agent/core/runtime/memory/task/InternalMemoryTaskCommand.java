@@ -4,6 +4,9 @@ import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Singular;
+
+import java.util.List;
 
 /**
  * Command for an internal memory task audit execution.
@@ -31,4 +34,9 @@ public class InternalMemoryTaskCommand {
     private final String workingContextSnapshotId;
 
     private final AgentMode agentMode;
+
+    @Singular("messageId")
+    private final List<String> messageIds;
+
+    private final Long currentStateVersion;
 }

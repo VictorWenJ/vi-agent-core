@@ -10,12 +10,23 @@ import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.StateDelta;
+import com.vi.agent.core.model.message.AssistantMessage;
+import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.MessageStatus;
+import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.MemoryEvidenceRepository;
+import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.SessionSummaryCacheRepository;
 import com.vi.agent.core.model.port.SessionSummaryRepository;
+import com.vi.agent.core.model.tool.ToolCallStatus;
+import com.vi.agent.core.model.tool.ToolExecution;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionCommand;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionResult;
+import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskCommand;
+import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskExecutor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskResult;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskService;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
@@ -48,6 +59,9 @@ class SessionMemoryCoordinatorTest {
         assertNull(result.getNewStateVersion());
         assertNull(result.getNewSummaryVersion());
         assertEquals(List.of(InternalTaskType.STATE_EXTRACT, InternalTaskType.SUMMARY_EXTRACT), fixture.taskService.invokedTypes);
+        assertEquals(1, fixture.extractor.extractCalls);
+        assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.taskService.stateCommand.getMessageIds());
+        assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.extractor.lastCommand.getTurnMessages().stream().map(Message::getMessageId).toList());
         assertTrue(fixture.stateRepository.saved.isEmpty());
         assertTrue(fixture.summaryRepository.saved.isEmpty());
     }
@@ -70,11 +84,17 @@ class SessionMemoryCoordinatorTest {
     void nonEmptyStateDeltaShouldMergeSaveNewStateAndRefreshRedisCache() {
         Fixture fixture = Fixture.create();
         fixture.stateRepository.latest = Optional.of(baseState());
-        fixture.taskService.stateDelta = StateDelta.builder()
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
             .confirmedFactAppend(ConfirmedFactRecord.builder()
                 .factId("fact-2")
                 .content("new fact")
                 .build())
+            .sourceCandidateId("msg-user-1")
+            .build())
+            .sourceCandidateId("msg-user-1")
+            .rawOutput("{\"confirmedFactsAppend\":[]}")
             .build();
 
         SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
@@ -88,6 +108,88 @@ class SessionMemoryCoordinatorTest {
         assertEquals(2, saved.getConfirmedFacts().size());
         assertEquals("new fact", saved.getConfirmedFacts().get(1).getContent());
         assertEquals(saved, fixture.stateCache.saved.get(0));
+        assertTrue(fixture.evidenceRepository.saved.isEmpty());
+    }
+
+    @Test
+    void nonEmptyStateDeltaShouldCreateVersionOneWhenLatestStateMissing() {
+        Fixture fixture = Fixture.create();
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .confirmedFactAppend(ConfirmedFactRecord.builder()
+                    .factId("fact-1")
+                    .content("first fact")
+                    .build())
+                .build())
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertEquals(1L, result.getNewStateVersion());
+        assertEquals(1, fixture.stateRepository.saved.size());
+        assertEquals(1L, fixture.stateRepository.saved.get(0).getStateVersion());
+    }
+
+    @Test
+    void emptyStateDeltaShouldNotSaveNewState() {
+        Fixture fixture = Fixture.create();
+        fixture.stateRepository.latest = Optional.of(baseState());
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder().sourceCandidateId("msg-user-1").build())
+            .sourceCandidateId("msg-user-1")
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertNull(result.getNewStateVersion());
+        assertTrue(fixture.stateRepository.saved.isEmpty());
+        assertTrue(fixture.stateCache.saved.isEmpty());
+    }
+
+    @Test
+    void invalidExtractionShouldDegradeAndNotSaveNewState() {
+        Fixture fixture = Fixture.create();
+        fixture.stateRepository.latest = Optional.of(baseState());
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(false)
+            .degraded(true)
+            .failureReason("Invalid StateDelta JSON: unknown field messages")
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertTrue(result.getFailureReason().contains("Invalid StateDelta JSON"));
+        assertTrue(fixture.stateRepository.saved.isEmpty());
+        assertTrue(fixture.stateCache.saved.isEmpty());
+    }
+
+    @Test
+    void mysqlStateSaveFailureShouldDegradeWithoutThrowing() {
+        Fixture fixture = Fixture.create();
+        fixture.stateRepository.latest = Optional.of(baseState());
+        fixture.stateRepository.throwOnSave = true;
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .confirmedFactAppend(ConfirmedFactRecord.builder()
+                    .factId("fact-2")
+                    .content("new fact")
+                    .build())
+                .build())
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertTrue(result.getFailureReason().contains("state save failed"));
+        assertTrue(fixture.stateCache.saved.isEmpty());
     }
 
     @Test
@@ -120,10 +222,13 @@ class SessionMemoryCoordinatorTest {
         Fixture fixture = Fixture.create();
         fixture.stateRepository.latest = Optional.of(baseState());
         fixture.stateCache.throwOnSave = true;
-        fixture.taskService.stateDelta = StateDelta.builder()
-            .confirmedFactAppend(ConfirmedFactRecord.builder()
-                .factId("fact-2")
-                .content("new fact")
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .confirmedFactAppend(ConfirmedFactRecord.builder()
+                    .factId("fact-2")
+                    .content("new fact")
+                    .build())
                 .build())
             .build();
 
@@ -184,7 +289,10 @@ class SessionMemoryCoordinatorTest {
         private final StubSummaryRepository summaryRepository = new StubSummaryRepository();
         private final StubStateCache stateCache = new StubStateCache();
         private final StubSummaryCache summaryCache = new StubSummaryCache();
+        private final StubMessageRepository messageRepository = new StubMessageRepository();
+        private final StubStateDeltaExtractor extractor = new StubStateDeltaExtractor();
         private final StubInternalMemoryTaskService taskService = new StubInternalMemoryTaskService();
+        private final StubEvidenceRepository evidenceRepository = new StubEvidenceRepository();
 
         private static Fixture create() {
             Fixture fixture = new Fixture();
@@ -193,7 +301,9 @@ class SessionMemoryCoordinatorTest {
             TestFieldUtils.setField(fixture.coordinator, "sessionSummaryRepository", fixture.summaryRepository);
             TestFieldUtils.setField(fixture.coordinator, "sessionStateCacheRepository", fixture.stateCache);
             TestFieldUtils.setField(fixture.coordinator, "sessionSummaryCacheRepository", fixture.summaryCache);
-            TestFieldUtils.setField(fixture.coordinator, "memoryEvidenceRepository", new StubEvidenceRepository());
+            TestFieldUtils.setField(fixture.coordinator, "memoryEvidenceRepository", fixture.evidenceRepository);
+            TestFieldUtils.setField(fixture.coordinator, "messageRepository", fixture.messageRepository);
+            TestFieldUtils.setField(fixture.coordinator, "stateDeltaExtractor", fixture.extractor);
             TestFieldUtils.setField(fixture.coordinator, "internalMemoryTaskService", fixture.taskService);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaMerger", new StateDeltaMerger());
             return fixture;
@@ -202,23 +312,23 @@ class SessionMemoryCoordinatorTest {
 
     private static final class StubInternalMemoryTaskService extends InternalMemoryTaskService {
         private final List<InternalTaskType> invokedTypes = new ArrayList<>();
-        private StateDelta stateDelta = StateDelta.builder().build();
+        private InternalMemoryTaskCommand stateCommand;
         private boolean throwOnExecute;
 
         @Override
         public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command) {
+            return execute(command, null);
+        }
+
+        @Override
+        public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command, InternalMemoryTaskExecutor executor) {
             if (throwOnExecute) {
                 throw new IllegalStateException("task failed");
             }
             invokedTypes.add(command.getTaskType());
             if (command.getTaskType() == InternalTaskType.STATE_EXTRACT) {
-                return InternalMemoryTaskResult.builder()
-                    .internalTaskId("task-state")
-                    .taskType(command.getTaskType())
-                    .status(InternalTaskStatus.SUCCEEDED)
-                    .success(true)
-                    .stateDelta(stateDelta)
-                    .build();
+                stateCommand = command;
+                return executor.execute("task-state", "{}");
             }
             return InternalMemoryTaskResult.builder()
                 .internalTaskId("task-summary")
@@ -233,9 +343,13 @@ class SessionMemoryCoordinatorTest {
     private static final class StubStateRepository implements SessionStateRepository {
         private Optional<SessionStateSnapshot> latest = Optional.empty();
         private final List<SessionStateSnapshot> saved = new ArrayList<>();
+        private boolean throwOnSave;
 
         @Override
         public void save(SessionStateSnapshot snapshot) {
+            if (throwOnSave) {
+                throw new IllegalStateException("state save failed");
+            }
             saved.add(snapshot);
             latest = Optional.of(snapshot);
         }
@@ -323,12 +437,16 @@ class SessionMemoryCoordinatorTest {
     }
 
     private static final class StubEvidenceRepository implements MemoryEvidenceRepository {
+        private final List<EvidenceRef> saved = new ArrayList<>();
+
         @Override
         public void save(EvidenceRef evidenceRef) {
+            saved.add(evidenceRef);
         }
 
         @Override
         public void saveAll(List<EvidenceRef> evidenceRefs) {
+            saved.addAll(evidenceRefs);
         }
 
         @Override
@@ -344,6 +462,71 @@ class SessionMemoryCoordinatorTest {
         @Override
         public List<EvidenceRef> listByTarget(EvidenceTargetType targetType, String targetRef) {
             return List.of();
+        }
+    }
+
+    private static final class StubStateDeltaExtractor implements StateDeltaExtractor {
+        private StateDeltaExtractionResult result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder().build())
+            .build();
+        private int extractCalls;
+        private StateDeltaExtractionCommand lastCommand;
+
+        @Override
+        public StateDeltaExtractionResult extract(StateDeltaExtractionCommand command) {
+            extractCalls++;
+            lastCommand = command;
+            return result;
+        }
+    }
+
+    private static final class StubMessageRepository implements MessageRepository {
+        private final List<Message> messages = List.of(
+            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "Please remember this."),
+            AssistantMessage.create("msg-assistant-1", "conv-1", "sess-1", "turn-1", "run-1", 2L, "I will remember it.", List.of(), null, null),
+            UserMessage.restore("msg-running", "conv-1", "sess-1", "turn-1", "run-1", 3L, MessageStatus.RUNNING, "not completed", Instant.now())
+        );
+
+        @Override
+        public void saveBatch(List<Message> messages) {
+        }
+
+        @Override
+        public Optional<Message> findByMessageId(String messageId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<Message> findCompletedContextBySessionId(String sessionId, int maxTurns) {
+            return List.of();
+        }
+
+        @Override
+        public List<Message> findByTurnId(String turnId) {
+            return messages;
+        }
+
+        @Override
+        public Optional<Message> findFinalAssistantMessageByTurnId(String turnId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public long nextSequenceNo(String sessionId) {
+            return 1L;
+        }
+
+        @Override
+        public void updateToolCallStatus(String toolCallRecordId, ToolCallStatus status) {
+        }
+
+        @Override
+        public void upsertToolExecutionRunning(ToolExecution toolExecution) {
+        }
+
+        @Override
+        public void updateToolExecutionFinal(ToolExecution toolExecution) {
         }
     }
 }

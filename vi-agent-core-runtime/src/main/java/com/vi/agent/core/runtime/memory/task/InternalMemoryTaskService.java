@@ -24,9 +24,11 @@ import java.util.UUID;
 @Service
 public class InternalMemoryTaskService {
 
-    private static final String STATE_EXTRACT_TEMPLATE_KEY = "state_extract_noop";
+    private static final String STATE_EXTRACT_TEMPLATE_KEY = "state_extract_inline";
 
     private static final String SUMMARY_EXTRACT_TEMPLATE_KEY = "summary_extract_noop";
+
+    private static final String P2_D_2_STATE_TEMPLATE_VERSION = "p2-d-2-v1";
 
     private static final String P2_D_1_TEMPLATE_VERSION = "p2-d-1-v1";
 
@@ -36,6 +38,10 @@ public class InternalMemoryTaskService {
     private InternalLlmTaskRepository internalLlmTaskRepository;
 
     public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command) {
+        return execute(command, (internalTaskId, inputJson) -> runDeterministicTask(command, internalTaskId));
+    }
+
+    public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command, InternalMemoryTaskExecutor executor) {
         String internalTaskId = nextInternalTaskId();
         Instant startedAt = Instant.now();
         String inputJson = buildInputJson(command);
@@ -44,7 +50,13 @@ public class InternalMemoryTaskService {
         auditOk = saveAudit(buildRecord(command, internalTaskId, inputJson, null, InternalTaskStatus.RUNNING, null, null, null, startedAt, null)) && auditOk;
 
         try {
-            InternalMemoryTaskResult result = runDeterministicTask(command, internalTaskId);
+            InternalMemoryTaskExecutor taskExecutor = executor == null
+                ? (taskId, taskInputJson) -> runDeterministicTask(command, taskId)
+                : executor;
+            InternalMemoryTaskResult result = taskExecutor.execute(internalTaskId, inputJson);
+            if (result == null) {
+                throw new IllegalStateException("internal memory task result must not be null");
+            }
             Instant completedAt = Instant.now();
             Long durationMs = Duration.between(startedAt, completedAt).toMillis();
             auditOk = saveAudit(buildRecord(
@@ -53,8 +65,8 @@ public class InternalMemoryTaskService {
                 inputJson,
                 result.getOutputJson(),
                 result.getStatus(),
-                null,
-                null,
+                resolveErrorCode(result),
+                result.getFailureReason(),
                 durationMs,
                 startedAt,
                 completedAt
@@ -66,6 +78,8 @@ public class InternalMemoryTaskService {
                     .build();
             }
             return result.toBuilder()
+                .internalTaskId(internalTaskId)
+                .taskType(command == null ? null : command.getTaskType())
                 .inputJson(inputJson)
                 .build();
         } catch (Exception ex) {
@@ -76,10 +90,7 @@ public class InternalMemoryTaskService {
                 ex);
             Instant completedAt = Instant.now();
             Long durationMs = Duration.between(startedAt, completedAt).toMillis();
-            Map<String, Object> output = new LinkedHashMap<>();
-            output.put("failed", true);
-            output.put("message", ex.getMessage());
-            String outputJson = JsonUtils.toJson(output);
+            String outputJson = buildFailureOutputJson(command, ex);
             saveAudit(buildRecord(
                 command,
                 internalTaskId,
@@ -110,16 +121,21 @@ public class InternalMemoryTaskService {
             throw new IllegalArgumentException("internal memory task type is required");
         }
         if (command.getTaskType() == InternalTaskType.STATE_EXTRACT) {
-            String outputJson = JsonUtils.toJson(Map.of(
-                "noop", true,
-                "stateDeltaEmpty", true
-            ));
+            Map<String, Object> output = new LinkedHashMap<>();
+            output.put("success", true);
+            output.put("degraded", false);
+            output.put("stateDeltaEmpty", true);
+            output.put("newStateVersion", null);
+            output.put("failureReason", null);
+            output.put("sourceCandidateIds", java.util.List.of());
+            String outputJson = JsonUtils.toJson(output);
             return InternalMemoryTaskResult.builder()
                 .internalTaskId(internalTaskId)
                 .taskType(command.getTaskType())
                 .status(InternalTaskStatus.SUCCEEDED)
                 .success(true)
                 .stateDelta(StateDelta.builder().build())
+                .sourceCandidateIds(java.util.List.of())
                 .outputJson(outputJson)
                 .build();
         }
@@ -138,6 +154,22 @@ public class InternalMemoryTaskService {
                 .build();
         }
         throw new IllegalArgumentException("unsupported internal memory task type: " + command.getTaskType());
+    }
+
+    private String buildFailureOutputJson(InternalMemoryTaskCommand command, Exception ex) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        if (command != null && command.getTaskType() == InternalTaskType.STATE_EXTRACT) {
+            output.put("success", false);
+            output.put("degraded", true);
+            output.put("stateDeltaEmpty", true);
+            output.put("newStateVersion", null);
+            output.put("failureReason", ex.getMessage());
+            output.put("sourceCandidateIds", java.util.List.of());
+            return JsonUtils.toJson(output);
+        }
+        output.put("failed", true);
+        output.put("message", ex.getMessage());
+        return JsonUtils.toJson(output);
     }
 
     private boolean saveAudit(InternalLlmTaskRecord record) {
@@ -172,7 +204,7 @@ public class InternalMemoryTaskService {
             .runId(command == null ? null : command.getRunId())
             .checkpointTrigger(CheckpointTrigger.POST_TURN)
             .promptTemplateKey(resolvePromptTemplateKey(command == null ? null : command.getTaskType()))
-            .promptTemplateVersion(P2_D_1_TEMPLATE_VERSION)
+            .promptTemplateVersion(resolvePromptTemplateVersion(command == null ? null : command.getTaskType()))
             .requestJson(inputJson)
             .responseJson(outputJson)
             .status(status)
@@ -194,6 +226,26 @@ public class InternalMemoryTaskService {
         return UNKNOWN_TEMPLATE_KEY;
     }
 
+    private String resolvePromptTemplateVersion(InternalTaskType taskType) {
+        if (taskType == InternalTaskType.STATE_EXTRACT) {
+            return P2_D_2_STATE_TEMPLATE_VERSION;
+        }
+        return P2_D_1_TEMPLATE_VERSION;
+    }
+
+    private String resolveErrorCode(InternalMemoryTaskResult result) {
+        if (result == null || result.getStatus() == null) {
+            return null;
+        }
+        if (result.getStatus() == InternalTaskStatus.FAILED) {
+            return "INTERNAL_MEMORY_TASK_FAILED";
+        }
+        if (result.getStatus() == InternalTaskStatus.DEGRADED) {
+            return "INTERNAL_MEMORY_TASK_DEGRADED";
+        }
+        return null;
+    }
+
     private String buildInputJson(InternalMemoryTaskCommand command) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("taskType", command == null || command.getTaskType() == null ? null : command.getTaskType().name());
@@ -206,6 +258,8 @@ public class InternalMemoryTaskService {
         input.put("assistantMessageId", command == null ? null : command.getAssistantMessageId());
         input.put("workingContextSnapshotId", command == null ? null : command.getWorkingContextSnapshotId());
         input.put("agentMode", command == null || command.getAgentMode() == null ? null : command.getAgentMode().name());
+        input.put("messageIds", command == null ? null : command.getMessageIds());
+        input.put("currentStateVersion", command == null ? null : command.getCurrentStateVersion());
         return JsonUtils.toJson(input);
     }
 

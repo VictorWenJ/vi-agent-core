@@ -21,25 +21,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InternalMemoryTaskServiceTest {
 
     @Test
-    void stateExtractShouldRecordPendingRunningAndSucceededNoopTask() {
+    void stateExtractShouldRecordPendingRunningAndSucceededInlineTask() {
         InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
         TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
 
-        InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACT));
+        InternalMemoryTaskResult result = service.execute(
+            stateCommand(),
+            (internalTaskId, inputJson) -> InternalMemoryTaskResult.builder()
+                .internalTaskId(internalTaskId)
+                .taskType(InternalTaskType.STATE_EXTRACT)
+                .status(InternalTaskStatus.SUCCEEDED)
+                .success(true)
+                .stateDelta(StateDelta.builder().sourceCandidateId("msg-user-1").build())
+                .newStateVersion(2L)
+                .sourceCandidateId("msg-user-1")
+                .outputJson("""
+                    {"success":true,"degraded":false,"stateDeltaEmpty":true,"newStateVersion":2,"failureReason":null,"sourceCandidateIds":["msg-user-1"]}
+                    """)
+                .build()
+        );
 
         assertTrue(result.isSuccess());
         assertFalse(result.isDegraded());
         assertEquals(InternalTaskStatus.SUCCEEDED, result.getStatus());
         assertNotNull(result.getStateDelta());
         assertTrue(result.getStateDelta().isEmpty());
+        assertEquals(2L, result.getNewStateVersion());
+        assertEquals(List.of("msg-user-1"), result.getSourceCandidateIds());
         assertEquals(3, repository.saved.size());
         assertEquals(InternalTaskStatus.PENDING, repository.saved.get(0).getStatus());
         assertEquals(InternalTaskStatus.RUNNING, repository.saved.get(1).getStatus());
         assertEquals(InternalTaskStatus.SUCCEEDED, repository.saved.get(2).getStatus());
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"sessionId\":\"sess-1\""));
-        assertTrue(repository.saved.get(2).getResponseJson().contains("\"noop\":true"));
-        assertPromptTemplate(repository.saved, "state_extract_noop", "p2-d-1-v1");
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"messageIds\":[\"msg-user-1\",\"msg-assistant-1\"]"));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"currentStateVersion\":1"));
+        assertTrue(repository.saved.get(2).getResponseJson().contains("\"newStateVersion\":2"));
+        assertPromptTemplate(repository.saved, "state_extract_inline", "p2-d-2-v1");
     }
 
     @Test
@@ -80,7 +98,7 @@ class InternalMemoryTaskServiceTest {
         assertEquals(InternalTaskStatus.PENDING, repository.saved.get(0).getStatus());
         assertEquals(InternalTaskStatus.RUNNING, repository.saved.get(1).getStatus());
         assertEquals(InternalTaskStatus.FAILED, repository.saved.get(2).getStatus());
-        assertPromptTemplate(repository.saved, "state_extract_noop", "p2-d-1-v1");
+        assertPromptTemplate(repository.saved, "state_extract_inline", "p2-d-2-v1");
     }
 
     private void assertPromptTemplate(List<InternalLlmTaskRecord> records, String expectedKey, String expectedVersion) {
@@ -107,6 +125,24 @@ class InternalMemoryTaskServiceTest {
             .assistantMessageId("msg-assistant-1")
             .workingContextSnapshotId("wctx-1")
             .agentMode(AgentMode.GENERAL)
+            .build();
+    }
+
+    private InternalMemoryTaskCommand stateCommand() {
+        return InternalMemoryTaskCommand.builder()
+            .taskType(InternalTaskType.STATE_EXTRACT)
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .traceId("trace-1")
+            .currentUserMessageId("msg-user-1")
+            .assistantMessageId("msg-assistant-1")
+            .workingContextSnapshotId("wctx-1")
+            .agentMode(AgentMode.GENERAL)
+            .messageId("msg-user-1")
+            .messageId("msg-assistant-1")
+            .currentStateVersion(1L)
             .build();
     }
 
