@@ -12,7 +12,7 @@ public enum AnswerStyle {
 
     DIRECT("direct", "直接回答"),
 
-    STRUCTURED("structured", "结构化回答"),
+    EXPLANATORY("explanatory", "解释型回答"),
 
     DECISIVE("decisive", "高决策回答");
 

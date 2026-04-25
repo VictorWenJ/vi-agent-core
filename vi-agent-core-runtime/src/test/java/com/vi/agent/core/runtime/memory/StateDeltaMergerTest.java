@@ -149,11 +149,11 @@ class StateDeltaMergerTest {
             .build();
 
         SessionStateSnapshot merged = merger.merge(base, StateDelta.builder()
-            .userPreferencesPatch(UserPreferencePatch.builder().answerStyle(AnswerStyle.STRUCTURED).build())
+            .userPreferencesPatch(UserPreferencePatch.builder().answerStyle(AnswerStyle.EXPLANATORY).build())
             .phaseStatePatch(PhaseStatePatch.builder().stateExtractionEnabled(true).build())
             .build());
 
-        assertEquals(AnswerStyle.STRUCTURED, merged.getUserPreference().getAnswerStyle());
+        assertEquals(AnswerStyle.EXPLANATORY, merged.getUserPreference().getAnswerStyle());
         assertNull(merged.getUserPreference().getDetailLevel());
         assertEquals(Boolean.TRUE, merged.getPhaseState().getStateExtractionEnabled());
         assertNull(merged.getPhaseState().getSummaryEnabled());

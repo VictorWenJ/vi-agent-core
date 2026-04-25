@@ -22,7 +22,7 @@ class UserPreferencePatchTest {
     @Test
     void isEmptyShouldReturnFalseWhenAnyFieldIsExplicitlyUpdated() {
         UserPreferencePatch patch = UserPreferencePatch.builder()
-            .answerStyle(AnswerStyle.STRUCTURED)
+            .answerStyle(AnswerStyle.EXPLANATORY)
             .build();
 
         assertFalse(patch.isEmpty());
