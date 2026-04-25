@@ -2,7 +2,6 @@ package com.vi.agent.core.infra.persistence.cache.session.repository;
 
 import com.vi.agent.core.infra.persistence.cache.session.key.SessionRedisKeyBuilder;
 import com.vi.agent.core.infra.persistence.cache.session.mapper.SessionWorkingSetRedisMapper;
-import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -15,11 +14,11 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,16 +27,10 @@ class RedisSessionWorkingSetRepositoryTest {
 
     @Test
     void saveShouldWriteHashWithVersionAndWorkingSetFields() {
-        RedisSessionWorkingSetRepository repository = new RedisSessionWorkingSetRepository();
-        StringRedisTemplate redisTemplate = Mockito.mock(StringRedisTemplate.class);
+        RedisSessionWorkingSetRepository repository = buildRepository(60L);
+        StringRedisTemplate redisTemplate = getField(repository, "stringRedisTemplate");
         @SuppressWarnings("unchecked")
-        HashOperations<String, Object, Object> hashOps = Mockito.mock(HashOperations.class);
-        when(redisTemplate.opsForHash()).thenReturn(hashOps);
-
-        setField(repository, "stringRedisTemplate", redisTemplate);
-        setField(repository, "keyBuilder", new SessionRedisKeyBuilder());
-        setField(repository, "sessionWorkingSetRedisMapper", new SessionWorkingSetRedisMapper());
-        setField(repository, "sessionWorkingSetTtlSeconds", 60L);
+        HashOperations<String, Object, Object> hashOps = (HashOperations<String, Object, Object>) redisTemplate.opsForHash();
 
         SessionWorkingSetSnapshot snapshot = SessionWorkingSetSnapshot.builder()
             .sessionId("sess-1")
@@ -47,8 +40,7 @@ class RedisSessionWorkingSetRepositoryTest {
             .summaryCoveredToSequenceNo(7L)
             .rawMessageId("msg-1")
             .rawMessageId("msg-2")
-            .message(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "first"))
-            .updatedAt(Instant.now())
+            .updatedAt(Instant.parse("2026-04-25T00:00:00Z"))
             .build();
 
         repository.save(snapshot);
@@ -62,33 +54,47 @@ class RedisSessionWorkingSetRepositoryTest {
         assertEquals("7", saved.get("summaryCoveredToSequenceNo"));
         assertEquals("[\"msg-1\",\"msg-2\"]", saved.get("rawMessageIdsJson"));
         assertEquals("1", saved.get("snapshotVersion"));
-        assertTrue(saved.containsKey("messagesJson"));
+        assertEquals(Set.of(
+            "sessionId",
+            "conversationId",
+            "workingSetVersion",
+            "maxCompletedTurns",
+            "summaryCoveredToSequenceNo",
+            "rawMessageIdsJson",
+            "snapshotVersion",
+            "updatedAtEpochMs"
+        ), saved.keySet());
     }
 
     @Test
-    void findShouldKeepNewFieldsAndEvictWhenSnapshotVersionInvalid() {
-        RedisSessionWorkingSetRepository repository = new RedisSessionWorkingSetRepository();
-        StringRedisTemplate redisTemplate = Mockito.mock(StringRedisTemplate.class);
+    void findShouldEvictWhenSnapshotVersionInvalid() {
+        RedisSessionWorkingSetRepository repository = buildRepository(60L);
+        StringRedisTemplate redisTemplate = getField(repository, "stringRedisTemplate");
         @SuppressWarnings("unchecked")
-        HashOperations<String, Object, Object> hashOps = Mockito.mock(HashOperations.class);
-        when(redisTemplate.opsForHash()).thenReturn(hashOps);
+        HashOperations<String, Object, Object> hashOps = (HashOperations<String, Object, Object>) redisTemplate.opsForHash();
 
-        setField(repository, "stringRedisTemplate", redisTemplate);
-        setField(repository, "keyBuilder", new SessionRedisKeyBuilder());
-        setField(repository, "sessionWorkingSetRedisMapper", new SessionWorkingSetRedisMapper());
-
-        Map<Object, Object> hash = new HashMap<>();
-        hash.put("sessionId", "sess-1");
-        hash.put("conversationId", "conv-1");
+        Map<Object, Object> hash = validHash();
         hash.put("snapshotVersion", "2");
-        hash.put("workingSetVersion", "8");
-        hash.put("maxCompletedTurns", "6");
-        hash.put("summaryCoveredToSequenceNo", "9");
-        hash.put("rawMessageIdsJson", "[\"msg-a\",\"msg-b\"]");
-        hash.put("messagesJson", "[]");
         when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(hash);
 
-        var result = repository.findBySessionId("sess-1");
+        SessionWorkingSetSnapshot result = repository.findBySessionId("sess-1");
+
+        assertNull(result);
+        verify(redisTemplate).delete("agent:session:working-set:sess-1");
+    }
+
+    @Test
+    void findShouldEvictWhenRequiredFieldMissing() {
+        RedisSessionWorkingSetRepository repository = buildRepository(60L);
+        StringRedisTemplate redisTemplate = getField(repository, "stringRedisTemplate");
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashOps = (HashOperations<String, Object, Object>) redisTemplate.opsForHash();
+
+        Map<Object, Object> hash = validHash();
+        hash.remove("workingSetVersion");
+        when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(hash);
+
+        SessionWorkingSetSnapshot result = repository.findBySessionId("sess-1");
 
         assertNull(result);
         verify(redisTemplate).delete("agent:session:working-set:sess-1");
@@ -96,27 +102,12 @@ class RedisSessionWorkingSetRepositoryTest {
 
     @Test
     void findShouldRestoreWorkingSetFieldsWhenVersionMatches() {
-        RedisSessionWorkingSetRepository repository = new RedisSessionWorkingSetRepository();
-        StringRedisTemplate redisTemplate = Mockito.mock(StringRedisTemplate.class);
+        RedisSessionWorkingSetRepository repository = buildRepository(60L);
+        StringRedisTemplate redisTemplate = getField(repository, "stringRedisTemplate");
         @SuppressWarnings("unchecked")
-        HashOperations<String, Object, Object> hashOps = Mockito.mock(HashOperations.class);
-        when(redisTemplate.opsForHash()).thenReturn(hashOps);
+        HashOperations<String, Object, Object> hashOps = (HashOperations<String, Object, Object>) redisTemplate.opsForHash();
 
-        setField(repository, "stringRedisTemplate", redisTemplate);
-        setField(repository, "keyBuilder", new SessionRedisKeyBuilder());
-        setField(repository, "sessionWorkingSetRedisMapper", new SessionWorkingSetRedisMapper());
-
-        Map<Object, Object> hash = new HashMap<>();
-        hash.put("sessionId", "sess-1");
-        hash.put("conversationId", "conv-1");
-        hash.put("snapshotVersion", "1");
-        hash.put("workingSetVersion", "8");
-        hash.put("maxCompletedTurns", "6");
-        hash.put("summaryCoveredToSequenceNo", "9");
-        hash.put("rawMessageIdsJson", "[\"msg-a\",\"msg-b\"]");
-        hash.put("messagesJson", "[]");
-        hash.put("updatedAtEpochMs", "1000");
-        when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(hash);
+        when(hashOps.entries("agent:session:working-set:sess-1")).thenReturn(validHash());
 
         SessionWorkingSetSnapshot result = repository.findBySessionId("sess-1");
 
@@ -126,7 +117,44 @@ class RedisSessionWorkingSetRepositoryTest {
         assertEquals(6, result.getMaxCompletedTurns());
         assertEquals(9L, result.getSummaryCoveredToSequenceNo());
         assertEquals(List.of("msg-a", "msg-b"), result.getRawMessageIds());
-        assertEquals(0, result.getMessages().size());
+    }
+
+    private Map<Object, Object> validHash() {
+        Map<Object, Object> hash = new HashMap<>();
+        hash.put("sessionId", "sess-1");
+        hash.put("conversationId", "conv-1");
+        hash.put("snapshotVersion", "1");
+        hash.put("workingSetVersion", "8");
+        hash.put("maxCompletedTurns", "6");
+        hash.put("summaryCoveredToSequenceNo", "9");
+        hash.put("rawMessageIdsJson", "[\"msg-a\",\"msg-b\"]");
+        hash.put("updatedAtEpochMs", "1000");
+        return hash;
+    }
+
+    private RedisSessionWorkingSetRepository buildRepository(long ttlSeconds) {
+        RedisSessionWorkingSetRepository repository = new RedisSessionWorkingSetRepository();
+        StringRedisTemplate redisTemplate = Mockito.mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashOps = Mockito.mock(HashOperations.class);
+        when(redisTemplate.opsForHash()).thenReturn(hashOps);
+
+        setField(repository, "stringRedisTemplate", redisTemplate);
+        setField(repository, "keyBuilder", new SessionRedisKeyBuilder());
+        setField(repository, "sessionWorkingSetRedisMapper", new SessionWorkingSetRedisMapper());
+        setField(repository, "sessionWorkingSetTtlSeconds", ttlSeconds);
+        return repository;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T getField(Object target, String fieldName) {
+        try {
+            var field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return (T) field.get(target);
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     private static void setField(Object target, String fieldName, Object value) {

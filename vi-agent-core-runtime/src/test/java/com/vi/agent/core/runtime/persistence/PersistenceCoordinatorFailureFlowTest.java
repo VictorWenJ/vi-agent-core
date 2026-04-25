@@ -591,19 +591,11 @@ class PersistenceCoordinatorFailureFlowTest {
         private String lastSessionId;
 
         @Override
-        public SessionWorkingSetSnapshot refreshFromMysql(String conversationId, String sessionId) {
+        public List<Message> refreshFromMysql(String conversationId, String sessionId) {
             refreshCount++;
             this.lastConversationId = conversationId;
             this.lastSessionId = sessionId;
-            return SessionWorkingSetSnapshot.builder()
-                .sessionId(sessionId)
-                .conversationId(conversationId)
-                .workingSetVersion(1L)
-                .maxCompletedTurns(3)
-                .summaryCoveredToSequenceNo(0L)
-                .rawMessageId("msg-1")
-                .updatedAt(Instant.now())
-                .build();
+            return List.of();
         }
     }
 }

@@ -18,7 +18,6 @@ class SessionStateSnapshotTest {
             .stateVersion(7L)
             .taskGoal("完成 P2-A 验收")
             .workingMode(WorkingMode.ARCHITECTURE_DESIGN)
-            .sourceRunId("run-1")
             .updatedAt(Instant.parse("2026-04-25T00:00:00Z"))
             .build();
 
@@ -35,7 +34,6 @@ class SessionStateSnapshotTest {
             .stateVersion(7L)
             .taskGoal("完成 P2-A 验收")
             .workingMode(WorkingMode.ARCHITECTURE_DESIGN)
-            .sourceRunId("run-1")
             .updatedAt(Instant.parse("2026-04-25T00:00:00Z"))
             .build();
 

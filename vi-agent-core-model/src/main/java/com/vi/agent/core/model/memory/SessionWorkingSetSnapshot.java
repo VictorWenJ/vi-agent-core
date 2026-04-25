@@ -1,6 +1,5 @@
 package com.vi.agent.core.model.memory;
 
-import com.vi.agent.core.model.message.Message;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
@@ -35,10 +34,6 @@ public class SessionWorkingSetSnapshot {
     /** working set 内 raw message ID 列表。 */
     @Singular("rawMessageId")
     private final List<String> rawMessageIds;
-
-    /** 当前 Redis working set 缓存的 raw 消息对象列表。 */
-    @Singular("message")
-    private final List<Message> messages;
 
     /** working set 更新时间。 */
     private final Instant updatedAt;

@@ -44,9 +44,6 @@ public class ConversationSummary {
     /** 生成摘要的模型。 */
     private final String generatorModel;
 
-    /** 产生该摘要的 run ID。 */
-    private final String sourceRunId;
-
     /** 摘要创建时间。 */
     private final Instant createdAt;
 }

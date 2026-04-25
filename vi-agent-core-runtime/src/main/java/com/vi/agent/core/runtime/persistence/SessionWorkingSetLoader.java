@@ -29,15 +29,13 @@ public class SessionWorkingSetLoader {
     private int maxCompletedTurns;
 
     public List<Message> load(String conversationId, String sessionId) {
-        return Optional.ofNullable(sessionWorkingSetRepository.findBySessionId(sessionId))
-            .map(SessionWorkingSetSnapshot::getMessages)
-            .orElseGet(() -> refreshFromMysql(conversationId, sessionId).getMessages());
+        return refreshFromMysql(conversationId, sessionId);
     }
 
     /**
      * 基于 SQL transcript 重新加载 completed raw messages，并回刷 Redis working set snapshot。
      */
-    public SessionWorkingSetSnapshot refreshFromMysql(String conversationId, String sessionId) {
+    public List<Message> refreshFromMysql(String conversationId, String sessionId) {
         List<Message> completedMessages = messageRepository.findCompletedContextBySessionId(sessionId, maxCompletedTurns);
         SessionWorkingSetSnapshot currentSnapshot = sessionWorkingSetRepository.findBySessionId(sessionId);
         Long workingSetVersion = Optional.ofNullable(currentSnapshot)
@@ -51,12 +49,11 @@ public class SessionWorkingSetLoader {
             .maxCompletedTurns(maxCompletedTurns)
             .summaryCoveredToSequenceNo(resolveSummaryCoveredToSequenceNo(completedMessages))
             .rawMessageIds(completedMessages.stream().map(Message::getMessageId).toList())
-            .messages(new ArrayList<>(completedMessages))
             .updatedAt(Instant.now())
             .build();
 
         sessionWorkingSetRepository.save(newSnapshot);
-        return newSnapshot;
+        return new ArrayList<>(completedMessages);
     }
 
     private Long resolveSummaryCoveredToSequenceNo(List<Message> messages) {

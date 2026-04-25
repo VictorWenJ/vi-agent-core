@@ -65,15 +65,13 @@ public class StateDeltaMerger {
                 delta.getDecisionsAppend(),
                 DecisionRecord::getDecisionId
             ))
-            .userPreference(mergeUserPreference(current.getUserPreference(), delta.getUserPreferencesPatch()))
+            .userPreferences(mergeUserPreference(current.getUserPreferences(), delta.getUserPreferencesPatch()))
             .openLoops(mergeOpenLoops(current.getOpenLoops(), delta))
-            .toolOutcomeDigests(mergeRecentToolOutcomes(
-                current.getToolOutcomeDigests(),
+            .recentToolOutcomes(mergeRecentToolOutcomes(
+                current.getRecentToolOutcomes(),
                 delta.getRecentToolOutcomesAppend()
             ))
             .phaseState(mergePhaseState(current.getPhaseState(), delta.getPhaseStatePatch()))
-            .sourceRunId(current.getSourceRunId())
-            .createdAt(current.getCreatedAt())
             .updatedAt(current.getUpdatedAt())
             .build();
     }

@@ -51,6 +51,11 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
                 evict(sessionId);
                 return null;
             }
+            if (hasMissingRequiredField(document)) {
+                log.warn("Redis session working set required field missing, sessionId={}", sessionId);
+                evict(sessionId);
+                return null;
+            }
             return sessionWorkingSetRedisMapper.toModel(document);
         } catch (Exception ex) {
             log.warn("Redis session working set parse failed, sessionId={}", sessionId, ex);
@@ -90,7 +95,6 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
             .summaryCoveredToSequenceNo(getLong(hash, "summaryCoveredToSequenceNo"))
             .rawMessageIdsJson(getString(hash, "rawMessageIdsJson"))
             .snapshotVersion(getInteger(hash, "snapshotVersion"))
-            .messagesJson(getString(hash, "messagesJson"))
             .updatedAtEpochMs(getLong(hash, "updatedAtEpochMs"))
             .build();
     }
@@ -104,9 +108,17 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
         put(hash, "summaryCoveredToSequenceNo", document.getSummaryCoveredToSequenceNo());
         put(hash, "rawMessageIdsJson", document.getRawMessageIdsJson());
         put(hash, "snapshotVersion", document.getSnapshotVersion());
-        put(hash, "messagesJson", document.getMessagesJson());
         put(hash, "updatedAtEpochMs", document.getUpdatedAtEpochMs());
         return hash;
+    }
+
+    private boolean hasMissingRequiredField(SessionWorkingSetSnapshotDocument document) {
+        return StringUtils.isBlank(document.getSessionId())
+            || StringUtils.isBlank(document.getConversationId())
+            || document.getWorkingSetVersion() == null
+            || document.getMaxCompletedTurns() == null
+            || document.getRawMessageIdsJson() == null
+            || document.getUpdatedAtEpochMs() == null;
     }
 
     private void put(Map<String, String> hash, String field, Object value) {

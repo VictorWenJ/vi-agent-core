@@ -66,9 +66,9 @@ class StateDeltaMergerTest {
                 .build())
             .build());
 
-        assertEquals(AnswerStyle.DIRECT, merged.getUserPreference().getAnswerStyle());
-        assertEquals(DetailLevel.HIGH, merged.getUserPreference().getDetailLevel());
-        assertEquals(TermFormat.ENGLISH_ONLY, merged.getUserPreference().getTermFormat());
+        assertEquals(AnswerStyle.DIRECT, merged.getUserPreferences().getAnswerStyle());
+        assertEquals(DetailLevel.HIGH, merged.getUserPreferences().getDetailLevel());
+        assertEquals(TermFormat.ENGLISH_ONLY, merged.getUserPreferences().getTermFormat());
     }
 
     @Test
@@ -105,8 +105,8 @@ class StateDeltaMergerTest {
 
         SessionStateSnapshot merged = merger.merge(baseState(), builder.build());
 
-        assertEquals(StateDeltaMerger.MAX_RECENT_TOOL_OUTCOMES, merged.getToolOutcomeDigests().size());
-        assertEquals("new-2", merged.getToolOutcomeDigests().get(0).getDigestId());
+        assertEquals(StateDeltaMerger.MAX_RECENT_TOOL_OUTCOMES, merged.getRecentToolOutcomes().size());
+        assertEquals("new-2", merged.getRecentToolOutcomes().get(0).getDigestId());
     }
 
     @Test
@@ -137,7 +137,7 @@ class StateDeltaMergerTest {
         assertEquals(1, merged.getConstraints().size());
         assertEquals(1, merged.getDecisions().size());
         assertEquals(1, merged.getOpenLoops().size());
-        assertEquals(1, merged.getToolOutcomeDigests().size());
+        assertEquals(1, merged.getRecentToolOutcomes().size());
         assertEquals(Boolean.TRUE, merged.getPhaseState().getPromptEngineeringEnabled());
     }
 
@@ -153,8 +153,8 @@ class StateDeltaMergerTest {
             .phaseStatePatch(PhaseStatePatch.builder().stateExtractionEnabled(true).build())
             .build());
 
-        assertEquals(AnswerStyle.EXPLANATORY, merged.getUserPreference().getAnswerStyle());
-        assertNull(merged.getUserPreference().getDetailLevel());
+        assertEquals(AnswerStyle.EXPLANATORY, merged.getUserPreferences().getAnswerStyle());
+        assertNull(merged.getUserPreferences().getDetailLevel());
         assertEquals(Boolean.TRUE, merged.getPhaseState().getStateExtractionEnabled());
         assertNull(merged.getPhaseState().getSummaryEnabled());
     }
@@ -169,13 +169,13 @@ class StateDeltaMergerTest {
             .confirmedFact(fact("fact-1", "old fact"))
             .constraint(constraint("constraint-1", "old constraint"))
             .decision(decision("decision-1", "old decision"))
-            .userPreference(UserPreferenceState.builder()
+            .userPreferences(UserPreferenceState.builder()
                 .answerStyle(AnswerStyle.DIRECT)
                 .detailLevel(DetailLevel.LOW)
                 .termFormat(TermFormat.ENGLISH_ONLY)
                 .build())
             .openLoop(openLoop("loop-1", OpenLoopStatus.OPEN))
-            .toolOutcomeDigest(toolOutcome("old-tool"))
+            .recentToolOutcome(toolOutcome("old-tool"))
             .phaseState(PhaseState.builder()
                 .promptEngineeringEnabled(true)
                 .contextAuditEnabled(true)

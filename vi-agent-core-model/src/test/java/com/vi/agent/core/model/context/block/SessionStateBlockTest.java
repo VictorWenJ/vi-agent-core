@@ -22,8 +22,6 @@ class SessionStateBlockTest {
             .stateVersion(3L)
             .taskGoal("build project")
             .workingMode(WorkingMode.GENERAL_CONVERSATION)
-            .sourceRunId("run-1")
-            .createdAt(Instant.parse("2026-04-25T00:00:00Z"))
             .updatedAt(Instant.parse("2026-04-25T00:00:00Z"))
             .build();
 

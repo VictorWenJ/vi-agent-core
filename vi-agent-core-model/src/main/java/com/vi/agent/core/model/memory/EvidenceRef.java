@@ -4,7 +4,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -25,7 +24,7 @@ public class EvidenceRef {
     private final EvidenceSource source;
 
     /** 证据置信度。 */
-    private final BigDecimal confidence;
+    private final Double confidence;
 
     /** evidence 创建时间。 */
     private final Instant createdAt;

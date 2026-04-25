@@ -5,8 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 /**
  * Session working set Redis 快照文档。
  */
@@ -33,9 +31,6 @@ public class SessionWorkingSetSnapshotDocument {
 
     /** raw message id 列表 JSON。 */
     private String rawMessageIdsJson;
-
-    /** 缓存原始消息明细 JSON。 */
-    private String messagesJson;
 
     /** 快照版本。 */
     private Integer snapshotVersion;

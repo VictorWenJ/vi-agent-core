@@ -3,7 +3,6 @@ package com.vi.agent.core.model.memory;
 import com.vi.agent.core.common.util.JsonUtils;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +28,7 @@ class EvidenceRefContractTest {
                 .messageId("msg-1")
                 .excerptText("用户明确要求")
                 .build())
-            .confidence(new BigDecimal("0.99"))
+            .confidence(0.99D)
             .createdAt(Instant.parse("2026-04-25T00:00:00Z"))
             .build();
 
@@ -57,7 +56,7 @@ class EvidenceRefContractTest {
                 .messageId("msg-1")
                 .excerptText("用户明确要求")
                 .build())
-            .confidence(new BigDecimal("0.99"))
+            .confidence(0.99D)
             .createdAt(Instant.parse("2026-04-25T00:00:00Z"))
             .build();
 

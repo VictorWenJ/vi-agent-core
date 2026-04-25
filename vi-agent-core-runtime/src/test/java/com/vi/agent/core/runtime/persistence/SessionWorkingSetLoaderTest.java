@@ -38,7 +38,7 @@ class SessionWorkingSetLoaderTest {
     }
 
     @Test
-    void shouldUseCacheWhenSnapshotExists() {
+    void shouldAlwaysRefreshFromMysqlWhenSnapshotExists() {
         SessionWorkingSetLoader loader = new SessionWorkingSetLoader();
         StubMessageRepository messageRepository = new StubMessageRepository();
         StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
@@ -50,7 +50,6 @@ class SessionWorkingSetLoaderTest {
             .maxCompletedTurns(5)
             .summaryCoveredToSequenceNo(99L)
             .rawMessageId("msg-cached")
-            .message(UserMessage.create("msg-cached", "conv-1", "sess-1", "turn-1", "run-1", 1L, "cached"))
             .updatedAt(Instant.now())
             .build();
         sessionWorkingSetRepository.cached = cached;
@@ -61,11 +60,11 @@ class SessionWorkingSetLoaderTest {
 
         List<Message> result = loader.load("conv-1", "sess-1");
 
-        assertEquals(0, messageRepository.findCount);
+        assertEquals(1, messageRepository.findCount);
         assertEquals(1, result.size());
-        assertEquals("cached", result.get(0).getContent());
-        assertEquals(0, sessionWorkingSetRepository.saveCount);
-        assertEquals(2L, sessionWorkingSetRepository.cached.getWorkingSetVersion());
+        assertEquals("mysql", result.get(0).getContent());
+        assertEquals(1, sessionWorkingSetRepository.saveCount);
+        assertEquals(3L, sessionWorkingSetRepository.lastSaved.getWorkingSetVersion());
     }
 
     @Test
@@ -80,7 +79,6 @@ class SessionWorkingSetLoaderTest {
             .maxCompletedTurns(3)
             .summaryCoveredToSequenceNo(9L)
             .rawMessageId("msg-old")
-            .message(UserMessage.create("msg-old", "conv-1", "sess-1", "turn-old", "run-1", 1L, "old"))
             .updatedAt(Instant.now())
             .build();
 
@@ -88,14 +86,15 @@ class SessionWorkingSetLoaderTest {
         TestFieldUtils.setField(loader, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(loader, "maxCompletedTurns", 3);
 
-        SessionWorkingSetSnapshot snapshot = loader.refreshFromMysql("conv-1", "sess-1");
+        List<Message> messages = loader.refreshFromMysql("conv-1", "sess-1");
 
-        assertNotNull(snapshot);
-        assertEquals(5L, snapshot.getWorkingSetVersion());
-        assertEquals(3, snapshot.getMaxCompletedTurns());
-        assertEquals(List.of("msg-1"), snapshot.getRawMessageIds());
-        assertEquals(1L, snapshot.getSummaryCoveredToSequenceNo());
-        assertEquals("conv-1", snapshot.getConversationId());
+        assertNotNull(messages);
+        assertEquals(1, messages.size());
+        assertEquals(5L, sessionWorkingSetRepository.lastSaved.getWorkingSetVersion());
+        assertEquals(3, sessionWorkingSetRepository.lastSaved.getMaxCompletedTurns());
+        assertEquals(List.of("msg-1"), sessionWorkingSetRepository.lastSaved.getRawMessageIds());
+        assertEquals(1L, sessionWorkingSetRepository.lastSaved.getSummaryCoveredToSequenceNo());
+        assertEquals("conv-1", sessionWorkingSetRepository.lastSaved.getConversationId());
         assertEquals(1, sessionWorkingSetRepository.saveCount);
     }
 
