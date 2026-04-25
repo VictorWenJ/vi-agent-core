@@ -3,6 +3,7 @@ package com.vi.agent.core.model.memory;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import lombok.extern.jackson.Jacksonized;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -13,6 +14,7 @@ import java.util.List;
  */
 @Getter
 @Builder
+@Jacksonized
 public class ConfirmedFactRecord {
 
     /** 已确认事实 ID。 */

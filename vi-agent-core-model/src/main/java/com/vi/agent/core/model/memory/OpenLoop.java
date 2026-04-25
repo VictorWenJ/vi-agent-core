@@ -3,6 +3,7 @@ package com.vi.agent.core.model.memory;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.List;
  */
 @Getter
 @Builder
+@Jacksonized
 public class OpenLoop {
 
     /** 未闭环事项 ID。 */

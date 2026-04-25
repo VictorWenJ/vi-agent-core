@@ -291,6 +291,8 @@ mvn clean test -pl vi-agent-core-app -am
 
 把 Redis 从旧 recent session context 缓存升级为三类稳定 snapshot 缓存：Working Set / Session State / Summary。
 
+P2-A 阶段 `SessionWorkingSetSnapshot.summaryCoveredToSequenceNo` 先完成字段、Redis DTO、Mapper、Loader 链路打通；当前实现允许采用占位策略，不视为 Summary 主链路正式语义。等 `ConversationSummary` 正式接入主链路后，必须改为基于 Summary 实际覆盖区间计算。
+
 ### 5.2 Create
 
 #### infra/cache/session/document
@@ -829,4 +831,3 @@ docs: update p2 context kernel governance
 3. 若旧类被替代，必须同步迁移调用方并删除旧实现，不允许留下双轨主链路。  
 4. 若某阶段发现设计与 `system-design-P2-v5.md` 冲突，以设计文档为准，先更新 implementation plan 再改代码。  
 5. 所有 P2 新增对象都必须有中文字段注释、枚举说明、必要测试。  
-

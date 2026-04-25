@@ -924,6 +924,8 @@ class SessionWorkingSetSnapshot {
 | `updatedAt` | `Instant` | 更新时间 |
 
 > **注意**：Working Set 只缓存 raw message ID 列表与版本信息；真实消息事实仍以 MySQL transcript 为准。Redis 中可缓存 messageId 列表或序列化后的 raw messages，但 after-commit 刷新必须来自 MySQL completed raw transcript，而不是来自 projection。
+>
+> **阶段性限制**：`summaryCoveredToSequenceNo` 在 P2-A 阶段先用于打通字段、Redis DTO、Mapper、Loader 链路；当前实现允许采用占位策略，不视为 Summary 主链路正式语义。等 `ConversationSummary` 正式接入主链路后，必须改为基于 Summary 实际覆盖区间计算。
 
 #### 7.6.2 `SessionStateSnapshot`
 
@@ -1986,6 +1988,7 @@ flowchart TD
 1. Working Set / State / Summary 三类数据独立加载，不再混用一个 `SessionStateLoader`。  
 2. Prompt 模板加载失败不可降级；因为没有稳定前缀就无法构建合法上下文。  
 3. Working Set 的 MySQL 回源必须依赖 `summaryCoveredToSequenceNo` 过滤老历史，避免 raw history 与 summary 重叠。
+4. P2-A 阶段 `summaryCoveredToSequenceNo` 只要求字段、Redis DTO、Mapper、Loader 链路打通，允许占位策略；该值暂不代表 Summary 主链路正式覆盖语义，待 `ConversationSummary` 正式接入后必须改为按实际覆盖区间计算。
 
 ### 9.7 Prompt 渲染流程图
 
