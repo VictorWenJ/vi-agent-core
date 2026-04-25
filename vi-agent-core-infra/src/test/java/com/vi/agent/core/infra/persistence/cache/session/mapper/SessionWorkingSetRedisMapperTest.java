@@ -29,6 +29,12 @@ class SessionWorkingSetRedisMapperTest {
         SessionWorkingSetSnapshot snapshot = SessionWorkingSetSnapshot.builder()
             .sessionId("sess-1")
             .conversationId("conv-1")
+            .workingSetVersion(2L)
+            .maxCompletedTurns(3)
+            .summaryCoveredToSequenceNo(3L)
+            .rawMessageId("msg-user-1")
+            .rawMessageId("msg-assistant-1")
+            .rawMessageId("msg-tool-1")
             .message(messages.get(0))
             .message(messages.get(1))
             .message(messages.get(2))
@@ -39,16 +45,25 @@ class SessionWorkingSetRedisMapperTest {
 
         assertEquals("sess-1", document.getSessionId());
         assertEquals("conv-1", document.getConversationId());
-        assertEquals(3, document.getMessageCount());
+        assertEquals(2L, document.getWorkingSetVersion());
+        assertEquals(3, document.getMaxCompletedTurns());
+        assertEquals(3L, document.getSummaryCoveredToSequenceNo());
+        assertEquals("[\"msg-user-1\",\"msg-assistant-1\",\"msg-tool-1\"]", document.getRawMessageIdsJson());
         assertEquals(1, document.getSnapshotVersion());
     }
 
     @Test
-    void toModelShouldRestoreToolChainInWorkingSetMessages() {
+    void toModelShouldRestoreToolChainAndSnapshotFields() {
         List<Message> messages = buildMessages();
         SessionWorkingSetSnapshot original = SessionWorkingSetSnapshot.builder()
             .sessionId("sess-1")
             .conversationId("conv-1")
+            .workingSetVersion(4L)
+            .maxCompletedTurns(3)
+            .summaryCoveredToSequenceNo(3L)
+            .rawMessageId("msg-user-1")
+            .rawMessageId("msg-assistant-1")
+            .rawMessageId("msg-tool-1")
             .message(messages.get(0))
             .message(messages.get(1))
             .message(messages.get(2))
@@ -59,6 +74,11 @@ class SessionWorkingSetRedisMapperTest {
         SessionWorkingSetSnapshot restored = mapper.toModel(document);
 
         assertEquals(3, restored.getMessages().size());
+        assertEquals(4L, restored.getWorkingSetVersion());
+        assertEquals(3, restored.getMaxCompletedTurns());
+        assertEquals(3L, restored.getSummaryCoveredToSequenceNo());
+        assertEquals(List.of("msg-user-1", "msg-assistant-1", "msg-tool-1"), restored.getRawMessageIds());
+
         Message restoredAssistant = restored.getMessages().get(1);
         AssistantMessage assistantMessage = assertInstanceOf(AssistantMessage.class, restoredAssistant);
         assertEquals(1, assistantMessage.getToolCalls().size());
@@ -89,7 +109,7 @@ class SessionWorkingSetRedisMapperTest {
             .build();
 
         return List.of(
-            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "现在几点"),
+            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "user message"),
             AssistantMessage.create(
                 "msg-assistant-1",
                 "conv-1",
@@ -97,7 +117,7 @@ class SessionWorkingSetRedisMapperTest {
                 "turn-1",
                 "run-1",
                 2L,
-                "我需要调用工具获取时间",
+                "assistant tool decision",
                 List.of(toolCall),
                 FinishReason.TOOL_CALL,
                 UsageInfo.empty()
@@ -109,7 +129,7 @@ class SessionWorkingSetRedisMapperTest {
                 "turn-1",
                 "run-1",
                 3L,
-                "2026-04-23T00:00:00+08:00",
+                "tool output",
                 "tcr-1",
                 "call-1",
                 "get_time",

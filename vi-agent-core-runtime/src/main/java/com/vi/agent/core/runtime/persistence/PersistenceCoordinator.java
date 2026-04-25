@@ -19,7 +19,6 @@ import com.vi.agent.core.model.runtime.RunEventActorType;
 import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.session.Session;
-import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
@@ -76,16 +75,6 @@ public class PersistenceCoordinator {
         return sessionWorkingSetLoader.load(conversationId, sessionId);
     }
 
-    public void refresh(String conversationId, String sessionId, List<Message> messages) {
-        sessionWorkingSetRepository.save(SessionWorkingSetSnapshot.builder()
-            .sessionId(sessionId)
-            .conversationId(conversationId)
-            .rawMessageIds(messages == null ? List.of() : messages.stream().map(Message::getMessageId).toList())
-            .messages(messages == null ? List.of() : new ArrayList<>(messages))
-            .updatedAt(Instant.now())
-            .build());
-    }
-
     public void persistUserMessage(UserMessage userMessage) {
         messageRepository.save(userMessage);
     }
@@ -118,10 +107,9 @@ public class PersistenceCoordinator {
 
         String conversationId = conversation.getConversationId();
         String sessionId = session.getSessionId();
-        List<Message> workingMessages = new ArrayList<>(runContext.getWorkingMessages());
         registerAfterCommit(() -> {
             try {
-                refresh(conversationId, sessionId, workingMessages);
+                sessionWorkingSetLoader.refreshFromMysql(conversationId, sessionId);
             } catch (Exception ex) {
                 log.warn("Refresh redis session working set failed, sessionId={}", sessionId, ex);
                 safeEvictSessionWorkingSet(sessionId);

@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * Session working set Redis 快照文档。
  */
@@ -14,27 +16,30 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SessionWorkingSetSnapshotDocument {
 
-    /** 当前 session ID。 */
+    /** 会话 ID。 */
     private String sessionId;
 
-    /** 会话所属 conversation ID。 */
+    /** 会话关联 conversation ID。 */
     private String conversationId;
 
-    /** working set 起始消息序号。 */
-    private Long fromSequenceNo;
+    /** working set 版本号。 */
+    private Long workingSetVersion;
 
-    /** working set 结束消息序号。 */
-    private Long toSequenceNo;
+    /** 当前配置的 completed turn 回溯上限。 */
+    private Integer maxCompletedTurns;
 
-    /** working set 消息数量。 */
-    private Integer messageCount;
+    /** summary 覆盖到的 sequenceNo。 */
+    private Long summaryCoveredToSequenceNo;
 
-    /** Redis snapshot DTO 版本。 */
-    private Integer snapshotVersion;
+    /** raw message id 列表 JSON。 */
+    private String rawMessageIdsJson;
 
-    /** 序列化后的 raw message 快照 JSON。 */
+    /** 缓存原始消息明细 JSON。 */
     private String messagesJson;
 
-    /** 更新时间 epoch millis。 */
+    /** 快照版本。 */
+    private Integer snapshotVersion;
+
+    /** 更新时间毫秒。 */
     private Long updatedAtEpochMs;
 }

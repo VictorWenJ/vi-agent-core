@@ -22,6 +22,7 @@ import com.vi.agent.core.model.runtime.RunMetadata;
 import com.vi.agent.core.model.session.Session;
 import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.session.SessionStatus;
+import com.vi.agent.core.runtime.persistence.SessionWorkingSetLoader;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
@@ -60,6 +61,7 @@ class PersistenceCoordinatorFailureFlowTest {
         TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetLoader", new StubSessionWorkingSetLoader());
 
         AgentRunContext runContext = buildRunContext();
         AssistantMessage assistantDecision = AssistantMessage.create(
@@ -131,6 +133,7 @@ class PersistenceCoordinatorFailureFlowTest {
         TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetLoader", new StubSessionWorkingSetLoader());
 
         AgentRunContext runContext = buildRunContext();
         AssistantMessage assistantDecision = AssistantMessage.create(
@@ -222,6 +225,8 @@ class PersistenceCoordinatorFailureFlowTest {
         TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+        StubSessionWorkingSetLoader sessionWorkingSetLoader = new StubSessionWorkingSetLoader();
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetLoader", sessionWorkingSetLoader);
 
         AgentRunContext runContext = buildRunContext();
         AssistantMessage finalAssistant = AssistantMessage.create(
@@ -250,7 +255,58 @@ class PersistenceCoordinatorFailureFlowTest {
         assertEquals(1, runEventRepository.savedEvents.size());
         assertEquals(RunEventType.RUN_COMPLETED, runEventRepository.savedEvents.get(0).getEventType());
         assertEquals(RunEventActorType.AGENT, runEventRepository.savedEvents.get(0).getActorType());
+        assertEquals(1, sessionWorkingSetLoader.refreshCount);
         assertEquals(TurnStatus.COMPLETED, turnRepository.lastUpdatedTurn.getStatus());
+    }
+
+    @Test
+    void persistSuccessShouldRefreshWorkingSetFromMysqlOnAfterCommit() {
+        PersistenceCoordinator coordinator = new PersistenceCoordinator();
+        StubMessageRepository messageRepository = new StubMessageRepository();
+        StubTurnRepository turnRepository = new StubTurnRepository();
+        StubSessionRepository sessionRepository = new StubSessionRepository();
+        StubConversationRepository conversationRepository = new StubConversationRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
+        StubRunEventRepository runEventRepository = new StubRunEventRepository();
+        StubSessionWorkingSetLoader sessionWorkingSetLoader = new StubSessionWorkingSetLoader();
+
+        TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
+        TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
+        TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
+        TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
+        TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
+        TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetLoader", sessionWorkingSetLoader);
+
+        AgentRunContext runContext = buildRunContext();
+        AssistantMessage finalAssistant = AssistantMessage.create(
+            "msg-assistant-final-1",
+            "conv-1",
+            "sess-1",
+            "turn-1",
+            "run-1",
+            3L,
+            "done",
+            List.of(),
+            FinishReason.STOP,
+            null
+        );
+        LoopExecutionResult loopExecutionResult = LoopExecutionResult.builder()
+            .assistantMessage(finalAssistant)
+            .appendedMessages(List.of(finalAssistant))
+            .toolCalls(List.of())
+            .toolExecutions(List.of())
+            .finishReason(FinishReason.STOP)
+            .usage(null)
+            .build();
+
+        runContext.appendWorkingMessage(finalAssistant);
+        coordinator.persistSuccess(runContext, loopExecutionResult);
+
+        assertEquals("conv-1", sessionWorkingSetLoader.lastConversationId);
+        assertEquals("sess-1", sessionWorkingSetLoader.lastSessionId);
+        assertEquals(1, sessionWorkingSetLoader.refreshCount);
     }
 
     private AgentRunContext buildRunContext() {
@@ -526,6 +582,28 @@ class PersistenceCoordinatorFailureFlowTest {
         @Override
         public void saveBatch(List<RunEventRecord> runEvents) {
             savedEvents.addAll(runEvents);
+        }
+    }
+
+    private static final class StubSessionWorkingSetLoader extends SessionWorkingSetLoader {
+        private int refreshCount;
+        private String lastConversationId;
+        private String lastSessionId;
+
+        @Override
+        public SessionWorkingSetSnapshot refreshFromMysql(String conversationId, String sessionId) {
+            refreshCount++;
+            this.lastConversationId = conversationId;
+            this.lastSessionId = sessionId;
+            return SessionWorkingSetSnapshot.builder()
+                .sessionId(sessionId)
+                .conversationId(conversationId)
+                .workingSetVersion(1L)
+                .maxCompletedTurns(3)
+                .summaryCoveredToSequenceNo(0L)
+                .rawMessageId("msg-1")
+                .updatedAt(Instant.now())
+                .build();
         }
     }
 }

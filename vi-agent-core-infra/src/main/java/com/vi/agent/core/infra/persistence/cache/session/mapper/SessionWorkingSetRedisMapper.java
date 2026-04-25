@@ -20,15 +20,18 @@ import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.*;
-
-import static java.util.stream.Collectors.toList;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 
 /**
- * Session 涓婁笅鏂?Redis 蹇収鏄犲皠鍣ㄣ€? */
+ * Session working set Redis 映射器。
+ */
 @Component
 public class SessionWorkingSetRedisMapper {
 
@@ -36,15 +39,15 @@ public class SessionWorkingSetRedisMapper {
         List<Message> messages = CollectionUtils.isEmpty(snapshot.getMessages()) ? List.of() : snapshot.getMessages();
         List<SessionWorkingSetMessageSnapshot> messageSnapshots = messages.stream().map(this::toMessageSnapshot).toList();
 
-        Long fromSequenceNo = messages.stream().map(Message::getSequenceNo).min(Long::compareTo).orElse(0L);
-        Long toSequenceNo = messages.stream().map(Message::getSequenceNo).max(Long::compareTo).orElse(0L);
-
         return SessionWorkingSetSnapshotDocument.builder()
             .sessionId(snapshot.getSessionId())
             .conversationId(snapshot.getConversationId())
-            .fromSequenceNo(fromSequenceNo)
-            .toSequenceNo(toSequenceNo)
-            .messageCount(messageSnapshots.size())
+            .workingSetVersion(snapshot.getWorkingSetVersion())
+            .maxCompletedTurns(snapshot.getMaxCompletedTurns())
+            .summaryCoveredToSequenceNo(snapshot.getSummaryCoveredToSequenceNo())
+            .rawMessageIdsJson(JsonUtils.toJson(CollectionUtils.isEmpty(snapshot.getRawMessageIds())
+                ? List.of()
+                : snapshot.getRawMessageIds()))
             .snapshotVersion(1)
             .messagesJson(JsonUtils.toJson(messageSnapshots))
             .updatedAtEpochMs(toEpochMillis(snapshot.getUpdatedAt()))
@@ -52,6 +55,7 @@ public class SessionWorkingSetRedisMapper {
     }
 
     public SessionWorkingSetSnapshot toModel(SessionWorkingSetSnapshotDocument document) {
+        List<String> rawMessageIds = parseRawMessageIds(document.getRawMessageIdsJson());
         List<SessionWorkingSetMessageSnapshot> messageSnapshots = JsonUtils.jsonToBean(
             document.getMessagesJson(),
             new TypeReference<List<SessionWorkingSetMessageSnapshot>>() {
@@ -68,6 +72,10 @@ public class SessionWorkingSetRedisMapper {
         return SessionWorkingSetSnapshot.builder()
             .sessionId(document.getSessionId())
             .conversationId(document.getConversationId())
+            .workingSetVersion(document.getWorkingSetVersion())
+            .maxCompletedTurns(document.getMaxCompletedTurns())
+            .summaryCoveredToSequenceNo(document.getSummaryCoveredToSequenceNo())
+            .rawMessageIds(rawMessageIds)
             .messages(messages.stream().sorted(Comparator.comparingLong(Message::getSequenceNo)).toList())
             .updatedAt(fromEpochMillis(document.getUpdatedAtEpochMs()))
             .build();
@@ -256,5 +264,20 @@ public class SessionWorkingSetRedisMapper {
     private long safeLong(Long value) {
         return value == null ? 0L : value;
     }
-}
 
+    private List<String> parseRawMessageIds(String rawMessageIdsJson) {
+        if (StringUtils.isBlank(rawMessageIdsJson)) {
+            return List.of();
+        }
+        try {
+            List<String> rawMessageIds = JsonUtils.jsonToBean(
+                rawMessageIdsJson,
+                new TypeReference<List<String>>() {
+                }.getType()
+            );
+            return CollectionUtils.isEmpty(rawMessageIds) ? List.of() : rawMessageIds;
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+}

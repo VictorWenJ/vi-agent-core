@@ -3,30 +3,31 @@ package com.vi.agent.core.model.context.block;
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
 import com.vi.agent.core.model.context.ContextBlockType;
 import com.vi.agent.core.model.context.ContextPriority;
-import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
+import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.util.List;
 
 /**
- * S1 缁撴瀯鍖?session state 娓叉煋鍧椼€? */
+ * S1 会话状态区块，承载结构化 SessionState 快照。
+ */
 @Getter
 public class SessionStateBlock extends ContextBlock {
 
-    /** session state 鐗堟湰銆?*/
+    /** 会话状态版本号。 */
     private final Long stateVersion;
 
-    /** prompt 妯℃澘 key銆?*/
+    /** 系统提示词模板 key。 */
     private final String promptTemplateKey;
 
-    /** prompt 妯℃澘鐗堟湰銆?*/
+    /** 系统提示词模板版本。 */
     private final String promptTemplateVersion;
 
-    /** 缁撴瀯鍖?session state 蹇収銆?*/
-    private final SessionWorkingSetSnapshot stateSnapshot;
+    /** 会话状态结构化快照。 */
+    private final SessionStateSnapshot stateSnapshot;
 
-    /** 娓叉煋鍚庣殑 session state 鏂囨湰銆?*/
+    /** 渲染后的会话状态文本。 */
     private final String renderedText;
 
     @Builder
@@ -41,7 +42,7 @@ public class SessionStateBlock extends ContextBlock {
         Long stateVersion,
         String promptTemplateKey,
         String promptTemplateVersion,
-        SessionWorkingSetSnapshot stateSnapshot,
+        SessionStateSnapshot stateSnapshot,
         String renderedText
     ) {
         super(blockId, ContextBlockType.SESSION_STATE, priority, required, tokenEstimate, decision, sourceRefs, evidenceIds);
@@ -52,4 +53,3 @@ public class SessionStateBlock extends ContextBlock {
         this.renderedText = renderedText;
     }
 }
-

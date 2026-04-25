@@ -16,8 +16,6 @@ import org.springframework.stereotype.Repository;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
-
 /**
  * Redis 浼氳瘽涓婁笅鏂囧揩鐓т粨鍌紙hash 缁撴瀯锛夈€? */
 @Slf4j
@@ -87,9 +85,10 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
         return SessionWorkingSetSnapshotDocument.builder()
             .sessionId(getString(hash, "sessionId"))
             .conversationId(getString(hash, "conversationId"))
-            .fromSequenceNo(getLong(hash, "fromSequenceNo"))
-            .toSequenceNo(getLong(hash, "toSequenceNo"))
-            .messageCount(getInteger(hash, "messageCount"))
+            .workingSetVersion(getLong(hash, "workingSetVersion"))
+            .maxCompletedTurns(getInteger(hash, "maxCompletedTurns"))
+            .summaryCoveredToSequenceNo(getLong(hash, "summaryCoveredToSequenceNo"))
+            .rawMessageIdsJson(getString(hash, "rawMessageIdsJson"))
             .snapshotVersion(getInteger(hash, "snapshotVersion"))
             .messagesJson(getString(hash, "messagesJson"))
             .updatedAtEpochMs(getLong(hash, "updatedAtEpochMs"))
@@ -100,9 +99,10 @@ public class RedisSessionWorkingSetRepository implements SessionWorkingSetReposi
         Map<String, String> hash = new HashMap<>();
         put(hash, "sessionId", document.getSessionId());
         put(hash, "conversationId", document.getConversationId());
-        put(hash, "fromSequenceNo", document.getFromSequenceNo());
-        put(hash, "toSequenceNo", document.getToSequenceNo());
-        put(hash, "messageCount", document.getMessageCount());
+        put(hash, "workingSetVersion", document.getWorkingSetVersion());
+        put(hash, "maxCompletedTurns", document.getMaxCompletedTurns());
+        put(hash, "summaryCoveredToSequenceNo", document.getSummaryCoveredToSequenceNo());
+        put(hash, "rawMessageIdsJson", document.getRawMessageIdsJson());
         put(hash, "snapshotVersion", document.getSnapshotVersion());
         put(hash, "messagesJson", document.getMessagesJson());
         put(hash, "updatedAtEpochMs", document.getUpdatedAtEpochMs());

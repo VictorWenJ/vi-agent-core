@@ -1,9 +1,9 @@
 package com.vi.agent.core.runtime.persistence;
 
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionWorkingSetRepository;
-import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -31,20 +31,38 @@ public class SessionWorkingSetLoader {
     public List<Message> load(String conversationId, String sessionId) {
         return Optional.ofNullable(sessionWorkingSetRepository.findBySessionId(sessionId))
             .map(SessionWorkingSetSnapshot::getMessages)
-            .orElseGet(() -> reloadFromMysql(conversationId, sessionId));
+            .orElseGet(() -> refreshFromMysql(conversationId, sessionId).getMessages());
     }
 
-    private List<Message> reloadFromMysql(String conversationId, String sessionId) {
+    /**
+     * 基于 SQL transcript 重新加载 completed raw messages，并回刷 Redis working set snapshot。
+     */
+    public SessionWorkingSetSnapshot refreshFromMysql(String conversationId, String sessionId) {
         List<Message> completedMessages = messageRepository.findCompletedContextBySessionId(sessionId, maxCompletedTurns);
-        sessionWorkingSetRepository.save(SessionWorkingSetSnapshot.builder()
+        SessionWorkingSetSnapshot currentSnapshot = sessionWorkingSetRepository.findBySessionId(sessionId);
+        Long workingSetVersion = Optional.ofNullable(currentSnapshot)
+            .map(SessionWorkingSetSnapshot::getWorkingSetVersion)
+            .orElse(0L) + 1L;
+
+        SessionWorkingSetSnapshot newSnapshot = SessionWorkingSetSnapshot.builder()
             .sessionId(sessionId)
             .conversationId(conversationId)
+            .workingSetVersion(workingSetVersion)
             .maxCompletedTurns(maxCompletedTurns)
+            .summaryCoveredToSequenceNo(resolveSummaryCoveredToSequenceNo(completedMessages))
             .rawMessageIds(completedMessages.stream().map(Message::getMessageId).toList())
             .messages(new ArrayList<>(completedMessages))
             .updatedAt(Instant.now())
-            .build());
-        return completedMessages;
+            .build();
+
+        sessionWorkingSetRepository.save(newSnapshot);
+        return newSnapshot;
+    }
+
+    private Long resolveSummaryCoveredToSequenceNo(List<Message> messages) {
+        return messages.stream()
+            .map(Message::getSequenceNo)
+            .max(Long::compareTo)
+            .orElse(0L);
     }
 }
-
