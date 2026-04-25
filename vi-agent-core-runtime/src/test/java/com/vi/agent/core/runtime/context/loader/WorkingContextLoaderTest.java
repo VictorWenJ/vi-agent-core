@@ -57,7 +57,10 @@ class WorkingContextLoaderTest {
         assertEquals(3L, snapshotRepository.savedSnapshot.getStateVersion());
         assertEquals(4L, snapshotRepository.savedSnapshot.getSummaryVersion());
         assertNotNull(snapshotRepository.savedSnapshot.getContextJson());
+        assertNotNull(snapshotRepository.savedSnapshot.getBlockSetJson());
         assertNotNull(snapshotRepository.savedSnapshot.getProjectionJson());
+        assertTrue(snapshotRepository.savedSnapshot.getBlockSetJson().contains("\"sourceType\":\"SESSION_STATE_SNAPSHOT\""));
+        assertTrue(snapshotRepository.savedSnapshot.getBlockSetJson().contains("\"sourceVersion\":\"3\""));
     }
 
     @Test

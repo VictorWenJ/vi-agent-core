@@ -460,7 +460,7 @@ Internal task 如需写入 `agent_run_event`，必须使用显式 `RunEventType`
 | `TOOL_OUTCOME_DIGEST` | 指向工具结果摘要 |
 | `OPEN_LOOP` | 指向未完成事项 |
 
-#### 5.3.18 `ContextSourceType `
+#### 5.3.18 `ContextSourceType`
 
 | 枚举值 | 说明 |
 |---|---|
@@ -471,7 +471,7 @@ Internal task 如需写入 `agent_run_event`，必须使用显式 `RunEventType`
 | `CURRENT_USER_MESSAGE` | 指向当前用户消息来源 |
 | `CONTEXT_REFERENCE` | 指向外部上下文引用来源 |
 | `COMPACTION_NOTE` | 指向上下文压缩说明来源 |
->`ContextSourceType` 用于描述 `ContextSourceRef` 指向的数据来源类型，不等同于 `ContextBlockType`。`ContextBlockType` 描述上下文块自身类型，`ContextSourceType` 描述该块内容的来源。
+`ContextSourceType` 用于描述 `ContextSourceRef` 指向的数据来源类型，不等同于 `ContextBlockType`。`ContextBlockType` 描述上下文块自身类型，`ContextSourceType` 描述该块内容的来源。
 
 ---
 

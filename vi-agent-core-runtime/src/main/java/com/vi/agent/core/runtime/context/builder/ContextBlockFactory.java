@@ -71,8 +71,8 @@ public class ContextBlockFactory {
         if (bundle.getLatestSummary() != null) {
             blocks.add(buildConversationSummaryBlock(bundle.getLatestSummary()));
         }
-        blocks.add(buildRecentMessagesBlock(bundle));
-        blocks.add(buildCurrentUserMessageBlock(bundle));
+        blocks.add(buildRecentMessagesBlock(command, bundle));
+        blocks.add(buildCurrentUserMessageBlock(command, bundle));
         return List.copyOf(blocks);
     }
 
@@ -93,6 +93,7 @@ public class ContextBlockFactory {
             .sourceRefs(List.of(ContextSourceRef.builder()
                 .sourceType(ContextSourceType.RUNTIME_INSTRUCTION)
                 .sourceId(RUNTIME_TEMPLATE_KEY)
+                .sourceVersion(TEMPLATE_VERSION)
                 .fieldPath("renderedText")
                 .build()))
             .evidenceIds(List.of())
@@ -113,6 +114,7 @@ public class ContextBlockFactory {
             .sourceRefs(List.of(ContextSourceRef.builder()
                 .sourceType(ContextSourceType.SESSION_STATE_SNAPSHOT)
                 .sourceId(stateSnapshot.getSnapshotId())
+                .sourceVersion(toVersionString(stateSnapshot.getStateVersion()))
                 .fieldPath("state")
                 .build()))
             .evidenceIds(List.of())
@@ -135,6 +137,7 @@ public class ContextBlockFactory {
             .sourceRefs(List.of(ContextSourceRef.builder()
                 .sourceType(ContextSourceType.CONVERSATION_SUMMARY)
                 .sourceId(summary.getSummaryId())
+                .sourceVersion(toVersionString(summary.getSummaryVersion()))
                 .fieldPath("summaryText")
                 .build()))
             .evidenceIds(List.of())
@@ -146,7 +149,7 @@ public class ContextBlockFactory {
             .build();
     }
 
-    private RecentMessagesBlock buildRecentMessagesBlock(MemoryLoadBundle bundle) {
+    private RecentMessagesBlock buildRecentMessagesBlock(WorkingContextLoadCommand command, MemoryLoadBundle bundle) {
         List<Message> recentRawMessages = bundle.getRecentRawMessages() == null ? List.of() : bundle.getRecentRawMessages();
         return RecentMessagesBlock.builder()
             .blockId(nextBlockId())
@@ -156,9 +159,8 @@ public class ContextBlockFactory {
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
                 .sourceType(ContextSourceType.TRANSCRIPT_MESSAGE)
-                .sourceId(bundle.getSessionWorkingSetSnapshot() == null
-                    ? String.valueOf(bundle.getWorkingSetVersion())
-                    : bundle.getSessionWorkingSetSnapshot().getSessionId())
+                .sourceId(resolveRecentMessagesSourceId(command, bundle))
+                .sourceVersion(resolveRecentMessagesSourceVersion(command, bundle))
                 .fieldPath("rawMessages")
                 .build()))
             .evidenceIds(List.of())
@@ -168,7 +170,7 @@ public class ContextBlockFactory {
             .build();
     }
 
-    private CurrentUserMessageBlock buildCurrentUserMessageBlock(MemoryLoadBundle bundle) {
+    private CurrentUserMessageBlock buildCurrentUserMessageBlock(WorkingContextLoadCommand command, MemoryLoadBundle bundle) {
         Message currentUserMessage = bundle.getCurrentUserMessage();
         return CurrentUserMessageBlock.builder()
             .blockId(nextBlockId())
@@ -179,6 +181,7 @@ public class ContextBlockFactory {
             .sourceRefs(List.of(ContextSourceRef.builder()
                 .sourceType(ContextSourceType.CURRENT_USER_MESSAGE)
                 .sourceId(currentUserMessage == null ? null : currentUserMessage.getMessageId())
+                .sourceVersion(resolveCurrentUserMessageSourceVersion(command, currentUserMessage))
                 .fieldPath("contentText")
                 .build()))
             .evidenceIds(List.of())
@@ -189,5 +192,33 @@ public class ContextBlockFactory {
 
     private String nextBlockId() {
         return "ctxblk-" + UUID.randomUUID();
+    }
+
+    private String toVersionString(Object version) {
+        return version == null ? null : String.valueOf(version);
+    }
+
+    private String resolveRecentMessagesSourceId(WorkingContextLoadCommand command, MemoryLoadBundle bundle) {
+        if (bundle.getSessionWorkingSetSnapshot() != null && StringUtils.isNotBlank(bundle.getSessionWorkingSetSnapshot().getSessionId())) {
+            return bundle.getSessionWorkingSetSnapshot().getSessionId();
+        }
+        if (bundle.getWorkingSetVersion() != null) {
+            return toVersionString(bundle.getWorkingSetVersion());
+        }
+        return command == null ? null : command.getSessionId();
+    }
+
+    private String resolveRecentMessagesSourceVersion(WorkingContextLoadCommand command, MemoryLoadBundle bundle) {
+        if (bundle.getWorkingSetVersion() != null) {
+            return toVersionString(bundle.getWorkingSetVersion());
+        }
+        return command == null ? null : command.getTurnId();
+    }
+
+    private String resolveCurrentUserMessageSourceVersion(WorkingContextLoadCommand command, Message currentUserMessage) {
+        if (currentUserMessage != null) {
+            return toVersionString(currentUserMessage.getSequenceNo());
+        }
+        return command == null ? null : command.getTurnId();
     }
 }

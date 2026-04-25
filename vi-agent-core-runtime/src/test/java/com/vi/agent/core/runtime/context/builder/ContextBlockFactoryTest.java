@@ -60,12 +60,17 @@ class ContextBlockFactoryTest {
         ), blocks.stream().map(ContextBlock::getBlockType).toList());
         assertInstanceOf(RuntimeInstructionBlock.class, blocks.get(0));
         assertTrue(blocks.get(0).isRequired());
+        assertEquals("p2-c-v1", blocks.get(0).getSourceRefs().get(0).getSourceVersion());
         assertInstanceOf(SessionStateBlock.class, blocks.get(1));
+        assertEquals("3", blocks.get(1).getSourceRefs().get(0).getSourceVersion());
         assertInstanceOf(ConversationSummaryBlock.class, blocks.get(2));
+        assertEquals("4", blocks.get(2).getSourceRefs().get(0).getSourceVersion());
         RecentMessagesBlock recentMessagesBlock = (RecentMessagesBlock) blocks.get(3);
         assertEquals(List.of(recentMessage), recentMessagesBlock.getRawMessages());
+        assertEquals("2", recentMessagesBlock.getSourceRefs().get(0).getSourceVersion());
         assertInstanceOf(CurrentUserMessageBlock.class, blocks.get(4));
         assertTrue(blocks.get(4).isRequired());
+        assertEquals("10", blocks.get(4).getSourceRefs().get(0).getSourceVersion());
     }
 
     @Test
@@ -107,6 +112,7 @@ class ContextBlockFactoryTest {
         SummaryMessage stateMessage = (SummaryMessage) projection.getModelMessages().get(1);
 
         assertEquals(ContextSourceType.SESSION_STATE_SNAPSHOT, stateBlock.getSourceRefs().get(0).getSourceType());
+        assertEquals("5", stateBlock.getSourceRefs().get(0).getSourceVersion());
         assertTrue(stateBlock.getRenderedText().contains("Fact content for prompt."));
         assertTrue(stateBlock.getRenderedText().contains("Constraint content for prompt."));
         assertTrue(stateBlock.getRenderedText().contains("Decision title"));
