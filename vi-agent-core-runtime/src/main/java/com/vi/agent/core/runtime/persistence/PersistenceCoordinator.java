@@ -23,6 +23,7 @@ import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.turn.Turn;
+import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -133,6 +134,25 @@ public class PersistenceCoordinator {
         sessionRepository.update(session);
 
         registerAfterCommit(() -> safeEvictSessionWorkingSet(session.getSessionId()));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void persistPreRunContextFailure(RuntimeExecutionContext context, String errorCode, String errorMessage) {
+        if (context == null || !context.hasTurn()) {
+            return;
+        }
+
+        runEventRepository.saveBatch(List.of(buildPreRunContextRunFailedEvent(context, errorCode, errorMessage)));
+
+        Turn turn = context.getTurn();
+        turn.markFailed(errorCode, errorMessage, Instant.now());
+        turnRepository.update(turn);
+
+        Session session = context.getResolution() == null ? null : context.getResolution().getSession();
+        if (session != null) {
+            session.touch(Instant.now());
+            sessionRepository.update(session);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -267,6 +287,22 @@ public class PersistenceCoordinator {
             .eventType(RunEventType.RUN_FAILED)
             .actorType(RunEventActorType.AGENT)
             .actorId(runContext.getRunMetadata().getRunId())
+            .payloadJson(JsonUtils.toJson(buildRunFailedPayload(errorCode, errorMessage)))
+            .createdAt(Instant.now())
+            .build();
+    }
+
+    private RunEventRecord buildPreRunContextRunFailedEvent(RuntimeExecutionContext context, String errorCode, String errorMessage) {
+        return RunEventRecord.builder()
+            .eventId(runIdentityFactory.nextRunEventId())
+            .conversationId(context.conversationId())
+            .sessionId(context.sessionId())
+            .turnId(context.turnId())
+            .runId(context.runId())
+            .eventIndex(1)
+            .eventType(RunEventType.RUN_FAILED)
+            .actorType(RunEventActorType.AGENT)
+            .actorId(context.runId())
             .payloadJson(JsonUtils.toJson(buildRunFailedPayload(errorCode, errorMessage)))
             .createdAt(Instant.now())
             .build();

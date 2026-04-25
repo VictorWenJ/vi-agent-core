@@ -3,6 +3,7 @@ package com.vi.agent.core.runtime.context.builder;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
 import com.vi.agent.core.model.context.ContextPriority;
+import com.vi.agent.core.model.context.ContextSourceType;
 import com.vi.agent.core.model.context.block.ContextBlock;
 import com.vi.agent.core.model.context.block.ContextSourceRef;
 import com.vi.agent.core.model.context.block.ConversationSummaryBlock;
@@ -16,7 +17,9 @@ import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetCalculator;
 import com.vi.agent.core.runtime.context.loader.MemoryLoadBundle;
 import com.vi.agent.core.runtime.context.loader.WorkingContextLoadCommand;
+import com.vi.agent.core.runtime.context.render.SessionStateBlockRenderer;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -36,8 +39,16 @@ public class ContextBlockFactory {
 
     private final ContextBudgetCalculator contextBudgetCalculator;
 
+    private final SessionStateBlockRenderer sessionStateBlockRenderer;
+
     public ContextBlockFactory(ContextBudgetCalculator contextBudgetCalculator) {
+        this(contextBudgetCalculator, new SessionStateBlockRenderer());
+    }
+
+    @Autowired
+    public ContextBlockFactory(ContextBudgetCalculator contextBudgetCalculator, SessionStateBlockRenderer sessionStateBlockRenderer) {
         this.contextBudgetCalculator = contextBudgetCalculator;
+        this.sessionStateBlockRenderer = sessionStateBlockRenderer;
     }
 
     /**
@@ -80,7 +91,7 @@ public class ContextBlockFactory {
             .tokenEstimate(contextBudgetCalculator.estimateText(renderedText))
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
-                .sourceType("runtime_instruction")
+                .sourceType(ContextSourceType.RUNTIME_INSTRUCTION)
                 .sourceId(RUNTIME_TEMPLATE_KEY)
                 .fieldPath("renderedText")
                 .build()))
@@ -92,7 +103,7 @@ public class ContextBlockFactory {
     }
 
     private SessionStateBlock buildSessionStateBlock(SessionStateSnapshot stateSnapshot) {
-        String renderedText = renderState(stateSnapshot);
+        String renderedText = sessionStateBlockRenderer.render(stateSnapshot);
         return SessionStateBlock.builder()
             .blockId(nextBlockId())
             .priority(ContextPriority.HIGH)
@@ -100,7 +111,7 @@ public class ContextBlockFactory {
             .tokenEstimate(contextBudgetCalculator.estimateText(renderedText))
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
-                .sourceType("session_state")
+                .sourceType(ContextSourceType.SESSION_STATE_SNAPSHOT)
                 .sourceId(stateSnapshot.getSnapshotId())
                 .fieldPath("state")
                 .build()))
@@ -122,7 +133,7 @@ public class ContextBlockFactory {
             .tokenEstimate(contextBudgetCalculator.estimateText(renderedText))
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
-                .sourceType("conversation_summary")
+                .sourceType(ContextSourceType.CONVERSATION_SUMMARY)
                 .sourceId(summary.getSummaryId())
                 .fieldPath("summaryText")
                 .build()))
@@ -144,7 +155,7 @@ public class ContextBlockFactory {
             .tokenEstimate(contextBudgetCalculator.estimateMessages(recentRawMessages))
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
-                .sourceType("session_working_set")
+                .sourceType(ContextSourceType.TRANSCRIPT_MESSAGE)
                 .sourceId(bundle.getSessionWorkingSetSnapshot() == null
                     ? String.valueOf(bundle.getWorkingSetVersion())
                     : bundle.getSessionWorkingSetSnapshot().getSessionId())
@@ -166,7 +177,7 @@ public class ContextBlockFactory {
             .tokenEstimate(contextBudgetCalculator.estimateMessage(currentUserMessage))
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
-                .sourceType("current_user_message")
+                .sourceType(ContextSourceType.CURRENT_USER_MESSAGE)
                 .sourceId(currentUserMessage == null ? null : currentUserMessage.getMessageId())
                 .fieldPath("contentText")
                 .build()))
@@ -174,32 +185,6 @@ public class ContextBlockFactory {
             .currentUserMessageId(currentUserMessage == null ? null : currentUserMessage.getMessageId())
             .currentUserMessage(currentUserMessage)
             .build();
-    }
-
-    private String renderState(SessionStateSnapshot stateSnapshot) {
-        List<String> lines = new ArrayList<>();
-        if (StringUtils.isNotBlank(stateSnapshot.getTaskGoal())) {
-            lines.add("Task goal: " + stateSnapshot.getTaskGoal());
-        }
-        if (stateSnapshot.getWorkingMode() != null) {
-            lines.add("Working mode: " + stateSnapshot.getWorkingMode().name());
-        }
-        if (stateSnapshot.getPhaseState() != null) {
-            lines.add("Phase state: contextAudit=" + stateSnapshot.getPhaseState().getContextAuditEnabled()
-                + ", summary=" + stateSnapshot.getPhaseState().getSummaryEnabled()
-                + ", stateExtraction=" + stateSnapshot.getPhaseState().getStateExtractionEnabled()
-                + ", compaction=" + stateSnapshot.getPhaseState().getCompactionEnabled());
-        }
-        lines.add("Confirmed facts: " + sizeOf(stateSnapshot.getConfirmedFacts()));
-        lines.add("Constraints: " + sizeOf(stateSnapshot.getConstraints()));
-        lines.add("Decisions: " + sizeOf(stateSnapshot.getDecisions()));
-        lines.add("Open loops: " + sizeOf(stateSnapshot.getOpenLoops()));
-        lines.add("Recent tool outcomes: " + sizeOf(stateSnapshot.getRecentToolOutcomes()));
-        return String.join("\n", lines);
-    }
-
-    private int sizeOf(List<?> values) {
-        return values == null ? 0 : values.size();
     }
 
     private String nextBlockId() {

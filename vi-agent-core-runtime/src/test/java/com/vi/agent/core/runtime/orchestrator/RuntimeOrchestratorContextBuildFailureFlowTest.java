@@ -7,7 +7,8 @@ import com.vi.agent.core.model.conversation.ConversationStatus;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.SessionLockRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
-import com.vi.agent.core.model.runtime.AgentRunState;
+import com.vi.agent.core.model.runtime.RunEventRecord;
+import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.runtime.RunMetadata;
 import com.vi.agent.core.model.runtime.RunStatus;
 import com.vi.agent.core.model.session.Session;
@@ -19,16 +20,14 @@ import com.vi.agent.core.model.turn.TurnStatus;
 import com.vi.agent.core.runtime.command.RuntimeExecuteCommand;
 import com.vi.agent.core.runtime.completion.RuntimeCompletionHandler;
 import com.vi.agent.core.runtime.dedup.RuntimeDeduplicationHandler;
-import com.vi.agent.core.runtime.event.RuntimeEvent;
-import com.vi.agent.core.runtime.factory.RuntimeEventFactory;
 import com.vi.agent.core.runtime.event.RuntimeEventSink;
 import com.vi.agent.core.runtime.event.RuntimeEventSinkFactory;
-import com.vi.agent.core.runtime.event.RuntimeEventType;
 import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.AgentExecutionResultFactory;
 import com.vi.agent.core.runtime.factory.AgentRunContextFactory;
 import com.vi.agent.core.runtime.factory.MessageFactory;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
+import com.vi.agent.core.runtime.factory.RuntimeEventFactory;
 import com.vi.agent.core.runtime.failure.RuntimeFailureHandler;
 import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.lifecycle.TurnStartResult;
@@ -48,30 +47,24 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
+class RuntimeOrchestratorContextBuildFailureFlowTest {
 
     @Test
-    void executeShouldReturnFailedOnInvalidModelContext() {
+    void executeShouldPersistRunFailedWhenAgentRunContextFactoryFailsBeforeLoop() {
         Fixture fixture = new Fixture();
-
-        RuntimeOrchestrator orchestrator = fixture.buildOrchestrator(new ArrayList<>());
+        RuntimeOrchestrator orchestrator = fixture.buildOrchestrator();
 
         AgentExecutionResult result = orchestrator.execute(fixture.command());
 
         assertEquals(RunStatus.FAILED, result.getRunStatus());
-        assertEquals(1, fixture.persistenceCoordinator.persistFailureCount);
-    }
-
-    @Test
-    void executeStreamingShouldEmitRunFailed() {
-        Fixture fixture = new Fixture();
-        List<RuntimeEvent> events = new ArrayList<>();
-        RuntimeOrchestrator orchestrator = fixture.buildOrchestrator(events);
-
-        orchestrator.executeStreaming(fixture.command(), events::add);
-
-        assertEquals(RuntimeEventType.RUN_FAILED, events.get(events.size() - 1).getEventType());
-        assertEquals(1, fixture.persistenceCoordinator.persistFailureCount);
+        assertEquals(1, fixture.persistenceCoordinator.preRunContextFailureCount);
+        assertEquals(0, fixture.persistenceCoordinator.persistFailureCount);
+        assertEquals(0, fixture.loopInvocationService.invocationCount);
+        assertEquals(TurnStatus.FAILED, fixture.turn.getStatus());
+        assertEquals(SessionStatus.ACTIVE, fixture.session.getStatus());
+        assertEquals(List.of(RunEventType.RUN_FAILED), fixture.persistenceCoordinator.savedEvents.stream()
+            .map(RunEventRecord::getEventType)
+            .toList());
     }
 
     private static final class Fixture {
@@ -104,8 +97,8 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
             .build();
 
         private final UserMessage userMessage = UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "hello");
-
-        private final StubPersistenceCoordinator persistenceCoordinator = new StubPersistenceCoordinator();
+        private final RecordingPersistenceCoordinator persistenceCoordinator = new RecordingPersistenceCoordinator();
+        private final RecordingLoopInvocationService loopInvocationService = new RecordingLoopInvocationService();
 
         RuntimeExecuteCommand command() {
             return RuntimeExecuteCommand.builder()
@@ -117,7 +110,7 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
                 .build();
         }
 
-        RuntimeOrchestrator buildOrchestrator(List<RuntimeEvent> events) {
+        RuntimeOrchestrator buildOrchestrator() {
             RuntimeFailureHandler failureHandler = new RuntimeFailureHandler();
             TestFieldUtils.setField(failureHandler, "persistenceCoordinator", persistenceCoordinator);
             TestFieldUtils.setField(failureHandler, "agentExecutionResultFactory", new AgentExecutionResultFactory());
@@ -132,9 +125,9 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
             TestFieldUtils.setField(orchestrator, "runIdentityFactory", new StubRunIdentityFactory());
             TestFieldUtils.setField(orchestrator, "runScopeManager", new StubRunScopeManager());
             TestFieldUtils.setField(orchestrator, "turnLifecycleService", new StubTurnStartLifecycleService(turn, userMessage));
-            TestFieldUtils.setField(orchestrator, "agentRunContextFactory", new StubAgentRunContextFactory(conversation, session, turn));
+            TestFieldUtils.setField(orchestrator, "agentRunContextFactory", new FailingAgentRunContextFactory());
             TestFieldUtils.setField(orchestrator, "eventSinkFactory", eventSinkFactory);
-            TestFieldUtils.setField(orchestrator, "loopInvocationService", new StubLoopInvocationService());
+            TestFieldUtils.setField(orchestrator, "loopInvocationService", loopInvocationService);
             TestFieldUtils.setField(orchestrator, "completionHandler", new StubCompletionHandler());
             TestFieldUtils.setField(orchestrator, "failureHandler", failureHandler);
             return orchestrator;
@@ -218,49 +211,50 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
         }
     }
 
-    private static final class StubAgentRunContextFactory extends AgentRunContextFactory {
-        private final Conversation conversation;
-        private final Session session;
-        private final Turn turn;
-
-        private StubAgentRunContextFactory(Conversation conversation, Session session, Turn turn) {
-            this.conversation = conversation;
-            this.session = session;
-            this.turn = turn;
-        }
-
+    private static final class FailingAgentRunContextFactory extends AgentRunContextFactory {
         @Override
         public AgentRunContext create(RuntimeExecutionContext context) {
-            return AgentRunContext.builder()
-                .runMetadata(context.getRunMetadata())
-                .conversation(conversation)
-                .session(session)
-                .turn(turn)
-                .userInput("hello")
-                .workingMessages(new ArrayList<>(List.of(context.getUserMessage())))
-                .availableTools(List.of())
-                .state(AgentRunState.STARTED)
-                .iteration(0)
-                .build();
+            throw new AgentRuntimeException(ErrorCode.INVALID_MODEL_CONTEXT_MESSAGE, "working context validation failed");
         }
     }
 
-    private static final class StubLoopInvocationService extends LoopInvocationService {
+    private static final class RecordingLoopInvocationService extends LoopInvocationService {
+        private int invocationCount;
+
         @Override
         public com.vi.agent.core.model.runtime.LoopExecutionResult process(RuntimeExecutionContext context, RuntimeEventSink eventSink) {
-            throw new AgentRuntimeException(ErrorCode.INVALID_MODEL_CONTEXT_MESSAGE, "invalid model context chain");
+            invocationCount++;
+            throw new IllegalStateException("loop should not be called");
         }
     }
 
     private static final class StubCompletionHandler extends RuntimeCompletionHandler {
         @Override
         public AgentExecutionResult complete(RuntimeExecutionContext context, RuntimeEventSink eventSink) {
-            throw new IllegalStateException("should not be called");
+            throw new IllegalStateException("completion should not be called");
         }
     }
 
-    private static final class StubPersistenceCoordinator extends PersistenceCoordinator {
+    private static final class RecordingPersistenceCoordinator extends PersistenceCoordinator {
+        private int preRunContextFailureCount;
         private int persistFailureCount;
+        private final List<RunEventRecord> savedEvents = new ArrayList<>();
+
+        @Override
+        public void persistPreRunContextFailure(RuntimeExecutionContext context, String errorCode, String errorMessage) {
+            preRunContextFailureCount++;
+            context.getTurn().markFailed(errorCode, errorMessage, Instant.now());
+            context.getResolution().getSession().touch(Instant.now());
+            savedEvents.add(RunEventRecord.builder()
+                .eventId("evt-1")
+                .conversationId(context.conversationId())
+                .sessionId(context.sessionId())
+                .turnId(context.turnId())
+                .runId(context.runId())
+                .eventIndex(1)
+                .eventType(RunEventType.RUN_FAILED)
+                .build());
+        }
 
         @Override
         public void persistFailure(AgentRunContext runContext, String errorCode, String errorMessage) {
@@ -268,4 +262,3 @@ class RuntimeOrchestratorInvalidModelContextFailureFlowTest {
         }
     }
 }
-

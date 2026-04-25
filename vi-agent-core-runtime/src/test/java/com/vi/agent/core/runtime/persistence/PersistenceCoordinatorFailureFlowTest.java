@@ -21,6 +21,8 @@ import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.runtime.RunMetadata;
 import com.vi.agent.core.model.session.Session;
 import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
+import com.vi.agent.core.model.session.SessionMode;
+import com.vi.agent.core.model.session.SessionResolutionResult;
 import com.vi.agent.core.model.session.SessionStatus;
 import com.vi.agent.core.runtime.persistence.SessionWorkingSetLoader;
 import com.vi.agent.core.model.tool.ToolCallStatus;
@@ -28,6 +30,8 @@ import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import com.vi.agent.core.model.turn.Turn;
 import com.vi.agent.core.model.turn.TurnStatus;
+import com.vi.agent.core.runtime.command.RuntimeExecuteCommand;
+import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.RunIdentityFactory;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import org.junit.jupiter.api.Test;
@@ -114,6 +118,46 @@ class PersistenceCoordinatorFailureFlowTest {
             .filter(event -> event.getEventType() == RunEventType.RUN_FAILED)
             .allMatch(event -> event.getActorType() == RunEventActorType.AGENT));
         assertEquals("sess-1", sessionWorkingSetRepository.lastEvictedSessionId);
+    }
+
+    @Test
+    void persistPreRunContextFailureShouldWriteRunFailedAndKeepSessionActive() {
+        PersistenceCoordinator coordinator = new PersistenceCoordinator();
+        StubMessageRepository messageRepository = new StubMessageRepository();
+        StubTurnRepository turnRepository = new StubTurnRepository();
+        StubSessionRepository sessionRepository = new StubSessionRepository();
+        StubConversationRepository conversationRepository = new StubConversationRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
+        StubRunEventRepository runEventRepository = new StubRunEventRepository();
+
+        TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
+        TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
+        TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
+        TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
+        TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
+        TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetLoader", new StubSessionWorkingSetLoader());
+
+        RuntimeExecutionContext context = buildPreRunContext();
+
+        coordinator.persistPreRunContextFailure(context, "INVALID_MODEL_CONTEXT_MESSAGE", "invalid context chain");
+
+        assertNotNull(turnRepository.lastUpdatedTurn);
+        assertEquals(TurnStatus.FAILED, turnRepository.lastUpdatedTurn.getStatus());
+        assertEquals("INVALID_MODEL_CONTEXT_MESSAGE", turnRepository.lastUpdatedTurn.getErrorCode());
+
+        assertNotNull(sessionRepository.lastUpdatedSession);
+        assertEquals(SessionStatus.ACTIVE, sessionRepository.lastUpdatedSession.getStatus());
+
+        assertEquals(1, runEventRepository.savedEvents.size());
+        RunEventRecord runFailedEvent = runEventRepository.savedEvents.get(0);
+        assertEquals(RunEventType.RUN_FAILED, runFailedEvent.getEventType());
+        assertEquals(RunEventActorType.AGENT, runFailedEvent.getActorType());
+        assertEquals("run-1", runFailedEvent.getActorId());
+        assertEquals(Integer.valueOf(1), runFailedEvent.getEventIndex());
+        assertTrue(runFailedEvent.getPayloadJson().contains("INVALID_MODEL_CONTEXT_MESSAGE"));
+        assertNull(sessionWorkingSetRepository.lastEvictedSessionId);
     }
 
     @Test
@@ -343,6 +387,55 @@ class PersistenceCoordinatorFailureFlowTest {
             .workingMessages(new ArrayList<>())
             .availableTools(List.of())
             .build();
+    }
+
+    private RuntimeExecutionContext buildPreRunContext() {
+        RuntimeExecuteCommand command = RuntimeExecuteCommand.builder()
+            .requestId("req-1")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .sessionMode(SessionMode.CONTINUE_EXACT_SESSION)
+            .message("hello")
+            .build();
+        RuntimeExecutionContext context = RuntimeExecutionContext.create(command, null, false);
+        Conversation conversation = Conversation.builder()
+            .conversationId("conv-1")
+            .status(ConversationStatus.ACTIVE)
+            .activeSessionId("sess-1")
+            .createdAt(Instant.now())
+            .updatedAt(Instant.now())
+            .lastMessageAt(Instant.now())
+            .build();
+        Session session = Session.builder()
+            .sessionId("sess-1")
+            .conversationId("conv-1")
+            .status(SessionStatus.ACTIVE)
+            .createdAt(Instant.now())
+            .updatedAt(Instant.now())
+            .build();
+        Turn turn = Turn.builder()
+            .turnId("turn-1")
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .requestId("req-1")
+            .runId("run-1")
+            .status(TurnStatus.RUNNING)
+            .userMessageId("msg-user-1")
+            .createdAt(Instant.now())
+            .build();
+        context.setResolution(SessionResolutionResult.builder()
+            .conversation(conversation)
+            .session(session)
+            .createdConversation(false)
+            .createdSession(false)
+            .build());
+        context.setRunMetadata(RunMetadata.builder()
+            .traceId("trace-1")
+            .runId("run-1")
+            .turnId("turn-1")
+            .build());
+        context.setTurn(turn);
+        return context;
     }
 
     private AssistantToolCall toolCall(String recordId, String callId, ToolCallStatus status) {

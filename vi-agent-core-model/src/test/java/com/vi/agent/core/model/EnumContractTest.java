@@ -6,6 +6,7 @@ import com.vi.agent.core.model.context.CheckpointTrigger;
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
 import com.vi.agent.core.model.context.ContextBlockType;
 import com.vi.agent.core.model.context.ContextPriority;
+import com.vi.agent.core.model.context.ContextSourceType;
 import com.vi.agent.core.model.context.ContextViewType;
 import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.AnswerStyle;
@@ -54,6 +55,7 @@ class EnumContractTest {
         assertEnumContract(WorkingMode.class);
         assertEnumContract(ContextViewType.class);
         assertEnumContract(ContextBlockType.class);
+        assertEnumContract(ContextSourceType.class);
         assertEnumContract(ContextPriority.class);
         assertEnumContract(CheckpointTrigger.class);
         assertEnumContract(CheckpointReason.class);
@@ -81,6 +83,7 @@ class EnumContractTest {
         assertChineseDesc(WorkingMode.class);
         assertChineseDesc(ContextViewType.class);
         assertChineseDesc(ContextBlockType.class);
+        assertChineseDesc(ContextSourceType.class);
         assertChineseDesc(ContextPriority.class);
         assertChineseDesc(CheckpointTrigger.class);
         assertChineseDesc(CheckpointReason.class);

@@ -22,7 +22,6 @@ import com.vi.agent.core.runtime.event.RuntimeEventType;
 import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.AgentExecutionResultFactory;
 import com.vi.agent.core.runtime.factory.RuntimeEventFactory;
-import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
@@ -33,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class RuntimeFailureHandlerTest {
 
@@ -40,9 +40,7 @@ class RuntimeFailureHandlerTest {
     void shouldReturnFailedResultAndPersistFailureWhenTurnExists() {
         RuntimeFailureHandler handler = new RuntimeFailureHandler();
         StubPersistenceCoordinator persistenceCoordinator = new StubPersistenceCoordinator();
-        StubTurnLifecycleService turnLifecycleService = new StubTurnLifecycleService();
         TestFieldUtils.setField(handler, "persistenceCoordinator", persistenceCoordinator);
-        TestFieldUtils.setField(handler, "turnLifecycleService", turnLifecycleService);
         TestFieldUtils.setField(handler, "agentExecutionResultFactory", new AgentExecutionResultFactory());
 
         RuntimeExecutionContext context = buildContext(true, true);
@@ -54,7 +52,6 @@ class RuntimeFailureHandlerTest {
 
         assertEquals(RunStatus.FAILED, result.getRunStatus());
         assertEquals(1, persistenceCoordinator.persistFailureCount);
-        assertEquals(0, turnLifecycleService.failTurnCount);
         assertEquals(AgentRunState.FAILED, context.getRunContext().getState());
         assertEquals(1, events.size());
         assertEquals(RuntimeEventType.RUN_FAILED, events.get(0).getEventType());
@@ -65,9 +62,7 @@ class RuntimeFailureHandlerTest {
     void shouldWrapThrowableToRuntimeExecutionFailed() {
         RuntimeFailureHandler handler = new RuntimeFailureHandler();
         StubPersistenceCoordinator persistenceCoordinator = new StubPersistenceCoordinator();
-        StubTurnLifecycleService turnLifecycleService = new StubTurnLifecycleService();
         TestFieldUtils.setField(handler, "persistenceCoordinator", persistenceCoordinator);
-        TestFieldUtils.setField(handler, "turnLifecycleService", turnLifecycleService);
         TestFieldUtils.setField(handler, "agentExecutionResultFactory", new AgentExecutionResultFactory());
 
         RuntimeExecutionContext context = buildContext(true, true);
@@ -80,12 +75,10 @@ class RuntimeFailureHandlerTest {
     }
 
     @Test
-    void shouldFallbackToFailTurnWhenNoRunContext() {
+    void shouldPersistPreRunContextFailureWhenNoRunContext() {
         RuntimeFailureHandler handler = new RuntimeFailureHandler();
         StubPersistenceCoordinator persistenceCoordinator = new StubPersistenceCoordinator();
-        StubTurnLifecycleService turnLifecycleService = new StubTurnLifecycleService();
         TestFieldUtils.setField(handler, "persistenceCoordinator", persistenceCoordinator);
-        TestFieldUtils.setField(handler, "turnLifecycleService", turnLifecycleService);
         TestFieldUtils.setField(handler, "agentExecutionResultFactory", new AgentExecutionResultFactory());
 
         RuntimeExecutionContext context = buildContext(true, false);
@@ -95,8 +88,8 @@ class RuntimeFailureHandlerTest {
 
         assertEquals(RunStatus.FAILED, result.getRunStatus());
         assertEquals(0, persistenceCoordinator.persistFailureCount);
-        assertEquals(1, turnLifecycleService.failTurnCount);
-        assertEquals("turn-1", turnLifecycleService.lastTurn.getTurnId());
+        assertEquals(1, persistenceCoordinator.preRunContextFailureCount);
+        assertSame(context, persistenceCoordinator.lastPreRunContext);
     }
 
     private static RuntimeExecutionContext buildContext(boolean withTurn, boolean withRunContext) {
@@ -179,16 +172,14 @@ class RuntimeFailureHandlerTest {
         public void persistFailure(AgentRunContext runContext, String errorCode, String errorMessage) {
             persistFailureCount++;
         }
-    }
 
-    private static final class StubTurnLifecycleService extends TurnLifecycleService {
-        private int failTurnCount = 0;
-        private Turn lastTurn;
+        private int preRunContextFailureCount = 0;
+        private RuntimeExecutionContext lastPreRunContext;
 
         @Override
-        public void failTurn(Turn turn, String errorCode, String errorMessage) {
-            failTurnCount++;
-            lastTurn = turn;
+        public void persistPreRunContextFailure(RuntimeExecutionContext context, String errorCode, String errorMessage) {
+            preRunContextFailureCount++;
+            lastPreRunContext = context;
         }
     }
 }

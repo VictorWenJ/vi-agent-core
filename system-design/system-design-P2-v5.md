@@ -460,6 +460,19 @@ Internal task 如需写入 `agent_run_event`，必须使用显式 `RunEventType`
 | `TOOL_OUTCOME_DIGEST` | 指向工具结果摘要 |
 | `OPEN_LOOP` | 指向未完成事项 |
 
+#### 5.3.18 `ContextSourceType `
+
+| 枚举值 | 说明 |
+|---|---|
+| `RUNTIME_INSTRUCTION` | 指向运行时指令来源 |
+| `SESSION_STATE_SNAPSHOT` | 指向会话状态快照来源 |
+| `CONVERSATION_SUMMARY` | 指向会话摘要来源 |
+| `TRANSCRIPT_MESSAGE` | 指向 completed raw transcript message 来源 |
+| `CURRENT_USER_MESSAGE` | 指向当前用户消息来源 |
+| `CONTEXT_REFERENCE` | 指向外部上下文引用来源 |
+| `COMPACTION_NOTE` | 指向上下文压缩说明来源 |
+>`ContextSourceType` 用于描述 `ContextSourceRef` 指向的数据来源类型，不等同于 `ContextBlockType`。`ContextBlockType` 描述上下文块自身类型，`ContextSourceType` 描述该块内容的来源。
+
 ---
 
 ## 6. 对外协议设计（API / Stream）
@@ -738,6 +751,13 @@ abstract class ContextBlock {
     Integer tokenEstimate;                // 估算 token
     ContextAssemblyDecision decision;     // keep/trim/drop/replace
     List<ContextSourceRef> sourceRefs;    // 来源引用
+}
+
+class ContextSourceRef {
+    ContextSourceType sourceType;
+    String sourceId;
+    String sourceVersion;
+    String fieldPath;
 }
 ```
 

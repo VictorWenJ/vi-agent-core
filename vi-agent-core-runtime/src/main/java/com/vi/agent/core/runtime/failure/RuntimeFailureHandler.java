@@ -5,7 +5,6 @@ import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.runtime.event.RuntimeEventSink;
 import com.vi.agent.core.runtime.execution.RuntimeExecutionContext;
 import com.vi.agent.core.runtime.factory.AgentExecutionResultFactory;
-import com.vi.agent.core.runtime.lifecycle.TurnLifecycleService;
 import com.vi.agent.core.runtime.persistence.PersistenceCoordinator;
 import com.vi.agent.core.runtime.result.AgentExecutionResult;
 import jakarta.annotation.Resource;
@@ -20,9 +19,6 @@ public class RuntimeFailureHandler {
 
     @Resource
     private PersistenceCoordinator persistenceCoordinator;
-
-    @Resource
-    private TurnLifecycleService turnLifecycleService;
 
     @Resource
     private AgentExecutionResultFactory agentExecutionResultFactory;
@@ -40,7 +36,7 @@ public class RuntimeFailureHandler {
             if (context.hasRunContext()) {
                 persistenceCoordinator.persistFailure(context.getRunContext(), errorCode, errorMessage);
             } else {
-                turnLifecycleService.failTurn(context.getTurn(), errorCode, errorMessage);
+                persistenceCoordinator.persistPreRunContextFailure(context, errorCode, errorMessage);
             }
         }
 

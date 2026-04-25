@@ -1,6 +1,7 @@
 package com.vi.agent.core.runtime.context.projector;
 
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
+import com.vi.agent.core.model.context.ContextBlockType;
 import com.vi.agent.core.model.context.ContextViewType;
 import com.vi.agent.core.model.context.WorkingContext;
 import com.vi.agent.core.model.context.WorkingContextProjection;
@@ -11,12 +12,15 @@ import com.vi.agent.core.model.context.block.RecentMessagesBlock;
 import com.vi.agent.core.model.context.block.RuntimeInstructionBlock;
 import com.vi.agent.core.model.context.block.SessionStateBlock;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.SummaryMessage;
 import com.vi.agent.core.model.message.SystemMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -25,6 +29,17 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Component
 public class WorkingContextProjector {
+
+    private final SyntheticMessageIdGenerator syntheticMessageIdGenerator;
+
+    public WorkingContextProjector() {
+        this(new SyntheticMessageIdGenerator());
+    }
+
+    @Autowired
+    public WorkingContextProjector(SyntheticMessageIdGenerator syntheticMessageIdGenerator) {
+        this.syntheticMessageIdGenerator = Objects.requireNonNull(syntheticMessageIdGenerator, "syntheticMessageIdGenerator must not be null");
+    }
 
     public WorkingContextProjection project(WorkingContext context) {
         List<Message> modelMessages = new ArrayList<>();
@@ -37,46 +52,43 @@ public class WorkingContextProjector {
             .filter(RuntimeInstructionBlock.class::isInstance)
             .map(RuntimeInstructionBlock.class::cast)
             .findFirst()
-            .map(block -> SystemMessage.create(
-                nextSyntheticMessageId("runtime"),
+            .ifPresent(block -> modelMessages.add(SystemMessage.create(
+                syntheticMessageIdGenerator.newSyntheticMessageId(MessageRole.SYSTEM, ContextBlockType.RUNTIME_INSTRUCTION),
                 context.getMetadata().getConversationId(),
                 context.getMetadata().getSessionId(),
                 context.getMetadata().getTurnId(),
                 context.getMetadata().getRunId(),
                 syntheticSequence.getAndDecrement(),
                 block.getRenderedText()
-            ))
-            .ifPresent(modelMessages::add);
+            )));
 
         blocks.stream()
             .filter(SessionStateBlock.class::isInstance)
             .map(SessionStateBlock.class::cast)
             .findFirst()
-            .map(block -> SummaryMessage.create(
-                nextSyntheticMessageId("state"),
+            .ifPresent(block -> modelMessages.add(SummaryMessage.create(
+                syntheticMessageIdGenerator.newSyntheticMessageId(MessageRole.SUMMARY, ContextBlockType.SESSION_STATE),
                 context.getMetadata().getConversationId(),
                 context.getMetadata().getSessionId(),
                 context.getMetadata().getTurnId(),
                 context.getMetadata().getRunId(),
                 syntheticSequence.getAndDecrement(),
                 block.getRenderedText()
-            ))
-            .ifPresent(modelMessages::add);
+            )));
 
         blocks.stream()
             .filter(ConversationSummaryBlock.class::isInstance)
             .map(ConversationSummaryBlock.class::cast)
             .findFirst()
-            .map(block -> SummaryMessage.create(
-                nextSyntheticMessageId("summary"),
+            .ifPresent(block -> modelMessages.add(SummaryMessage.create(
+                syntheticMessageIdGenerator.newSyntheticMessageId(MessageRole.SUMMARY, ContextBlockType.CONVERSATION_SUMMARY),
                 context.getMetadata().getConversationId(),
                 context.getMetadata().getSessionId(),
                 context.getMetadata().getTurnId(),
                 context.getMetadata().getRunId(),
                 syntheticSequence.getAndDecrement(),
                 block.getRenderedText()
-            ))
-            .ifPresent(modelMessages::add);
+            )));
 
         blocks.stream()
             .filter(RecentMessagesBlock.class::isInstance)
@@ -101,7 +113,4 @@ public class WorkingContextProjector {
             .build();
     }
 
-    private String nextSyntheticMessageId(String messageKind) {
-        return "ctxmsg-" + messageKind + "-" + UUID.randomUUID();
-    }
 }

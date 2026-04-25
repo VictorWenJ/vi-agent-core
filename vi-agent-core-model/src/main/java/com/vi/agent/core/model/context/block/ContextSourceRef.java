@@ -1,5 +1,6 @@
 package com.vi.agent.core.model.context.block;
 
+import com.vi.agent.core.model.context.ContextSourceType;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -11,7 +12,7 @@ import lombok.Getter;
 public class ContextSourceRef {
 
     /** 来源类型。 */
-    private final String sourceType;
+    private final ContextSourceType sourceType;
 
     /** 来源对象 ID。 */
     private final String sourceId;

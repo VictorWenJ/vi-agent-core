@@ -1,18 +1,30 @@
 package com.vi.agent.core.runtime.context.builder;
 
 import com.vi.agent.core.model.context.ContextBlockType;
+import com.vi.agent.core.model.context.ContextSourceType;
+import com.vi.agent.core.model.context.WorkingContext;
+import com.vi.agent.core.model.context.WorkingContextProjection;
 import com.vi.agent.core.model.context.block.ContextBlock;
 import com.vi.agent.core.model.context.block.ConversationSummaryBlock;
 import com.vi.agent.core.model.context.block.CurrentUserMessageBlock;
 import com.vi.agent.core.model.context.block.RecentMessagesBlock;
 import com.vi.agent.core.model.context.block.RuntimeInstructionBlock;
 import com.vi.agent.core.model.context.block.SessionStateBlock;
+import com.vi.agent.core.model.memory.ConfirmedFactRecord;
+import com.vi.agent.core.model.memory.ConstraintRecord;
+import com.vi.agent.core.model.memory.DecisionRecord;
+import com.vi.agent.core.model.memory.OpenLoop;
+import com.vi.agent.core.model.memory.OpenLoopStatus;
+import com.vi.agent.core.model.memory.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.ToolOutcomeDigest;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.SummaryMessage;
 import com.vi.agent.core.runtime.context.ContextTestFixtures;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetCalculator;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetProperties;
 import com.vi.agent.core.runtime.context.loader.MemoryLoadBundle;
 import com.vi.agent.core.runtime.context.loader.WorkingContextLoadCommand;
+import com.vi.agent.core.runtime.context.projector.WorkingContextProjector;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -76,6 +88,35 @@ class ContextBlockFactoryTest {
         ), blocks.stream().map(ContextBlock::getBlockType).toList());
     }
 
+    @Test
+    void buildBlocksShouldRenderConcreteSessionStateAndProjectIt() {
+        ContextBlockFactory factory = new ContextBlockFactory(new ContextBudgetCalculator(new ContextBudgetProperties(500, 20, 20, 10)));
+        MemoryLoadBundle bundle = MemoryLoadBundle.builder()
+            .workingSetVersion(2L)
+            .recentRawMessages(List.of())
+            .latestState(detailedState())
+            .currentUserMessage(ContextTestFixtures.currentUserMessage())
+            .agentMode(com.vi.agent.core.model.context.AgentMode.GENERAL)
+            .contextViewType(com.vi.agent.core.model.context.ContextViewType.MAIN_AGENT)
+            .build();
+
+        List<ContextBlock> blocks = factory.buildBlocks(loadCommand(), bundle);
+        SessionStateBlock stateBlock = (SessionStateBlock) blocks.get(1);
+        WorkingContext context = ContextTestFixtures.context(blocks, ContextTestFixtures.budget(80));
+        WorkingContextProjection projection = new WorkingContextProjector().project(context);
+        SummaryMessage stateMessage = (SummaryMessage) projection.getModelMessages().get(1);
+
+        assertEquals(ContextSourceType.SESSION_STATE_SNAPSHOT, stateBlock.getSourceRefs().get(0).getSourceType());
+        assertTrue(stateBlock.getRenderedText().contains("Fact content for prompt."));
+        assertTrue(stateBlock.getRenderedText().contains("Constraint content for prompt."));
+        assertTrue(stateBlock.getRenderedText().contains("Decision title"));
+        assertTrue(stateBlock.getRenderedText().contains("Decision text."));
+        assertTrue(stateBlock.getRenderedText().contains("[OPEN] Open loop title - Open loop description."));
+        assertTrue(stateBlock.getRenderedText().contains("toolA - Tool digest text."));
+        assertTrue(stateMessage.getContentText().contains("Fact content for prompt."));
+        assertTrue(stateMessage.getContentText().contains("Constraint content for prompt."));
+    }
+
     private WorkingContextLoadCommand loadCommand() {
         return WorkingContextLoadCommand.builder()
             .conversationId(ContextTestFixtures.CONVERSATION_ID)
@@ -87,6 +128,39 @@ class ContextBlockFactoryTest {
             .contextViewType(com.vi.agent.core.model.context.ContextViewType.MAIN_AGENT)
             .checkpointTrigger(com.vi.agent.core.model.context.CheckpointTrigger.BEFORE_FIRST_MODEL_CALL)
             .modelCallSequenceNo(1)
+            .build();
+    }
+
+    private SessionStateSnapshot detailedState() {
+        return SessionStateSnapshot.builder()
+            .snapshotId("state-detailed")
+            .sessionId(ContextTestFixtures.SESSION_ID)
+            .stateVersion(5L)
+            .taskGoal("Detailed goal")
+            .confirmedFact(ConfirmedFactRecord.builder()
+                .factId("fact-1")
+                .content("Fact content for prompt.")
+                .build())
+            .constraint(ConstraintRecord.builder()
+                .constraintId("constraint-1")
+                .content("Constraint content for prompt.")
+                .build())
+            .decision(DecisionRecord.builder()
+                .decisionId("decision-1")
+                .title("Decision title")
+                .decisionText("Decision text.")
+                .build())
+            .openLoop(OpenLoop.builder()
+                .openLoopId("loop-1")
+                .status(OpenLoopStatus.OPEN)
+                .title("Open loop title")
+                .description("Open loop description.")
+                .build())
+            .recentToolOutcome(ToolOutcomeDigest.builder()
+                .digestId("digest-1")
+                .toolName("toolA")
+                .digestText("Tool digest text.")
+                .build())
             .build();
     }
 }
