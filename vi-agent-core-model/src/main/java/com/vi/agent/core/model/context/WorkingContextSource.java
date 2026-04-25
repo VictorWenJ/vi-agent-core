@@ -3,6 +3,7 @@ package com.vi.agent.core.model.context;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import lombok.extern.jackson.Jacksonized;
 
 import java.util.List;
 
@@ -11,6 +12,7 @@ import java.util.List;
  */
 @Getter
 @Builder
+@Jacksonized
 public class WorkingContextSource {
 
     /** transcript 快照版本。 */
@@ -25,7 +27,7 @@ public class WorkingContextSource {
     /** conversation summary 版本。 */
     private final Long summaryVersion;
 
-    /** 参与本次上下文装配的 evidence ID 列表。 */
-    @Singular("evidenceId")
-    private final List<String> evidenceIds;
+    /** 参与本次上下文装配的 artifact/reference 快照 ID 列表。 */
+    @Singular("artifactSnapshotId")
+    private final List<String> artifactSnapshotIds;
 }

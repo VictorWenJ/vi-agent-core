@@ -1,10 +1,10 @@
 package com.vi.agent.core.infra.persistence.cache.session.repository;
 
-import com.vi.agent.core.infra.persistence.cache.session.document.SessionContextSnapshotDocument;
+import com.vi.agent.core.infra.persistence.cache.session.document.SessionWorkingSetSnapshotDocument;
 import com.vi.agent.core.infra.persistence.cache.session.key.SessionRedisKeyBuilder;
-import com.vi.agent.core.infra.persistence.cache.session.mapper.SessionContextRedisMapper;
-import com.vi.agent.core.model.port.SessionStateRepository;
-import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.infra.persistence.cache.session.mapper.SessionWorkingSetRedisMapper;
+import com.vi.agent.core.model.port.SessionWorkingSetRepository;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
@@ -19,11 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Redis 会话上下文快照仓储（hash 结构）。
- */
+ * Redis 浼氳瘽涓婁笅鏂囧揩鐓т粨鍌紙hash 缁撴瀯锛夈€? */
 @Slf4j
 @Repository
-public class RedisSessionContextRepository implements SessionStateRepository {
+public class RedisSessionWorkingSetRepository implements SessionWorkingSetRepository {
 
     private static final int SNAPSHOT_VERSION = 1;
 
@@ -34,46 +33,46 @@ public class RedisSessionContextRepository implements SessionStateRepository {
     private SessionRedisKeyBuilder keyBuilder;
 
     @Resource
-    private SessionContextRedisMapper sessionContextRedisMapper;
+    private SessionWorkingSetRedisMapper sessionWorkingSetRedisMapper;
 
-    @Value("${vi.agent.redis.ttl.session-context-seconds:1800}")
-    private long sessionContextTtlSeconds;
+    @Value("${vi.agent.redis.ttl.session-working-set-seconds:1800}")
+    private long sessionWorkingSetTtlSeconds;
 
     @Override
-    public SessionStateSnapshot findBySessionId(String sessionId) {
-        String key = keyBuilder.sessionContextKey(sessionId);
+    public SessionWorkingSetSnapshot findBySessionId(String sessionId) {
+        String key = keyBuilder.sessionWorkingSetKey(sessionId);
         Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(key);
         if (MapUtils.isEmpty(entries)) {
             return null;
         }
 
         try {
-            SessionContextSnapshotDocument document = fromHash(entries);
+            SessionWorkingSetSnapshotDocument document = fromHash(entries);
             if (document.getSnapshotVersion() == null || document.getSnapshotVersion() != SNAPSHOT_VERSION) {
-                log.warn("Redis session context snapshotVersion invalid, sessionId={}, version={}", sessionId, document.getSnapshotVersion());
+                log.warn("Redis session working set snapshotVersion invalid, sessionId={}, version={}", sessionId, document.getSnapshotVersion());
                 evict(sessionId);
                 return null;
             }
-            return sessionContextRedisMapper.toModel(document);
+            return sessionWorkingSetRedisMapper.toModel(document);
         } catch (Exception ex) {
-            log.warn("Redis session context parse failed, sessionId={}", sessionId, ex);
+            log.warn("Redis session working set parse failed, sessionId={}", sessionId, ex);
             evict(sessionId);
             return null;
         }
     }
 
     @Override
-    public void save(SessionStateSnapshot snapshot) {
+    public void save(SessionWorkingSetSnapshot snapshot) {
         if (snapshot == null || StringUtils.isBlank(snapshot.getSessionId())) {
             return;
         }
-        SessionContextSnapshotDocument document = sessionContextRedisMapper.toDocument(snapshot);
+        SessionWorkingSetSnapshotDocument document = sessionWorkingSetRedisMapper.toDocument(snapshot);
         document.setSnapshotVersion(SNAPSHOT_VERSION);
 
-        String key = keyBuilder.sessionContextKey(snapshot.getSessionId());
+        String key = keyBuilder.sessionWorkingSetKey(snapshot.getSessionId());
         Map<String, String> hash = toHash(document);
         stringRedisTemplate.opsForHash().putAll(key, hash);
-        stringRedisTemplate.expire(key, Duration.ofSeconds(sessionContextTtlSeconds));
+        stringRedisTemplate.expire(key, Duration.ofSeconds(sessionWorkingSetTtlSeconds));
     }
 
     @Override
@@ -81,11 +80,11 @@ public class RedisSessionContextRepository implements SessionStateRepository {
         if (StringUtils.isBlank(sessionId)) {
             return;
         }
-        stringRedisTemplate.delete(keyBuilder.sessionContextKey(sessionId));
+        stringRedisTemplate.delete(keyBuilder.sessionWorkingSetKey(sessionId));
     }
 
-    private SessionContextSnapshotDocument fromHash(Map<Object, Object> hash) {
-        return SessionContextSnapshotDocument.builder()
+    private SessionWorkingSetSnapshotDocument fromHash(Map<Object, Object> hash) {
+        return SessionWorkingSetSnapshotDocument.builder()
             .sessionId(getString(hash, "sessionId"))
             .conversationId(getString(hash, "conversationId"))
             .fromSequenceNo(getLong(hash, "fromSequenceNo"))
@@ -97,7 +96,7 @@ public class RedisSessionContextRepository implements SessionStateRepository {
             .build();
     }
 
-    private Map<String, String> toHash(SessionContextSnapshotDocument document) {
+    private Map<String, String> toHash(SessionWorkingSetSnapshotDocument document) {
         Map<String, String> hash = new HashMap<>();
         put(hash, "sessionId", document.getSessionId());
         put(hash, "conversationId", document.getConversationId());
@@ -132,3 +131,4 @@ public class RedisSessionContextRepository implements SessionStateRepository {
         return StringUtils.isBlank(value) ? null : Integer.parseInt(value);
     }
 }
+

@@ -4,6 +4,7 @@ import com.vi.agent.core.model.message.Message;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.List;
  */
 @Getter
 @Builder
+@Jacksonized
 public class SessionWorkingSetSnapshot {
 
     /** 当前 session ID。 */
@@ -24,11 +26,17 @@ public class SessionWorkingSetSnapshot {
     /** working set 版本。 */
     private final Long workingSetVersion;
 
-    /** working set 内 message ID 列表。 */
-    @Singular("messageId")
-    private final List<String> messageIds;
+    /** 当前配置下最多保留的 completed turn 数。 */
+    private final Integer maxCompletedTurns;
 
-    /** working set 内消息对象列表。 */
+    /** summary 已覆盖到的最高消息序号。 */
+    private final Long summaryCoveredToSequenceNo;
+
+    /** working set 内 raw message ID 列表。 */
+    @Singular("rawMessageId")
+    private final List<String> rawMessageIds;
+
+    /** 当前 Redis working set 缓存的 raw 消息对象列表。 */
     @Singular("message")
     private final List<Message> messages;
 

@@ -1,8 +1,10 @@
 package com.vi.agent.core.model.memory;
 
+import com.vi.agent.core.model.context.WorkingMode;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
 import java.util.List;
@@ -12,6 +14,7 @@ import java.util.List;
  */
 @Getter
 @Builder
+@Jacksonized
 public class SessionStateSnapshot {
 
     /** session state 快照 ID。 */
@@ -25,6 +28,9 @@ public class SessionStateSnapshot {
 
     /** 当前任务目标。 */
     private final String taskGoal;
+
+    /** 当前工作模式。 */
+    private final WorkingMode workingMode;
 
     /** 已确认事实列表。 */
     @Singular("confirmedFact")

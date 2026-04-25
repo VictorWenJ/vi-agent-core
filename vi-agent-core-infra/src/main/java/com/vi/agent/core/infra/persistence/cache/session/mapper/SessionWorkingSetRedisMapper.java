@@ -3,8 +3,8 @@ package com.vi.agent.core.infra.persistence.cache.session.mapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.infra.persistence.cache.session.document.AssistantToolCallSnapshot;
-import com.vi.agent.core.infra.persistence.cache.session.document.SessionContextMessageSnapshot;
-import com.vi.agent.core.infra.persistence.cache.session.document.SessionContextSnapshotDocument;
+import com.vi.agent.core.infra.persistence.cache.session.document.SessionWorkingSetMessageSnapshot;
+import com.vi.agent.core.infra.persistence.cache.session.document.SessionWorkingSetSnapshotDocument;
 import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.AssistantToolCall;
@@ -16,7 +16,7 @@ import com.vi.agent.core.model.message.SummaryMessage;
 import com.vi.agent.core.model.message.SystemMessage;
 import com.vi.agent.core.model.message.ToolMessage;
 import com.vi.agent.core.model.message.UserMessage;
-import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import org.apache.commons.collections4.CollectionUtils;
@@ -28,19 +28,18 @@ import java.util.*;
 import static java.util.stream.Collectors.toList;
 
 /**
- * Session 上下文 Redis 快照映射器。
- */
+ * Session 涓婁笅鏂?Redis 蹇収鏄犲皠鍣ㄣ€? */
 @Component
-public class SessionContextRedisMapper {
+public class SessionWorkingSetRedisMapper {
 
-    public SessionContextSnapshotDocument toDocument(SessionStateSnapshot snapshot) {
+    public SessionWorkingSetSnapshotDocument toDocument(SessionWorkingSetSnapshot snapshot) {
         List<Message> messages = CollectionUtils.isEmpty(snapshot.getMessages()) ? List.of() : snapshot.getMessages();
-        List<SessionContextMessageSnapshot> messageSnapshots = messages.stream().map(this::toMessageSnapshot).toList();
+        List<SessionWorkingSetMessageSnapshot> messageSnapshots = messages.stream().map(this::toMessageSnapshot).toList();
 
         Long fromSequenceNo = messages.stream().map(Message::getSequenceNo).min(Long::compareTo).orElse(0L);
         Long toSequenceNo = messages.stream().map(Message::getSequenceNo).max(Long::compareTo).orElse(0L);
 
-        return SessionContextSnapshotDocument.builder()
+        return SessionWorkingSetSnapshotDocument.builder()
             .sessionId(snapshot.getSessionId())
             .conversationId(snapshot.getConversationId())
             .fromSequenceNo(fromSequenceNo)
@@ -52,21 +51,21 @@ public class SessionContextRedisMapper {
             .build();
     }
 
-    public SessionStateSnapshot toModel(SessionContextSnapshotDocument document) {
-        List<SessionContextMessageSnapshot> messageSnapshots = JsonUtils.jsonToBean(
+    public SessionWorkingSetSnapshot toModel(SessionWorkingSetSnapshotDocument document) {
+        List<SessionWorkingSetMessageSnapshot> messageSnapshots = JsonUtils.jsonToBean(
             document.getMessagesJson(),
-            new TypeReference<List<SessionContextMessageSnapshot>>() {
+            new TypeReference<List<SessionWorkingSetMessageSnapshot>>() {
             }.getType()
         );
 
         List<Message> messages = new ArrayList<>();
         if (CollectionUtils.isNotEmpty(messageSnapshots)) {
-            for (SessionContextMessageSnapshot messageSnapshot : messageSnapshots) {
+            for (SessionWorkingSetMessageSnapshot messageSnapshot : messageSnapshots) {
                 messages.add(toMessage(messageSnapshot));
             }
         }
 
-        return SessionStateSnapshot.builder()
+        return SessionWorkingSetSnapshot.builder()
             .sessionId(document.getSessionId())
             .conversationId(document.getConversationId())
             .messages(messages.stream().sorted(Comparator.comparingLong(Message::getSequenceNo)).toList())
@@ -74,8 +73,8 @@ public class SessionContextRedisMapper {
             .build();
     }
 
-    private SessionContextMessageSnapshot toMessageSnapshot(Message message) {
-        SessionContextMessageSnapshot.SessionContextMessageSnapshotBuilder builder = SessionContextMessageSnapshot.builder()
+    private SessionWorkingSetMessageSnapshot toMessageSnapshot(Message message) {
+        SessionWorkingSetMessageSnapshot.SessionWorkingSetMessageSnapshotBuilder builder = SessionWorkingSetMessageSnapshot.builder()
             .messageId(message.getMessageId())
             .conversationId(message.getConversationId())
             .sessionId(message.getSessionId())
@@ -130,7 +129,7 @@ public class SessionContextRedisMapper {
         return builder.build();
     }
 
-    private Message toMessage(SessionContextMessageSnapshot snapshot) {
+    private Message toMessage(SessionWorkingSetMessageSnapshot snapshot) {
         MessageRole role = snapshot.getRole() ;
         MessageType messageType = snapshot.getMessageType();
         MessageStatus status = snapshot.getStatus();
@@ -258,3 +257,4 @@ public class SessionContextRedisMapper {
         return value == null ? 0L : value;
     }
 }
+

@@ -2,6 +2,7 @@ package com.vi.agent.core.model.memory;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
 
@@ -10,6 +11,7 @@ import java.time.Instant;
  */
 @Getter
 @Builder
+@Jacksonized
 public class ConversationSummary {
 
     /** 会话摘要 ID。 */

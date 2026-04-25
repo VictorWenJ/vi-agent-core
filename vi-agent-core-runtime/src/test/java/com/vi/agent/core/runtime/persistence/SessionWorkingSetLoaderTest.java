@@ -3,8 +3,8 @@ package com.vi.agent.core.runtime.persistence;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.MessageRepository;
-import com.vi.agent.core.model.port.SessionStateRepository;
-import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.model.port.SessionWorkingSetRepository;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import org.junit.jupiter.api.Test;
 
@@ -14,43 +14,43 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class SessionStateLoaderTest {
+class SessionWorkingSetLoaderTest {
 
     @Test
     void shouldLoadFromMysqlWithConfiguredMaxTurnsAndCache() {
-        SessionStateLoader loader = new SessionStateLoader();
+        SessionWorkingSetLoader loader = new SessionWorkingSetLoader();
         StubMessageRepository messageRepository = new StubMessageRepository();
-        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
 
         TestFieldUtils.setField(loader, "messageRepository", messageRepository);
-        TestFieldUtils.setField(loader, "sessionStateRepository", sessionStateRepository);
-        TestFieldUtils.setField(loader, "maxTurns", 3);
+        TestFieldUtils.setField(loader, "sessionWorkingSetRepository", sessionWorkingSetRepository);
+        TestFieldUtils.setField(loader, "maxCompletedTurns", 3);
 
         List<Message> result = loader.load("conv-1", "sess-1");
 
         assertEquals(3, messageRepository.lastMaxTurns);
         assertEquals(1, result.size());
-        assertEquals(1, sessionStateRepository.saveCount);
-        assertEquals("sess-1", sessionStateRepository.lastSaved.getSessionId());
+        assertEquals(1, sessionWorkingSetRepository.saveCount);
+        assertEquals("sess-1", sessionWorkingSetRepository.lastSaved.getSessionId());
     }
 
     @Test
     void shouldUseCacheWhenSnapshotExists() {
-        SessionStateLoader loader = new SessionStateLoader();
+        SessionWorkingSetLoader loader = new SessionWorkingSetLoader();
         StubMessageRepository messageRepository = new StubMessageRepository();
-        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
 
-        SessionStateSnapshot cached = SessionStateSnapshot.builder()
+        SessionWorkingSetSnapshot cached = SessionWorkingSetSnapshot.builder()
             .sessionId("sess-1")
             .conversationId("conv-1")
             .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "cached")))
             .updatedAt(Instant.now())
             .build();
-        sessionStateRepository.cached = cached;
+        sessionWorkingSetRepository.cached = cached;
 
         TestFieldUtils.setField(loader, "messageRepository", messageRepository);
-        TestFieldUtils.setField(loader, "sessionStateRepository", sessionStateRepository);
-        TestFieldUtils.setField(loader, "maxTurns", 2);
+        TestFieldUtils.setField(loader, "sessionWorkingSetRepository", sessionWorkingSetRepository);
+        TestFieldUtils.setField(loader, "maxCompletedTurns", 2);
 
         List<Message> result = loader.load("conv-1", "sess-1");
 
@@ -95,18 +95,18 @@ class SessionStateLoaderTest {
         }
     }
 
-    private static final class StubSessionStateRepository implements SessionStateRepository {
-        private SessionStateSnapshot cached;
+    private static final class StubSessionWorkingSetRepository implements SessionWorkingSetRepository {
+        private SessionWorkingSetSnapshot cached;
         private int saveCount;
-        private SessionStateSnapshot lastSaved;
+        private SessionWorkingSetSnapshot lastSaved;
 
         @Override
-        public SessionStateSnapshot findBySessionId(String sessionId) {
+        public SessionWorkingSetSnapshot findBySessionId(String sessionId) {
             return cached;
         }
 
         @Override
-        public void save(SessionStateSnapshot snapshot) {
+        public void save(SessionWorkingSetSnapshot snapshot) {
             saveCount++;
             lastSaved = snapshot;
         }
@@ -116,3 +116,4 @@ class SessionStateLoaderTest {
         }
     }
 }
+

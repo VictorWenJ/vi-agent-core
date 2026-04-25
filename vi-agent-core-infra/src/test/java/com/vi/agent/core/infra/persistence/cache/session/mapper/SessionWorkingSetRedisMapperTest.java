@@ -1,6 +1,6 @@
 package com.vi.agent.core.infra.persistence.cache.session.mapper;
 
-import com.vi.agent.core.infra.persistence.cache.session.document.SessionContextSnapshotDocument;
+import com.vi.agent.core.infra.persistence.cache.session.document.SessionWorkingSetSnapshotDocument;
 import com.vi.agent.core.model.llm.FinishReason;
 import com.vi.agent.core.model.llm.UsageInfo;
 import com.vi.agent.core.model.message.AssistantMessage;
@@ -8,7 +8,7 @@ import com.vi.agent.core.model.message.AssistantToolCall;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.ToolMessage;
 import com.vi.agent.core.model.message.UserMessage;
-import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
 import org.junit.jupiter.api.Test;
@@ -19,21 +19,23 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-class SessionContextRedisMapperTest {
+class SessionWorkingSetRedisMapperTest {
 
-    private final SessionContextRedisMapper mapper = new SessionContextRedisMapper();
+    private final SessionWorkingSetRedisMapper mapper = new SessionWorkingSetRedisMapper();
 
     @Test
     void toDocumentShouldKeepAssistantToolCallsAndToolMessageFields() {
         List<Message> messages = buildMessages();
-        SessionStateSnapshot snapshot = SessionStateSnapshot.builder()
+        SessionWorkingSetSnapshot snapshot = SessionWorkingSetSnapshot.builder()
             .sessionId("sess-1")
             .conversationId("conv-1")
-            .messages(messages)
+            .message(messages.get(0))
+            .message(messages.get(1))
+            .message(messages.get(2))
             .updatedAt(Instant.now())
             .build();
 
-        SessionContextSnapshotDocument document = mapper.toDocument(snapshot);
+        SessionWorkingSetSnapshotDocument document = mapper.toDocument(snapshot);
 
         assertEquals("sess-1", document.getSessionId());
         assertEquals("conv-1", document.getConversationId());
@@ -42,17 +44,19 @@ class SessionContextRedisMapperTest {
     }
 
     @Test
-    void toModelShouldRestoreToolChainInContextMessages() {
+    void toModelShouldRestoreToolChainInWorkingSetMessages() {
         List<Message> messages = buildMessages();
-        SessionStateSnapshot original = SessionStateSnapshot.builder()
+        SessionWorkingSetSnapshot original = SessionWorkingSetSnapshot.builder()
             .sessionId("sess-1")
             .conversationId("conv-1")
-            .messages(messages)
+            .message(messages.get(0))
+            .message(messages.get(1))
+            .message(messages.get(2))
             .updatedAt(Instant.now())
             .build();
-        SessionContextSnapshotDocument document = mapper.toDocument(original);
+        SessionWorkingSetSnapshotDocument document = mapper.toDocument(original);
 
-        SessionStateSnapshot restored = mapper.toModel(document);
+        SessionWorkingSetSnapshot restored = mapper.toModel(document);
 
         assertEquals(3, restored.getMessages().size());
         Message restoredAssistant = restored.getMessages().get(1);
@@ -85,7 +89,7 @@ class SessionContextRedisMapperTest {
             .build();
 
         return List.of(
-            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "鐜板湪鍑犵偣"),
+            UserMessage.create("msg-user-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "现在几点"),
             AssistantMessage.create(
                 "msg-assistant-1",
                 "conv-1",
@@ -93,7 +97,7 @@ class SessionContextRedisMapperTest {
                 "turn-1",
                 "run-1",
                 2L,
-                "鎴戞潵鏌ヨ鏃堕棿",
+                "我需要调用工具获取时间",
                 List.of(toolCall),
                 FinishReason.TOOL_CALL,
                 UsageInfo.empty()
@@ -118,4 +122,3 @@ class SessionContextRedisMapperTest {
         );
     }
 }
-

@@ -141,7 +141,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${maven-surefire-plugin.version}</version>
                     <configuration>
-                        <argLine>-Dfile.encoding=UTF-8</argLine>
+                        <argLine>-Dfile.encoding=UTF-8 -Dnet.bytebuddy.experimental=true</argLine>
                     </configuration>
                 </plugin>
 
@@ -150,7 +150,7 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>${maven-failsafe-plugin.version}</version>
                     <configuration>
-                        <argLine>-Dfile.encoding=UTF-8</argLine>
+                        <argLine>-Dfile.encoding=UTF-8 -Dnet.bytebuddy.experimental=true</argLine>
                     </configuration>
                 </plugin>
 

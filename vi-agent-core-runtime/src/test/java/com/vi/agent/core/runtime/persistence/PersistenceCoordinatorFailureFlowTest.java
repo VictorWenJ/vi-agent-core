@@ -11,7 +11,7 @@ import com.vi.agent.core.model.port.ConversationRepository;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.RunEventRepository;
 import com.vi.agent.core.model.port.SessionRepository;
-import com.vi.agent.core.model.port.SessionStateRepository;
+import com.vi.agent.core.model.port.SessionWorkingSetRepository;
 import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
@@ -20,7 +20,7 @@ import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.runtime.RunMetadata;
 import com.vi.agent.core.model.session.Session;
-import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.session.SessionStatus;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
@@ -50,14 +50,14 @@ class PersistenceCoordinatorFailureFlowTest {
         StubTurnRepository turnRepository = new StubTurnRepository();
         StubSessionRepository sessionRepository = new StubSessionRepository();
         StubConversationRepository conversationRepository = new StubConversationRepository();
-        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
         StubRunEventRepository runEventRepository = new StubRunEventRepository();
 
         TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
         TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
         TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
         TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
-        TestFieldUtils.setField(coordinator, "sessionStateRepository", sessionStateRepository);
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
 
@@ -111,7 +111,7 @@ class PersistenceCoordinatorFailureFlowTest {
         assertTrue(runEventRepository.savedEvents.stream()
             .filter(event -> event.getEventType() == RunEventType.RUN_FAILED)
             .allMatch(event -> event.getActorType() == RunEventActorType.AGENT));
-        assertEquals("sess-1", sessionStateRepository.lastEvictedSessionId);
+        assertEquals("sess-1", sessionWorkingSetRepository.lastEvictedSessionId);
     }
 
     @Test
@@ -121,14 +121,14 @@ class PersistenceCoordinatorFailureFlowTest {
         StubTurnRepository turnRepository = new StubTurnRepository();
         StubSessionRepository sessionRepository = new StubSessionRepository();
         StubConversationRepository conversationRepository = new StubConversationRepository();
-        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
         StubRunEventRepository runEventRepository = new StubRunEventRepository();
 
         TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
         TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
         TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
         TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
-        TestFieldUtils.setField(coordinator, "sessionStateRepository", sessionStateRepository);
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
 
@@ -212,14 +212,14 @@ class PersistenceCoordinatorFailureFlowTest {
         StubTurnRepository turnRepository = new StubTurnRepository();
         StubSessionRepository sessionRepository = new StubSessionRepository();
         StubConversationRepository conversationRepository = new StubConversationRepository();
-        StubSessionStateRepository sessionStateRepository = new StubSessionStateRepository();
+        StubSessionWorkingSetRepository sessionWorkingSetRepository = new StubSessionWorkingSetRepository();
         StubRunEventRepository runEventRepository = new StubRunEventRepository();
 
         TestFieldUtils.setField(coordinator, "messageRepository", messageRepository);
         TestFieldUtils.setField(coordinator, "turnRepository", turnRepository);
         TestFieldUtils.setField(coordinator, "sessionRepository", sessionRepository);
         TestFieldUtils.setField(coordinator, "conversationRepository", conversationRepository);
-        TestFieldUtils.setField(coordinator, "sessionStateRepository", sessionStateRepository);
+        TestFieldUtils.setField(coordinator, "sessionWorkingSetRepository", sessionWorkingSetRepository);
         TestFieldUtils.setField(coordinator, "runEventRepository", runEventRepository);
         TestFieldUtils.setField(coordinator, "runIdentityFactory", new StubRunIdentityFactory());
 
@@ -502,16 +502,16 @@ class PersistenceCoordinatorFailureFlowTest {
         }
     }
 
-    private static final class StubSessionStateRepository implements SessionStateRepository {
+    private static final class StubSessionWorkingSetRepository implements SessionWorkingSetRepository {
         private String lastEvictedSessionId;
 
         @Override
-        public SessionStateSnapshot findBySessionId(String sessionId) {
+        public SessionWorkingSetSnapshot findBySessionId(String sessionId) {
             return null;
         }
 
         @Override
-        public void save(SessionStateSnapshot snapshot) {
+        public void save(SessionWorkingSetSnapshot snapshot) {
         }
 
         @Override
@@ -529,3 +529,4 @@ class PersistenceCoordinatorFailureFlowTest {
         }
     }
 }
+

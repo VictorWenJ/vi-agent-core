@@ -8,14 +8,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class SessionRedisKeyBuilder {
 
-    private static final String SESSION_CONTEXT_PREFIX = "agent:session:context:";
+    private static final String SESSION_WORKING_SET_PREFIX = "agent:session:working-set:";
 
     private static final String REQUEST_CACHE_PREFIX = "agent:request:";
 
     private static final String SESSION_LOCK_PREFIX = "agent:session:lock:";
 
-    public String sessionContextKey(String sessionId) {
-        return SESSION_CONTEXT_PREFIX + sessionId;
+    public String sessionWorkingSetKey(String sessionId) {
+        return SESSION_WORKING_SET_PREFIX + sessionId;
     }
 
     public String requestCacheKey(String requestId) {

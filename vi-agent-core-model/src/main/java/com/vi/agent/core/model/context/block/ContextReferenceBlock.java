@@ -3,7 +3,7 @@ package com.vi.agent.core.model.context.block;
 import com.vi.agent.core.model.context.ContextAssemblyDecision;
 import com.vi.agent.core.model.context.ContextBlockType;
 import com.vi.agent.core.model.context.ContextPriority;
-import com.vi.agent.core.model.memory.ContextReference;
+import com.vi.agent.core.model.context.ContextReference;
 import lombok.Builder;
 import lombok.Getter;
 

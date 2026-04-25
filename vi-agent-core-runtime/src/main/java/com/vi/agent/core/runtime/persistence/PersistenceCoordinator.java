@@ -11,7 +11,7 @@ import com.vi.agent.core.model.port.ConversationRepository;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.RunEventRepository;
 import com.vi.agent.core.model.port.SessionRepository;
-import com.vi.agent.core.model.port.SessionStateRepository;
+import com.vi.agent.core.model.port.SessionWorkingSetRepository;
 import com.vi.agent.core.model.port.TurnRepository;
 import com.vi.agent.core.model.runtime.AgentRunContext;
 import com.vi.agent.core.model.runtime.LoopExecutionResult;
@@ -19,7 +19,7 @@ import com.vi.agent.core.model.runtime.RunEventActorType;
 import com.vi.agent.core.model.runtime.RunEventRecord;
 import com.vi.agent.core.model.runtime.RunEventType;
 import com.vi.agent.core.model.session.Session;
-import com.vi.agent.core.model.session.SessionStateSnapshot;
+import com.vi.agent.core.model.memory.SessionWorkingSetSnapshot;
 import com.vi.agent.core.model.tool.ToolCallStatus;
 import com.vi.agent.core.model.tool.ToolExecution;
 import com.vi.agent.core.model.tool.ToolExecutionStatus;
@@ -61,7 +61,7 @@ public class PersistenceCoordinator {
     private ConversationRepository conversationRepository;
 
     @Resource
-    private SessionStateRepository sessionStateRepository;
+    private SessionWorkingSetRepository sessionWorkingSetRepository;
 
     @Resource
     private RunEventRepository runEventRepository;
@@ -70,17 +70,18 @@ public class PersistenceCoordinator {
     private RunIdentityFactory runIdentityFactory;
 
     @Resource
-    private SessionStateLoader sessionStateLoader;
+    private SessionWorkingSetLoader sessionWorkingSetLoader;
 
     public List<Message> load(String conversationId, String sessionId) {
-        return sessionStateLoader.load(conversationId, sessionId);
+        return sessionWorkingSetLoader.load(conversationId, sessionId);
     }
 
     public void refresh(String conversationId, String sessionId, List<Message> messages) {
-        sessionStateRepository.save(SessionStateSnapshot.builder()
+        sessionWorkingSetRepository.save(SessionWorkingSetSnapshot.builder()
             .sessionId(sessionId)
             .conversationId(conversationId)
-            .messages(new ArrayList<>(messages))
+            .rawMessageIds(messages == null ? List.of() : messages.stream().map(Message::getMessageId).toList())
+            .messages(messages == null ? List.of() : new ArrayList<>(messages))
             .updatedAt(Instant.now())
             .build());
     }
@@ -122,8 +123,8 @@ public class PersistenceCoordinator {
             try {
                 refresh(conversationId, sessionId, workingMessages);
             } catch (Exception ex) {
-                log.warn("Refresh redis session context failed, sessionId={}", sessionId, ex);
-                safeEvictSessionContext(sessionId);
+                log.warn("Refresh redis session working set failed, sessionId={}", sessionId, ex);
+                safeEvictSessionWorkingSet(sessionId);
             }
         });
     }
@@ -143,7 +144,7 @@ public class PersistenceCoordinator {
         session.touch(Instant.now());
         sessionRepository.update(session);
 
-        registerAfterCommit(() -> safeEvictSessionContext(session.getSessionId()));
+        registerAfterCommit(() -> safeEvictSessionWorkingSet(session.getSessionId()));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -421,11 +422,12 @@ public class PersistenceCoordinator {
         }
     }
 
-    private void safeEvictSessionContext(String sessionId) {
+    private void safeEvictSessionWorkingSet(String sessionId) {
         try {
-            sessionStateRepository.evict(sessionId);
+            sessionWorkingSetRepository.evict(sessionId);
         } catch (Exception ex) {
-            log.warn("Evict redis session context failed, sessionId={}", sessionId, ex);
+            log.warn("Evict redis session working set failed, sessionId={}", sessionId, ex);
         }
     }
 }
+

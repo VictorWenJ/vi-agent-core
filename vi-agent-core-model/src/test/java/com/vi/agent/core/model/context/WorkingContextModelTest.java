@@ -63,4 +63,18 @@ class WorkingContextModelTest {
         assertSame(contextPlan, result.getContextPlan());
         assertSame(validationResult, result.getValidationResult());
     }
+    @Test
+    void workingContextSourceShouldUseArtifactSnapshotIdsInsteadOfEvidenceIds() {
+        WorkingContextSource source = WorkingContextSource.builder()
+            .transcriptSnapshotVersion(1L)
+            .workingSetVersion(2L)
+            .stateVersion(3L)
+            .summaryVersion(4L)
+            .artifactSnapshotId("artifact-snapshot-1")
+            .artifactSnapshotId("artifact-snapshot-2")
+            .build();
+
+        assertEquals(List.of("artifact-snapshot-1", "artifact-snapshot-2"), source.getArtifactSnapshotIds());
+        assertThrows(UnsupportedOperationException.class, () -> source.getArtifactSnapshotIds().add("artifact-snapshot-3"));
+    }
 }
