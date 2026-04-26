@@ -1,9 +1,8 @@
-# vi-agent-core Message / Tool Runtime 存储与协议投影系统详细设计 v2
+# vi-agent-core Message / Tool Runtime 存储与协议投影系统详细设计 v3
 
 > 文档用途：指导 Codex / 实现代理对 `vi-agent-core` 的 message、tool call、tool execution、Redis session context、provider message projection 进行基座级重构。  
-> 设计目标：建立长期可扩展、可恢复、可审计、可支持后续 summary / plan / subagent / memory 的标准 Agent Runtime message 基座。  
-> 执行原则：当前阶段只解决纯文本 + tool calling + runtime context 的正确存储与协议投影，不引入多模态 content parts，不做历史数据迁移和回滚兼容。  
-> 本版修订重点：消除 Codex Review 提出的 P0/P1 歧义，包括 FAILED 幂等返回、`ToolCallMessage` 物理删除、SessionStateLoader 加载范围、provider 前校验失败收口、tool_call_id 唯一性边界、DB/Redis 一致性、Redis snapshot 契约、本轮必做范围边界。
+> 设计目标：建立长期可扩展、可恢复、可审计、可支撑后续 summary / plan / subagent / memory 的标准 Agent Runtime message 基座。  
+> 执行原则：当前阶段只解决纯文本 + tool calling + runtime context 的正确存储与协议投影；暂不实现多模态 content parts、长耗时 tool 管理、降级/熔断/重试、多次 attempt。
 
 ---
 
@@ -20,7 +19,7 @@
 - Provider request projection 重构
 - `MessageTypeHandlerRegistry` 装配体系建设
 - 工具调用历史上下文恢复错误修复
-- 后续 summary / checkpoint / plan / subagent 基座预留
+- 后续 summary / plan / subagent 基座预留
 
 不适用：
 
@@ -32,12 +31,13 @@
 - 完整 plan-and-execute
 - subagent 调度
 - 生产数据迁移和回滚兼容
+- 长耗时 tool / retry / fallback / degraded / circuit breaker 实现
 
-### 0.2 填写规则
+### 0.2 执行规则
 
-- 本文档是本轮 message/tool runtime 基座重构的执行依据。
+- 本文档是本轮 message/tool runtime 基座重构的唯一执行依据。
 - 若当前代码、旧文档、旧测试与本文档冲突，以本文档为准。
-- 本轮处于开发阶段，旧数据无用，允许手动清空 MySQL 和 Redis。
+- 当前开发阶段，旧数据无用，允许手动清空 MySQL 和 Redis。
 - 不得为了兼容旧 `ToolCallMessage` 设计保留过时逻辑。
 - 不得引入与本文档无关的额外架构扩展。
 
@@ -46,9 +46,9 @@
 ## 1. 文档元信息
 
 - 文档名称：`vi-agent-core Message / Tool Runtime 存储与协议投影系统详细设计`
-- 变更主题：`重构 Message / Tool Call / Tool Execution 存储模型，物理删除 ToolCallMessage 作为 Message 的错误建模，建立标准 provider-compatible transcript 基座`
+- 变更主题：`重构 Message / Tool Call / Tool Execution 存储模型，物理删除 ToolCallMessage，建立标准 provider-compatible transcript 基座`
 - 目标分支 / 迭代：`message-tool-runtime-foundation-refactor`
-- 文档版本：`v2.0`
+- 文档版本：`v3.0`
 - 状态：`Review`
 - 作者：`ChatGPT`
 - 评审人：`Victor / Codex Review Agent`
@@ -59,11 +59,6 @@
   - `PROJECT_PLAN.md`
   - `agent-runtime-session-refactor-design-v2.md`
   - `PROJECT_DESIGN_TEMPLATE.md`
-  - 本文档参考基线：
-    - AI SDK 的 `ModelMessage / tool call / tool result / content parts` 思路
-    - Claude Code 的 agent loop / hooks / subagent / context management 思路
-    - OpenClaw 的 gateway / tools / skills / self-hosted assistant runtime 思路
-    - Hermes Agent 的 persistent agent / profiles / memory / skills 思路
 
 ---
 
@@ -71,7 +66,7 @@
 
 ### 2.1 一句话摘要
 
-本次重构将当前 `ToolCallMessage extends Message` 导致的 tool call 元数据丢失、上下文恢复不合法、provider 请求报错等问题，改造成标准 AI Agent Runtime message 基座：`agent_message` 保存真正的 transcript message，`agent_message_tool_call` 保存 assistant message 的 `tool_calls`，`agent_tool_execution` 保存工具执行事实，Redis hash 保存可恢复的 session context snapshot，provider 侧通过 `OpenAICompatibleMessageProjector` 统一投影成 OpenAI-compatible 请求。
+本次重构将当前 `ToolCallMessage extends Message` 导致的 tool call 元数据丢失、上下文恢复不合法、provider 请求报错等问题，改造成标准 AI Agent Runtime message 基座：`agent_message` 保存真正的 transcript message，`agent_message_tool_call` 保存 assistant message 的 `tool_calls`，`agent_tool_execution` 保存一次工具执行的最终结果，Redis hash 保存可恢复的 session context snapshot，provider 侧通过 `OpenAICompatibleMessageProjector` 统一投影成 OpenAI-compatible 请求。
 
 ### 2.2 本次范围
 
@@ -90,7 +85,7 @@
    - 新增 `agent_message_tool_call`。
    - 新增 `agent_tool_execution`。
    - 新增 `agent_run_event`。
-   - 本轮不创建 `agent_checkpoint`，仅在架构规划中保留。
+   - 本轮不创建 `agent_checkpoint`。
 
 3. 重构 Redis 存储：
    - Redis 全部使用 hash 数据结构。
@@ -101,8 +96,8 @@
    - Redis snapshot 使用稳定 DTO，不直接序列化 Java domain class。
 
 4. 重构消息装配：
-   - 新增 `MessageTypeHandler<T extends Message>`。
-   - 新增 `MessageTypeHandlerRegistry`。
+   - 使用现有 `MessageTypeHandlerRegistry` 机制，继续收口。
+   - 所有 handler 放入 `message.handler` 目录。
    - 根据 `role + messageType` 定位 handler。
    - handler 负责 `DB aggregate rows -> domain Message` 与 `domain Message -> DB write plan`。
 
@@ -141,9 +136,10 @@
 10. 当前阶段不实现 subagent 调度。
 11. 当前阶段不实现长期记忆表 `agent_memory`。
 12. 当前阶段不新增 LlmRouter。
-13. 当前阶段不保留 `ToolCallMessage` 作为主链路 message 类型。
-14. 当前阶段不通过 `buildCompleteData` 一类逻辑反复查库补字段。
-15. 当前阶段不实现 Redis outbox / 异步补偿队列 / 缓存版本对账。
+13. 当前阶段不实现长耗时 tool、重试、fallback、degraded、circuit breaker。
+14. 当前阶段不保留 `ToolCallMessage` 作为主链路 message 类型。
+15. 当前阶段不通过 `buildCompleteData` 一类逻辑反复查库补字段。
+16. 当前阶段不实现 Redis outbox / 异步补偿 / 缓存版本对账。
 
 ---
 
@@ -151,93 +147,39 @@
 
 ### 3.1 当前现状（仅写与本次直接相关）
 
-- 当前项目中的 `AssistantMessage / ToolCallMessage / ToolResultMessage / UserMessage` 都以 `Message` 子类形式参与 runtime 流转。
-- 当前 `agent_message` 主要保存 `AbstractMessage` 公共字段，例如：
-  - `message_id`
-  - `conversation_id`
-  - `session_id`
-  - `turn_id`
-  - `role`
-  - `message_type`
-  - `sequence_no`
-  - `content`
-  - `created_at`
-- `ToolCallMessage.toolCallId / toolName / argumentsJson` 等子类字段无法可靠落入 `agent_message`。
+- 当前项目中的旧 message/tool 模型曾把 `ToolCallMessage` 作为 `Message` 子类参与 runtime 流转。
+- 当前 `agent_message` 只保存 message 公共字段，无法可靠保存 tool call 和 tool result 的完整语义。
 - `AssistantMessage.toolCalls` 在 MySQL / Redis 恢复后可能变成空列表。
-- `ToolResultMessage.toolCallId / toolName` 在恢复时可能被错误兜底为 `messageId / "tool"`。
-- provider 请求中出现过两类错误：
-  - 多出一条重复的 `assistant(tool_calls)`。
-  - 出现孤立 `tool`，即 `tool` 前面没有 `assistant(tool_calls)`。
+- `ToolMessage.toolCallId / toolName` 在恢复时可能丢失或被错误兜底。
+- provider 请求中出现过：
+  - 多出一条重复的 `assistant(tool_calls)`
+  - 出现孤立 `tool`，即 `tool` 前面没有合法的 `assistant(tool_calls)`。
 - DeepSeek / OpenAI-compatible provider 报错：
   - `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`
   - `An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'`
 
 ### 3.2 已确认问题
 
-1. **错误建模：`ToolCallMessage` 不应作为 transcript message。**  
-   标准 OpenAI-compatible transcript 是：
-   ```text
-   user
-   assistant(tool_calls)
-   tool
-   assistant
-   ```
-   不是：
-   ```text
-   user
-   assistant
-   tool_call
-   tool
-   assistant
-   ```
-
-2. **`agent_message` 只存公共字段，导致 message 类型关键字段丢失。**  
-   例如：
-   - assistant 的 `toolCalls` 丢失。
-   - tool result 的 `toolCallId/toolName` 丢失。
-   - provider 投影无法恢复合法 tool chain。
-
-3. **Redis session context 如果只保存残缺 message，会持续传播错误上下文。**  
-   即使 MySQL 能补查，Redis hit 后也可能恢复出错误结构：
-   ```text
-   assistant
-   tool
-   ```
-
-4. **主流程补查数据库不是标准解决方案。**  
-   `buildCompleteData` 之类补救逻辑会导致：
-   - 高频 DB 查询。
-   - Redis 缓存价值下降。
-   - 主链路复杂化。
-   - 未来新增 message 类型时继续补丁化。
-
-5. **provider 投影职责不清。**  
-   `OpenAICompatibleChatProvider` 不应该依赖脏 message，也不应该用旧 `ToolCallMessage` 推导协议。
-
-6. **缺少统一 MessageTypeHandler 机制。**  
-   当前 message 装配和拆解没有按 `role + messageType` 显式分发，容易形成大 switch 或散落逻辑。
-
-7. **enum 使用不统一。**  
-   后续所有 enum 必须统一 `value + desc`，MySQL/Redis 存 `enum.name()`，provider 投影使用 `value`。
-
-8. **幂等失败语义存在歧义。**  
-   `requestId` 命中 FAILED turn 时必须固定为返回 `runStatus=FAILED` 的幂等结果，不允许一处返回失败响应、一处抛业务错误。
-
-9. **tool_call_id 唯一性边界需要收敛。**  
-   Provider 返回的 `tool_call_id` 不应假设全局唯一，必须引入内部全局唯一 `tool_call_record_id`。
-
-10. **DB / Redis 一致性边界需要收敛。**  
-    MySQL 多表写入必须事务；Redis commit 后 best-effort，不回滚 DB。
+1. **错误建模：`ToolCallMessage` 不应作为 transcript message。**
+2. **`agent_message` 只存公共字段，导致 message 类型关键字段丢失。**
+3. **Redis session context 如果只保存残缺 message，会持续传播错误上下文。**
+4. **主流程补查数据库不是标准解决方案。**
+5. **provider 投影职责不清。**
+6. **缺少规范化的 handler 目录与职责边界。**
+7. **enum 使用不统一。**
+8. **`requestId` 命中 FAILED 的返回语义必须唯一。**
+9. **provider 工具链校验失败后的收口必须明确。**
+10. **当前 tool 状态推进不完整，`agent_message_tool_call.status` 常停留在 CREATED。**
 
 ### 3.3 不改风险
 
 如果不重构：
 
 - 工具调用历史上下文会持续出错。
-- DeepSeek / OpenAI-compatible provider 会继续返回 400。
-- Redis 命中时可能比 MySQL reload 更容易恢复残缺数据。
+- provider 会继续返回 400。
+- Redis 命中时可能恢复残缺数据。
 - 后续 summary / plan / subagent / memory 都会建立在错误 message 模型上。
-- Codex 后续开发会继续围绕 `ToolCallMessage` 补丁式修复。
+- Codex 后续开发会继续围绕旧模型补丁式修复。
 - Java 领域对象、MySQL 事实表、Redis snapshot、provider request 四者会长期不一致。
 
 ---
@@ -277,7 +219,7 @@
 
 ## 5. 术语、语义与标识
 
-### 5.1 术语表（按需裁剪）
+### 5.1 术语表
 
 | 术语 | 定义 | 本次是否涉及 |
 |---|---|---|
@@ -288,7 +230,7 @@
 | `message` | transcript 中真正进入对话协议的消息，包括 SYSTEM / USER / ASSISTANT / TOOL / SUMMARY | Y |
 | `assistant_tool_call` | assistant message 上的 tool_calls 子结构，不是 message | Y |
 | `tool_message` | `role=TOOL` 的工具结果消息 | Y |
-| `tool_execution` | 工具执行事实，包含入参、输出、耗时、错误、状态 | Y |
+| `tool_execution` | 工具执行事实，当前阶段是一对一最终结果记录 | Y |
 | `run_event` | runtime 时间线事件 | Y |
 | `checkpoint` | summary / context / plan / subagent / memory 状态快照；本轮不建表 | N |
 | `content_part` | 多模态内容块；当前阶段不实现 | N |
@@ -304,21 +246,10 @@
 | `runId` | 单次 runtime 执行标识 | 后端 | 是 |
 | `messageId` | transcript message 标识 | 后端 | 是 |
 | `toolCallRecordId` | 系统内部工具调用记录 ID，全局唯一 | 后端 | 否 |
-| `toolCallId` | provider tool_call_id；不保证全局唯一 | provider / 后端兜底 | 事件中可返回 |
+| `toolCallId` | provider tool_call_id，不保证全局唯一 | provider / 后端兜底 | 事件中可返回 |
 | `toolExecutionId` | 工具执行记录 ID | 后端 | 否 |
 | `eventId` | runtime event ID | 后端 | 否 |
-| `checkpointId` | checkpoint ID；本轮不使用 | 后端 | 否 |
 | `traceId` | 内部观测链路 | 后端 | 否，仅日志/MDC |
-
-### 5.2.1 `toolCallRecordId` 生成规则
-
-```text
-1. 由后端统一 ID 工厂生成（建议归口 RunIdentityFactory / IdGenerator）。
-2. 格式：tcr-<uuid>，总长度 <= 64。
-3. 生成时机：AgentLoopEngine 接收 ModelToolCall 并创建 AssistantToolCall 时立即生成。
-4. 落库冲突：若命中 uk_tool_call_record_id，重新生成并重试，最多 3 次。
-5. 超过重试上限：按运行失败收口（turn=FAILED、写 RUN_FAILED、session 保持 ACTIVE）。
-```
 
 ### 5.3 显式语义枚举（统一规则）
 
@@ -356,35 +287,10 @@ desc = 中文描述
 - 不使用 `@EnumValue` 将 `value` 写入数据库。
 - MyBatis / MyBatis-Plus 使用 `EnumTypeHandler`。
 
-推荐配置：
-
-```yaml
-mybatis-plus:
-  configuration:
-    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
-```
-
-示例：
-
-```java
-private MessageRole role;
-private MessageType messageType;
-private MessageStatus status;
-```
-
-数据库值：
-
-```text
-role = ASSISTANT
-message_type = ASSISTANT_OUTPUT
-status = COMPLETED
-```
-
 #### 5.3.3 Redis enum 存储规则
 
-- Redis hash 中 enum 也统一存 `enum.name()`。
-- Redis 是内部缓存，不是 provider 协议。
-- provider 投影时才使用 `enum.getValue()`。
+- Redis hash 中 enum 统一存 `enum.name()`。
+- provider 投影时使用 `enum.getValue()`。
 
 ### 5.4 本次核心枚举
 
@@ -395,19 +301,10 @@ status = COMPLETED
 @AllArgsConstructor
 public enum MessageRole {
 
-    /** 终端用户输入消息。 */
     USER("user", "终端用户输入消息"),
-
-    /** 模型生成的助手输出消息。 */
     ASSISTANT("assistant", "模型生成的助手输出消息"),
-
-    /** 工具侧输出消息。 */
     TOOL("tool", "工具侧输出消息"),
-
-    /** 系统指令消息。 */
     SYSTEM("system", "系统指令消息"),
-
-    /** 记忆压缩摘要消息；对外协议按 system 角色发送。 */
     SUMMARY("summary", "用于记忆压缩的摘要消息");
 
     private final String value;
@@ -422,19 +319,10 @@ public enum MessageRole {
 @AllArgsConstructor
 public enum MessageType {
 
-    /** 用户输入消息。 */
     USER_INPUT("user_input", "用户输入消息"),
-
-    /** 助手输出消息。 */
     ASSISTANT_OUTPUT("assistant_output", "助手输出消息"),
-
-    /** 工具结果消息。 */
     TOOL_RESULT("tool_result", "工具结果消息"),
-
-    /** 系统提示消息。 */
     SYSTEM_PROMPT("system_prompt", "系统提示消息"),
-
-    /** 上下文压缩摘要消息。 */
     SUMMARY_CONTEXT("summary_context", "上下文压缩摘要消息");
 
     private final String value;
@@ -448,8 +336,6 @@ public enum MessageType {
 TOOL_CALL
 ```
 
-tool call 不再是 message type。
-
 #### `MessageStatus`
 
 ```java
@@ -457,16 +343,9 @@ tool call 不再是 message type。
 @AllArgsConstructor
 public enum MessageStatus {
 
-    /** 消息已创建。 */
     CREATED("created", "消息已创建"),
-
-    /** 消息流式生成中。 */
     STREAMING("streaming", "消息流式生成中"),
-
-    /** 消息已完成。 */
     COMPLETED("completed", "消息已完成"),
-
-    /** 消息失败。 */
     FAILED("failed", "消息失败");
 
     private final String value;
@@ -481,16 +360,10 @@ public enum MessageStatus {
 @AllArgsConstructor
 public enum ToolCallStatus {
 
-    /** 工具调用已创建。 */
     CREATED("created", "工具调用已创建"),
-
-    /** 工具调用执行中。 */
-    RUNNING("running", "工具调用执行中"),
-
-    /** 工具调用成功。 */
+    DISPATCHED("dispatched", "工具调用已派发"),
+    RUNNING("running", "工具执行中"),
     SUCCEEDED("succeeded", "工具调用成功"),
-
-    /** 工具调用失败。 */
     FAILED("failed", "工具调用失败");
 
     private final String value;
@@ -505,13 +378,8 @@ public enum ToolCallStatus {
 @AllArgsConstructor
 public enum ToolExecutionStatus {
 
-    /** 工具执行中。 */
     RUNNING("running", "工具执行中"),
-
-    /** 工具执行成功。 */
     SUCCEEDED("succeeded", "工具执行成功"),
-
-    /** 工具执行失败。 */
     FAILED("failed", "工具执行失败");
 
     private final String value;
@@ -531,8 +399,10 @@ public enum RunEventType {
     MESSAGE_DELTA("message_delta", "消息增量输出"),
     MESSAGE_COMPLETED("message_completed", "消息生成完成"),
     TOOL_CALL_CREATED("tool_call_created", "工具调用已创建"),
+    TOOL_DISPATCHED("tool_dispatched", "工具调用已派发"),
     TOOL_STARTED("tool_started", "工具执行开始"),
     TOOL_COMPLETED("tool_completed", "工具执行完成"),
+    TOOL_FAILED("tool_failed", "工具执行失败"),
     RUN_COMPLETED("run_completed", "运行完成"),
     RUN_FAILED("run_failed", "运行失败");
 
@@ -541,18 +411,18 @@ public enum RunEventType {
 }
 ```
 
-#### `CheckpointType`
+#### `RunEventActorType`
 
 ```java
 @Getter
 @AllArgsConstructor
-public enum CheckpointType {
+public enum RunEventActorType {
 
-    CONTEXT_WINDOW("context_window", "上下文窗口快照"),
-    CONTEXT_SUMMARY("context_summary", "上下文压缩摘要"),
-    PLAN_STATE("plan_state", "计划状态快照"),
-    SUBAGENT_STATE("subagent_state", "子 Agent 状态快照"),
-    MEMORY_STATE("memory_state", "记忆状态快照");
+    USER("user", "用户"),
+    MODEL("model", "模型"),
+    TOOL("tool", "工具"),
+    AGENT("agent", "主Agent"),
+    SYSTEM("system", "系统");
 
     private final String value;
     private final String desc;
@@ -570,7 +440,6 @@ public enum CheckpointType {
 - `ConversationStatus`
 - `StreamEventType`
 - `FinishReason`
-- `ErrorType`
 - `ProviderType`
 
 都必须按同一规则补齐：
@@ -597,16 +466,6 @@ class ChatRequest {
     String message;
 }
 ```
-
-字段表：
-
-| 字段 | 类型 | 必填 | 含义 | 校验规则 |
-|---|---|---|---|---|
-| `requestId` | `String` | Y | 前端幂等 ID | 非空 |
-| `conversationId` | `String` | 按 `SessionMode` | 会话窗口 ID | 由 `SessionResolutionService` 校验 |
-| `sessionId` | `String` | 按 `SessionMode` | runtime session ID | 由 `SessionResolutionService` 校验 |
-| `sessionMode` | `SessionMode` | Y | 会话操作模式 | 非空 |
-| `message` | `String` | Y | 当前文本输入 | 非空 |
 
 ### 6.2 同步响应契约
 
@@ -635,11 +494,12 @@ class ChatResponse {
 固定返回 ChatResponse，runStatus=FAILED。
 不抛业务错误。
 不重新执行。
-content 为空字符串或历史失败结果内容；当前阶段统一为空字符串。
-finishReason 固定为 ERROR（若当前枚举尚无 ERROR，则本轮补齐，不允许返回 null）。
+content = ""。
+finishReason = null（或按当前枚举支持的 ERROR/FAILED）。
+usage = 已记录则返回，否则 null。
 ```
 
-### 6.3 流式事件契约（按需）
+### 6.3 流式事件契约
 
 本次不修改 `ChatStreamEvent` 对外字段结构。
 
@@ -670,7 +530,6 @@ class ChatStreamEvent {
 event.runStatus = FAILED。
 event.error 从 agent_turn 错误字段恢复。
 发送后结束流。
-不重新执行。
 ```
 
 ### 6.4 协议红线
@@ -694,7 +553,7 @@ event.error 从 agent_turn 错误字段恢复。
 
 | 对象 | 职责 | 所在模块/包 | 本次变更类型 |
 |---|---|---|---|
-| `Message` | transcript message 接口 | `vi-agent-core-model/.../message` | 修改 |
+| `Message` | transcript message 接口 | `model.message` | 修改 |
 | `UserMessage` | 用户输入消息 | `model.message` | 修改 |
 | `AssistantMessage` | 模型输出消息，持有 `List<AssistantToolCall>` | `model.message` | 修改 |
 | `ToolMessage` | 工具结果消息，role=TOOL | `model.message` | 新增 |
@@ -703,127 +562,13 @@ event.error 从 agent_turn 错误字段恢复。
 | `AssistantToolCall` | assistant message 的 tool_calls 子结构 | `model.message` | 新增 |
 | `ToolExecution` | 工具执行事实 | `model.tool` | 新增 |
 | `ToolCallMessage` | 旧错误模型 | `model.message` | 物理删除 |
-| `MessageTypeHandler` | 根据 role + messageType 装配 / 拆解 message | `infra.persistence.message` | 新增 |
-| `MessageTypeHandlerRegistry` | message handler 注册表 | `infra.persistence.message` | 新增 |
-| `MessageAggregateRows` | MySQL 聚合行对象 | `infra.persistence.mysql.message` | 新增 |
-| `MessageWritePlan` | MySQL 写入计划 | `infra.persistence.mysql.message` | 新增 |
+| `MessageTypeHandler` | 根据 role + messageType 装配 / 拆解 message | `infra.persistence.message.handler` | 使用现有机制并迁包 |
+| `MessageTypeHandlerRegistry` | message handler 注册表 | `infra.persistence.message.handler` | 使用现有机制并迁包 |
+| `MessageAggregateRows` | MySQL 聚合行对象 | `infra.persistence.message.model` | 使用现有机制并迁包 |
+| `MessageWritePlan` | MySQL 写入计划 | `infra.persistence.message.model` | 使用现有机制并迁包 |
 | `OpenAICompatibleMessageProjector` | domain message -> OpenAI-compatible protocol | `infra.provider.openai` | 新增 |
 
-### 7.1.1 `MessageTypeHandler` 契约（实现级约束）
-
-```java
-public interface MessageTypeHandler<T extends Message> {
-
-    MessageRole supportRole();
-
-    MessageType supportMessageType();
-
-    T assemble(MessageAggregateRows rows);
-
-    MessageWritePlan decompose(T message);
-}
-```
-
-```text
-1. Registry 必须按 role + messageType 精确命中 handler。
-2. 不允许默认兜底 handler；未命中直接 fail fast。
-3. assemble/decompose 只做 message 组装与拆解，不做跨库补查。
-```
-
 ### 7.2 关键领域对象
-
-#### `Message`
-
-```java
-public interface Message {
-
-    String getMessageId();
-
-    String getConversationId();
-
-    String getSessionId();
-
-    String getTurnId();
-
-    String getRunId();
-
-    MessageRole getRole();
-
-    MessageType getMessageType();
-
-    Long getSequenceNo();
-
-    MessageStatus getStatus();
-
-    String getContentText();
-
-    Instant getCreatedAt();
-}
-```
-
-#### `UserMessage`
-
-```java
-@Getter
-@Builder
-public class UserMessage implements Message {
-
-    private final String messageId;
-    private final String conversationId;
-    private final String sessionId;
-    private final String turnId;
-    private final String runId;
-    private final Long sequenceNo;
-    private final MessageStatus status;
-    private final String contentText;
-    private final Instant createdAt;
-
-    @Override
-    public MessageRole getRole() {
-        return MessageRole.USER;
-    }
-
-    @Override
-    public MessageType getMessageType() {
-        return MessageType.USER_INPUT;
-    }
-}
-```
-
-#### `AssistantMessage`
-
-```java
-@Getter
-@Builder
-public class AssistantMessage implements Message {
-
-    private final String messageId;
-    private final String conversationId;
-    private final String sessionId;
-    private final String turnId;
-    private final String runId;
-    private final Long sequenceNo;
-    private final MessageStatus status;
-    private final String contentText;
-
-    private final List<AssistantToolCall> toolCalls;
-
-    private final FinishReason finishReason;
-    private final UsageInfo usage;
-
-    private final Instant createdAt;
-
-    @Override
-    public MessageRole getRole() {
-        return MessageRole.ASSISTANT;
-    }
-
-    @Override
-    public MessageType getMessageType() {
-        return MessageType.ASSISTANT_OUTPUT;
-    }
-}
-```
 
 #### `AssistantToolCall`
 
@@ -833,9 +578,7 @@ public class AssistantMessage implements Message {
 public class AssistantToolCall {
 
     private final String toolCallRecordId;
-
     private final String toolCallId;
-
     private final String assistantMessageId;
 
     private final String conversationId;
@@ -844,11 +587,8 @@ public class AssistantToolCall {
     private final String runId;
 
     private final String toolName;
-
     private final String argumentsJson;
-
     private final Integer callIndex;
-
     private final ToolCallStatus status;
 
     private final Instant createdAt;
@@ -873,17 +613,13 @@ public class ToolMessage implements Message {
     private final String contentText;
 
     private final String toolCallRecordId;
-
     private final String toolCallId;
-
     private final String toolName;
 
     private final ToolExecutionStatus executionStatus;
 
     private final String errorCode;
-
     private final String errorMessage;
-
     private final Long durationMs;
 
     private final Instant createdAt;
@@ -900,66 +636,6 @@ public class ToolMessage implements Message {
 }
 ```
 
-#### `SystemMessage`
-
-```java
-@Getter
-@Builder
-public class SystemMessage implements Message {
-
-    private final String messageId;
-    private final String conversationId;
-    private final String sessionId;
-    private final String turnId;
-    private final String runId;
-    private final Long sequenceNo;
-    private final MessageStatus status;
-    private final String contentText;
-    private final Instant createdAt;
-
-    @Override
-    public MessageRole getRole() {
-        return MessageRole.SYSTEM;
-    }
-
-    @Override
-    public MessageType getMessageType() {
-        return MessageType.SYSTEM_PROMPT;
-    }
-}
-```
-
-#### `SummaryMessage`
-
-```java
-@Getter
-@Builder
-public class SummaryMessage implements Message {
-
-    private final String messageId;
-    private final String conversationId;
-    private final String sessionId;
-    private final String turnId;
-    private final String runId;
-    private final Long sequenceNo;
-    private final MessageStatus status;
-    private final String contentText;
-    private final Long coveredFromSequenceNo;
-    private final Long coveredToSequenceNo;
-    private final Instant createdAt;
-
-    @Override
-    public MessageRole getRole() {
-        return MessageRole.SUMMARY;
-    }
-
-    @Override
-    public MessageType getMessageType() {
-        return MessageType.SUMMARY_CONTEXT;
-    }
-}
-```
-
 #### `ToolExecution`
 
 ```java
@@ -968,11 +644,8 @@ public class SummaryMessage implements Message {
 public class ToolExecution {
 
     private final String toolExecutionId;
-
     private final String toolCallRecordId;
-
     private final String toolCallId;
-
     private final String toolResultMessageId;
 
     private final String conversationId;
@@ -981,25 +654,18 @@ public class ToolExecution {
     private final String runId;
 
     private final String toolName;
-
     private final String argumentsJson;
-
     private final String outputText;
-
     private final String outputJson;
 
     private final ToolExecutionStatus status;
 
     private final String errorCode;
-
     private final String errorMessage;
-
     private final Long durationMs;
 
     private final Instant startedAt;
-
     private final Instant completedAt;
-
     private final Instant createdAt;
 }
 ```
@@ -1017,17 +683,28 @@ public class ToolExecution {
    - `SUMMARY`
 5. `AssistantToolCall.toolCallRecordId` 是系统内部全局唯一 ID。
 6. `AssistantToolCall.toolCallId` 是 provider tool call ID，不保证全局唯一。
-7. `AssistantToolCall.toolCallId` 在同一个 `assistantMessageId` 下唯一。
+7. `AssistantToolCall.toolCallId` 只要求在同一个 `assistantMessageId` 下唯一。
 8. `ToolMessage.toolCallRecordId` 必须匹配一个 `AssistantToolCall.toolCallRecordId`。
 9. `ToolMessage.toolCallId` 必须匹配对应 `AssistantToolCall.toolCallId`。
 10. 一个 `AssistantMessage` 可以有多个 `AssistantToolCall`。
-11. 一个 `AssistantToolCall` 至多对应一个 `ToolExecution`。
-12. 一个 `ToolExecution` 应关联一个 `ToolMessage`。
+11. 当前阶段一个 `AssistantToolCall` 只对应一个 `ToolExecution`。
+12. 当前阶段一个 `ToolExecution` 最多对应一个 `ToolMessage`。
 13. provider 投影前必须校验 tool chain。
-14. 当前阶段 `Message` 不包含 `MessagePart`。
-15. 当前阶段纯文本内容统一放 `contentText`。
-16. 当前阶段不处理附件和多模态。
-17. Summary 当前只做基础模型和 handler，不自动生成。
+14. 当前阶段不支持 retry / fallback / degraded / circuit breaker。
+15. `agent_message_tool_call.status` 表示逻辑调用状态：
+    - CREATED
+    - DISPATCHED
+    - RUNNING
+    - SUCCEEDED
+    - FAILED
+16. `agent_tool_execution.status` 表示执行结果状态：
+    - RUNNING
+    - SUCCEEDED
+    - FAILED
+17. 当前阶段中间过程通过 `agent_run_event` 表达。
+18. 当前阶段 `Message` 不包含 `MessagePart`。
+19. 当前阶段纯文本内容统一放 `contentText`。
+20. Summary 当前只做基础模型和 handler，不自动生成。
 
 ---
 
@@ -1061,17 +738,7 @@ public class ToolExecution {
 
 ### 8.2 关系型存储设计
 
-| 表名 | 用途 | 主键/唯一约束 | 关键索引 | 本次动作 |
-|---|---|---|---|---|
-| `agent_message` | transcript message 主表 | `uk_agent_message_message_id` | `(session_id, sequence_no)` | 修改 |
-| `agent_message_tool_call` | assistant message 的 tool_calls 子表 | `uk_tool_call_record_id`, `uk_assistant_tool_call` | `assistant_message_id`, `turn_id`, `session_id` | 新增 |
-| `agent_tool_execution` | 工具执行事实表 | `uk_agent_tool_execution_id` | `tool_call_record_id`, `tool_call_id`, `tool_result_message_id`, `turn_id` | 新增 |
-| `agent_run_event` | runtime 时间线事件表 | `uk_agent_run_event_id`, `(run_id,event_index)` | `(turn_id,event_index)`, `(session_id,created_at)` | 新增 |
-| `agent_checkpoint` | checkpoint 表 | N/A | N/A | 本轮不创建 |
-| 旧 `agent_tool_call` | 旧工具调用表 | N/A | N/A | 废弃 |
-| 旧 `agent_tool_result` | 旧工具结果表 | N/A | N/A | 废弃 |
-
-### 8.2.1 `agent_message`
+#### 8.2.1 `agent_message`
 
 ```sql
 CREATE TABLE agent_message (
@@ -1111,44 +778,7 @@ CREATE TABLE agent_message (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent transcript message主表';
 ```
 
-Entity：
-
-```java
-@TableName("agent_message")
-@Getter
-@Setter
-public class AgentMessageEntity {
-
-    private Long id;
-
-    private String messageId;
-    private String conversationId;
-    private String sessionId;
-    private String turnId;
-    private String runId;
-
-    private MessageRole role;
-    private MessageType messageType;
-    private Long sequenceNo;
-    private MessageStatus status;
-
-    private String contentText;
-
-    private String toolCallRecordId;
-    private String toolCallId;
-    private String toolName;
-
-    private String provider;
-    private String model;
-    private FinishReason finishReason;
-    private String metadataJson;
-
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-}
-```
-
-### 8.2.2 `agent_message_tool_call`
+#### 8.2.2 `agent_message_tool_call`
 
 ```sql
 CREATE TABLE agent_message_tool_call (
@@ -1180,36 +810,7 @@ CREATE TABLE agent_message_tool_call (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Assistant message tool_calls子表';
 ```
 
-Entity：
-
-```java
-@TableName("agent_message_tool_call")
-@Getter
-@Setter
-public class AgentMessageToolCallEntity {
-
-    private Long id;
-
-    private String toolCallRecordId;
-    private String toolCallId;
-    private String assistantMessageId;
-
-    private String conversationId;
-    private String sessionId;
-    private String turnId;
-    private String runId;
-
-    private String toolName;
-    private String argumentsJson;
-    private Integer callIndex;
-    private ToolCallStatus status;
-
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-}
-```
-
-### 8.2.3 `agent_tool_execution`
+#### 8.2.3 `agent_tool_execution`
 
 ```sql
 CREATE TABLE agent_tool_execution (
@@ -1238,9 +839,10 @@ CREATE TABLE agent_tool_execution (
   started_at DATETIME(6) DEFAULT NULL COMMENT '开始时间',
   completed_at DATETIME(6) DEFAULT NULL COMMENT '完成时间',
   created_at DATETIME(6) NOT NULL COMMENT '创建时间',
+  updated_at DATETIME(6) NOT NULL COMMENT '更新时间',
 
   UNIQUE KEY uk_agent_tool_execution_id (tool_execution_id),
-  KEY idx_agent_tool_execution_record (tool_call_record_id),
+  UNIQUE KEY uk_agent_tool_execution_record (tool_call_record_id),
   KEY idx_agent_tool_execution_call (tool_call_id),
   KEY idx_agent_tool_execution_result_message (tool_result_message_id),
   KEY idx_agent_tool_execution_turn (turn_id),
@@ -1248,43 +850,7 @@ CREATE TABLE agent_tool_execution (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工具执行事实表';
 ```
 
-Entity：
-
-```java
-@TableName("agent_tool_execution")
-@Getter
-@Setter
-public class AgentToolExecutionEntity {
-
-    private Long id;
-
-    private String toolExecutionId;
-    private String toolCallRecordId;
-    private String toolCallId;
-    private String toolResultMessageId;
-
-    private String conversationId;
-    private String sessionId;
-    private String turnId;
-    private String runId;
-
-    private String toolName;
-    private String argumentsJson;
-    private String outputText;
-    private String outputJson;
-
-    private ToolExecutionStatus status;
-    private String errorCode;
-    private String errorMessage;
-    private Long durationMs;
-
-    private LocalDateTime startedAt;
-    private LocalDateTime completedAt;
-    private LocalDateTime createdAt;
-}
-```
-
-### 8.2.4 `agent_run_event`
+#### 8.2.4 `agent_run_event`
 
 ```sql
 CREATE TABLE agent_run_event (
@@ -1298,7 +864,7 @@ CREATE TABLE agent_run_event (
 
   event_index BIGINT NOT NULL COMMENT 'run内事件顺序',
   event_type VARCHAR(64) NOT NULL COMMENT '枚举名：RunEventType.name()',
-  actor_type VARCHAR(64) DEFAULT NULL COMMENT '枚举名：ActorType.name()',
+  actor_type VARCHAR(64) DEFAULT NULL COMMENT '枚举名：RunEventActorType.name()',
   actor_id VARCHAR(128) DEFAULT NULL COMMENT 'actor标识',
 
   payload_json MEDIUMTEXT DEFAULT NULL COMMENT '事件payload JSON',
@@ -1337,6 +903,9 @@ vi:
         session-context-seconds: 604800
         request-cache-seconds: 86400
         session-lock-seconds: 60
+    runtime:
+      session-context:
+        max-turns: 20
 ```
 
 ### 8.3.3 `agent:session:context:{sessionId}`
@@ -1361,7 +930,7 @@ fields：
 | `conversationId` | `conv-xxx` |
 | `fromSequenceNo` | `1` |
 | `toSequenceNo` | `120` |
-| `messageCount` | `120` |
+| `turnCount` | `20` |
 | `snapshotVersion` | `1` |
 | `messagesJson` | `SessionContextMessageSnapshot[]` JSON |
 | `updatedAtEpochMs` | `1776769871111` |
@@ -1392,70 +961,41 @@ snapshotVersion = 1
 }
 ```
 
-USER 必填：
+ASSISTANT 额外字段：
 
 ```text
-公共字段
-contentText
+toolCalls（必须存在，空数组也要有）
+finishReason，可空
+usage，可空
 ```
 
-ASSISTANT 必填：
+TOOL 额外字段：
 
 ```text
-公共字段
-toolCalls
-```
-
-`toolCalls` 必须存在，没工具调用时为空数组。
-
-```json
-{
-  "toolCallRecordId": "tcr_xxx",
-  "toolCallId": "call_xxx",
-  "assistantMessageId": "msg_assistant_xxx",
-  "toolName": "get_time",
-  "argumentsJson": "{}",
-  "callIndex": 0,
-  "status": "SUCCEEDED"
-}
-```
-
-TOOL 必填：
-
-```text
-公共字段
 toolCallRecordId
 toolCallId
 toolName
 executionStatus
-```
-
-可选：
-
-```text
 errorCode
 errorMessage
 durationMs
 ```
 
-SYSTEM / SUMMARY 必填：
+SYSTEM / SUMMARY 额外字段：
 
 ```text
-公共字段
-contentText
+无额外字段，使用 contentText
 ```
 
 #### Redis 版本处理
 
-如果 Redis 中 `snapshotVersion != 1`：
+如果 `snapshotVersion != 1`：
 
 ```text
 1. 删除当前 Redis key。
 2. 从 MySQL 重新加载。
 3. 重建 snapshotVersion=1。
 ```
-
-不做 Redis 内部版本迁移。
 
 #### Redis 反序列化失败处理
 
@@ -1564,55 +1104,67 @@ end
 
 ### 8.4 DB / Redis 一致性
 
-#### 8.4.1 MySQL 成功路径事务
+#### 8.4.1 T1：turn 初始化事务
 
-成功路径必须在一个 MySQL 事务中完成：
-
-```text
-1. agent_turn 状态更新为 COMPLETED
-2. agent_message 批量写入
-3. agent_message_tool_call 批量写入
-4. agent_tool_execution 批量写入
-5. agent_run_event 批量写入
-6. agent_session touch / last_turn 更新
-7. agent_conversation last_message_at 更新，如当前已有该逻辑
-```
-
-如果事务中任一步失败：
+负责：
 
 ```text
-事务整体回滚。
-turn 不得标记为 COMPLETED。
+1. create running turn
+2. persist user message
+3. 写 RUN_STARTED / 用户消息事件（如当前设计需要）
 ```
 
-#### 8.4.2 MySQL 失败路径事务
+规则：
 
-失败路径必须在一个 MySQL 事务中完成：
+- 成功：commit
+- 失败：rollback
+- T1 没成功时，不保留 FAILED turn
+
+#### 8.4.2 T2：成功收口事务
+
+工具调用成功的一轮执行完成后，事务内完成：
 
 ```text
-1. agent_turn 状态更新为 FAILED
-2. agent_run_event 写 RUN_FAILED
-3. agent_turn.error_code / error_message / completed_at 更新
-4. agent_run_event.payload_json 写入 errorCode / errorMessage / errorType / retryable
-5. 若本轮已产生失败 ToolMessage：写入 agent_message(role=TOOL) 与 agent_tool_execution 失败字段
-6. agent_session 保持 ACTIVE，只 touch 更新时间
+1. 保存 assistant tool-decision message
+2. 保存 agent_message_tool_call
+3. 保存 agent_tool_execution（SUCCEEDED）
+4. 保存 ToolMessage
+5. 保存 final assistant message
+6. 保存 run events
+7. turn -> COMPLETED
+8. session touch
+9. conversation touch
 ```
 
-失败路径字段映射（最小必填）：
+规则：
 
-| 表 | 字段 | 规则 |
-|---|---|---|
-| `agent_turn` | `status` | 固定 `FAILED` |
-| `agent_turn` | `error_code` | 运行时失败错误码 |
-| `agent_turn` | `error_message` | 运行时失败错误信息 |
-| `agent_turn` | `completed_at` | 当前时间 |
-| `agent_run_event` | `event_type` | 固定 `RUN_FAILED` |
-| `agent_run_event` | `payload_json` | 至少包含 `errorCode/errorMessage/errorType/retryable` |
-| `agent_session` | `status` | 保持 `ACTIVE` |
-| `agent_message` | `role/message_type/content_text/tool_call_record_id/tool_call_id/tool_name` | 仅当本轮已生成失败 `ToolMessage` 时写入 |
-| `agent_tool_execution` | `status/error_code/error_message/duration_ms/completed_at` | 仅当本轮有工具执行事实时写入 |
+- 全部成功：commit
+- 任一步失败：rollback
+- rollback 后进入 T3
 
-#### 8.4.3 Redis 写入策略
+#### 8.4.3 T3：失败收口事务
+
+只要 T1 已成功提交，后续任意环节失败，都进入 T3：
+
+```text
+1. 如果 assistant tool-decision message 已产生，则保存
+2. 如果 tool_call 已产生，则保存/更新 agent_message_tool_call.status=FAILED
+3. 如果 tool_execution 已产生，则保存/更新 agent_tool_execution.status=FAILED
+4. 不保存 ToolMessage（当前阶段失败时不生成 role=TOOL 消息）
+5. 保存 TOOL_FAILED / RUN_FAILED 事件
+6. turn -> FAILED
+7. session 保持 ACTIVE
+```
+
+然后：
+
+```text
+evict Redis session context
+同步返回 runStatus=FAILED
+流式发送 RUN_FAILED
+```
+
+#### 8.4.4 Redis 写入策略
 
 Redis 不进入 MySQL 事务。
 
@@ -1627,17 +1179,17 @@ MySQL commit 成功
 如果 Redis save 失败：
 
 ```text
-1. 记录 WARN 日志。
-2. 尝试删除 agent:session:context:{sessionId}。
-3. 不回滚 MySQL。
-4. 不改变本次响应结果。
+1. 记录 WARN 日志
+2. 尝试删除 session context key
+3. 不回滚 MySQL
+4. 不改变本次响应结果
 ```
 
 如果删除也失败：
 
 ```text
-记录 WARN。
-等待 TTL 过期。
+记录 WARN
+等待 TTL 过期
 ```
 
 失败路径：
@@ -1650,8 +1202,8 @@ MySQL commit 成功
 如果 evict 失败：
 
 ```text
-记录 WARN。
-不回滚 DB。
+记录 WARN
+不回滚 DB
 ```
 
 当前阶段不做：
@@ -1661,26 +1213,6 @@ Redis 补偿队列
 Outbox
 异步重试
 缓存版本对账
-```
-
-### 8.5 迁移策略
-
-当前开发阶段：
-
-```text
-迁移机制：N/A
-脚本命名：N/A
-回滚策略：N/A
-```
-
-执行原则：
-
-```text
-1. 不做旧数据迁移。
-2. 不做回滚兼容。
-3. 开发环境允许手动清库。
-4. 旧数据无用。
-5. 可直接重建表结构。
 ```
 
 ---
@@ -1693,9 +1225,9 @@ Outbox
 |---|---|---|
 | `RuntimeOrchestrator` | run-level orchestration | 不改主职责，只使用新 Message 模型 |
 | `AgentLoopEngine` | llm-tool loop owner | 改为生成 `AssistantMessage(toolCalls)` 与 `ToolMessage`，不再生成 `ToolCallMessage` |
-| `SessionStateLoader` | 加载 session context | 只加载 COMPLETED turn；Redis hash hit 或 MySQL batch load |
+| `SessionStateLoader` | 加载 session context | 只加载最近 N 个 COMPLETED turn，优先从 Redis hash 恢复 |
 | `PersistenceCoordinator` | 持久化协调 | 保存 message/toolCall/toolExecution/runEvent/Redis hash |
-| `MessageTypeHandlerRegistry` | 根据 role + messageType 管理 message 装配/拆解 | 新增 |
+| `MessageTypeHandlerRegistry` | 根据 role + messageType 管理 message 装配/拆解 | 使用现有机制并迁包 |
 | `OpenAICompatibleMessageProjector` | provider 协议投影 | 新增 |
 | `RedisSessionContextRepository` | Redis hash 读写 | 修改 |
 | `RedisSessionLockRepository` | Redis hash 锁 | 修改 |
@@ -1706,7 +1238,7 @@ Outbox
 最终规则：
 
 ```text
-SessionStateLoader 只加载 COMPLETED turn 的消息进入上下文。
+SessionStateLoader 只加载最近 N 个 COMPLETED turn 的消息进入上下文。
 ```
 
 排除：
@@ -1719,17 +1251,15 @@ CANCELLED
 
 当前 turn 的 user message 不由 `SessionStateLoader` 读取，而是由 `AgentRunContextFactory` 追加。
 
-流程：
+窗口规则：
 
 ```text
-SessionStateLoader.load(sessionId)
--> 返回历史 COMPLETED turns 的 messages
-
-AgentRunContextFactory
--> 追加当前 turn 的 user message
+session-context.max-turns = 20
+按最近 completed turn 倒序取最近 N 个
+然后按 sequence_no 正序展开所有 message
 ```
 
-Redis hit 与 Redis miss 都必须遵守 COMPLETED turn 过滤规则。
+不按单条 message 裁剪，避免切断完整 tool chain。
 
 ### 9.3 主链路时序（同步）
 
@@ -1738,7 +1268,7 @@ ChatController
 -> ChatApplicationService
 -> RuntimeOrchestrator
    -> SessionResolutionService
-   -> TurnInitializationService
+   -> TurnInitializationService (T1)
    -> AgentRunContextFactory
       -> SessionStateLoader
          -> RedisSessionContextRepository.get(sessionId)
@@ -1755,26 +1285,33 @@ ChatController
       -> ModelResponse(content, toolCalls, usage, finishReason)
       -> if toolCalls not empty:
            create AssistantMessage(toolCalls)
-           for each toolCall:
-              ToolGateway.execute(...)
+           save tool_call rows with status=CREATED
+           update tool_call rows to DISPATCHED / RUNNING
+           create ToolExecution(status=RUNNING)
+           ToolGateway.execute(...)
+           if success:
+              update ToolExecution.status=SUCCEEDED
+              update AssistantToolCall.status=SUCCEEDED
               create ToolMessage
-           call LLM again with user + assistant(toolCalls) + tool
+              call LLM again with user + assistant(toolCalls) + tool
+           if failure:
+              update ToolExecution.status=FAILED
+              update AssistantToolCall.status=FAILED
+              go T3 failure path
       -> create AssistantMessage(final)
-   -> PersistenceCoordinator.persistSuccess(...)
-      -> MySQL transaction:
-           MessageTypeHandlerRegistry.decompose(...)
-           save agent_message
-           save agent_message_tool_call
-           save agent_tool_execution
-           save agent_run_event
-           update turn/session/conversation
-      -> after commit:
-           RedisSessionContextRepository.save(...)
+   -> PersistenceCoordinator.persistSuccess(...) (T2)
+      -> save agent_message
+      -> save agent_message_tool_call
+      -> save agent_tool_execution
+      -> save agent_run_event
+      -> update turn/session/conversation
+   -> after commit:
+      -> RedisSessionContextRepository.save(...)
 -> ChatResponseAssembler
 -> ChatResponse
 ```
 
-### 9.4 主链路时序（流式，按需）
+### 9.4 主链路时序（流式）
 
 ```text
 ChatStreamController
@@ -1787,7 +1324,7 @@ ChatStreamController
       -> TOOL_RESULT event
       -> MESSAGE_COMPLETED
    -> PersistenceCoordinator.persistSuccess(...)
-      -> MySQL transaction
+      -> MySQL 事务
       -> Redis hash refresh after commit
 -> SSE Event Stream
 ```
@@ -1859,9 +1396,17 @@ AssistantMessage(
             toolCallRecordId = "tcr_001",
             toolCallId = "call_time_001",
             toolName = "get_time",
-            argumentsJson = "{}"
+            argumentsJson = "{}",
+            status = ToolCallStatus.SUCCEEDED
         )
     ]
+)
+
+ToolExecution(
+    toolExecutionId = "exec_001",
+    toolCallRecordId = "tcr_001",
+    toolCallId = "call_time_001",
+    status = ToolExecutionStatus.SUCCEEDED
 )
 
 ToolMessage(
@@ -1869,7 +1414,8 @@ ToolMessage(
     contentText = "2026-04-22T10:20:30+02:00",
     toolCallRecordId = "tcr_001",
     toolCallId = "call_time_001",
-    toolName = "get_time"
+    toolName = "get_time",
+    executionStatus = ToolExecutionStatus.SUCCEEDED
 )
 ```
 
@@ -1922,12 +1468,6 @@ ToolMessage(
 }
 ```
 
-最终 assistant 返回：
-
-```text
-当前时间是 2026-04-22 10:20:30。
-```
-
 最终数据库：
 
 `agent_message`
@@ -1963,16 +1503,6 @@ ToolMessage(
 | `RUNNING` | 不重复执行，返回处理中 | `runStatus=RUNNING` |
 | `FAILED` | 不重新执行，不抛业务错误，返回历史失败结果 | `runStatus=FAILED` |
 
-FAILED 返回细则：
-
-```text
-同步接口：
-返回 ChatResponse，runStatus=FAILED，content=""，finishReason=ERROR，usage 如已记录则返回，否则 null。
-
-流式接口：
-发送 RUN_FAILED 事件，runStatus=FAILED，error 从 agent_turn 错误字段恢复，然后结束流。
-```
-
 ### 10.2 并发策略
 
 - 并发范围：按 `sessionId`。
@@ -1995,8 +1525,8 @@ CREATED -> COMPLETED
 CREATED -> FAILED
 
 ToolCall:
-CREATED -> RUNNING -> SUCCEEDED
-CREATED -> RUNNING -> FAILED
+CREATED -> DISPATCHED -> RUNNING -> SUCCEEDED
+CREATED -> DISPATCHED -> RUNNING -> FAILED
 
 ToolExecution:
 RUNNING -> SUCCEEDED
@@ -2016,7 +1546,7 @@ evict Redis session context
 下一轮从 MySQL completed turn 重建
 ```
 
-Provider 前工具链校验失败：
+provider 前工具链校验失败：
 
 ```text
 1. 不调用 provider
@@ -2024,7 +1554,8 @@ Provider 前工具链校验失败：
 3. session 保持 ACTIVE
 4. 写 RUN_FAILED run_event
 5. evict 当前 session Redis context
-6. 同步返回 runStatus=FAILED；流式发送 RUN_FAILED
+6. 同步返回 runStatus=FAILED
+7. 流式发送 RUN_FAILED
 ```
 
 ---
@@ -2036,25 +1567,11 @@ Provider 前工具链校验失败：
 - 统一端口：`LlmGateway`
 - 返回对象：`ModelResponse`
 
-Provider-neutral 字段：
-
-```java
-class ModelResponse {
-    String content;
-    List<ModelToolCall> toolCalls;
-    FinishReason finishReason;
-    UsageInfo usage;
-    String provider;
-    String model;
-}
-```
-
 ### 11.2 Provider 选择策略
 
 - 当前默认 provider：DeepSeek。
 - 备选 provider：OpenAI / Doubao 保留。
 - 路由策略：本次不做 LlmRouter。
-- 默认 provider 仍通过 yml 配置。
 
 ### 11.3 Tool 协议
 
@@ -2088,24 +1605,44 @@ ToolResult
 -> TOOL_COMPLETED run event
 ```
 
-#### 异常工具处理
+#### 当前阶段 tool 状态推进
 
-工具失败时仍然生成 `ToolMessage`：
+1. 创建 tool call 时：
+   ```text
+   agent_message_tool_call.status = CREATED
+   ```
+
+2. 准备执行时：
+   ```text
+   agent_message_tool_call.status = DISPATCHED
+   ```
+
+3. 开始执行时：
+   ```text
+   agent_message_tool_call.status = RUNNING
+   agent_tool_execution.status = RUNNING
+   ```
+
+4. 执行成功时：
+   ```text
+   agent_message_tool_call.status = SUCCEEDED
+   agent_tool_execution.status = SUCCEEDED
+   ```
+
+5. 执行失败时：
+   ```text
+   agent_message_tool_call.status = FAILED
+   agent_tool_execution.status = FAILED
+   ```
+
+#### 当前阶段不做
 
 ```text
-role = TOOL
-content_text = {"success":false,"errorCode":"...","errorMessage":"..."}
-tool_call_record_id = tcr_xxx
-tool_call_id = call_xxx
-tool_name = xxx
-```
-
-同时：
-
-```text
-agent_tool_execution.status = FAILED
-agent_tool_execution.error_code = ...
-agent_tool_execution.error_message = ...
+retry
+fallback
+degraded
+circuit breaker
+long running heartbeat
 ```
 
 ### 11.4 `OpenAICompatibleMessageProjector`
@@ -2147,8 +1684,8 @@ public class OpenAICompatibleMessageProjector {
 
 1. 不允许出现 `ToolCallMessage`。
 2. `ToolMessage` 前必须存在未匹配的 `AssistantToolCall`。
-3. `ToolMessage.toolCallId` 必须匹配前序 assistant `toolCalls[].toolCallId`。
-4. `ToolMessage.toolCallRecordId` 必须匹配前序 assistant `toolCalls[].toolCallRecordId`。
+3. `ToolMessage.toolCallId` 必须匹配前序 `AssistantToolCall.toolCallId`。
+4. `ToolMessage.toolCallRecordId` 必须匹配前序 `AssistantToolCall.toolCallRecordId`。
 5. 一个 assistant 带多个 tool calls 时，后续 tool messages 必须覆盖这些 tool call，或按模型协议要求完整匹配。
 6. 出现非法上下文时，在系统内部抛 `INVALID_MODEL_CONTEXT`，并由 runtime failure flow 标记 turn FAILED。
 
@@ -2161,38 +1698,9 @@ public class OpenAICompatibleMessageProjector {
 | `vi.agent.redis.ttl.session-context-seconds` | `604800` | Y | session context hash TTL，默认 7 天 |
 | `vi.agent.redis.ttl.request-cache-seconds` | `86400` | Y | request cache TTL，默认 1 天 |
 | `vi.agent.redis.ttl.session-lock-seconds` | `60` | Y | session lock TTL，默认 60 秒 |
-| `vi.agent.runtime.session-context.max-messages` | `200` | Y | session context 最大消息数 |
+| `vi.agent.runtime.session-context.max-turns` | `20` | Y | session context 最近保留 turn 数 |
 | `vi.agent.runtime.message.validate-tool-chain` | `true` | Y | provider 投影前校验 tool chain |
 | `mybatis-plus.configuration.default-enum-type-handler` | `org.apache.ibatis.type.EnumTypeHandler` | Y | enum 存 `name()` |
-
-配置示例：
-
-```yaml
-vi:
-  agent:
-    redis:
-      ttl:
-        session-context-seconds: 604800
-        request-cache-seconds: 86400
-        session-lock-seconds: 60
-    runtime:
-      session-context:
-        max-messages: 200
-      message:
-        validate-tool-chain: true
-
-mybatis-plus:
-  configuration:
-    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
-```
-
-配置校验规则：
-
-- 所有 TTL 必须大于 0。
-- `session-lock-seconds` 不得超过合理范围，默认 60 秒。
-- `session-context.max-messages` 必须大于 0。
-- `validate-tool-chain` 默认 true，不建议关闭。
-- enum 不允许使用 `@EnumValue` 存 `value`。
 
 ---
 
@@ -2223,6 +1731,9 @@ mybatis-plus:
 21. requestId 幂等 FAILED 返回 `runStatus=FAILED`。
 22. session 并发锁正常。
 23. provider 前校验失败时 turn FAILED、session ACTIVE、Redis evict、RUN_FAILED event。
+24. tool_call 状态能够从 CREATED 推进到 SUCCEEDED/FAILED。
+25. tool_execution 状态能够从 RUNNING 推进到 SUCCEEDED/FAILED。
+26. SessionStateLoader 按 turn 裁剪，而不是按 message 裁剪。
 
 ### 13.2 测试分层
 
@@ -2274,15 +1785,14 @@ mybatis-plus:
 | 阶段 1 | 统一 enum 规范 | 全模块 enum | 所有 enum 有 `value + desc`，DB/Redis 存 name | 开发阶段不设计回滚 |
 | 阶段 2 | 重构领域模型 | `vi-agent-core-model` | 新增 `AssistantToolCall / ToolMessage / ToolExecution / SystemMessage / SummaryMessage`，物理删除 `ToolCallMessage` | 清库重做 |
 | 阶段 3 | 重构 MySQL schema/entity | `infra/mysql` | 新表可创建，Entity enum 字段为 enum 类型，含 `tool_call_record_id` | 清库重做 |
-| 阶段 4 | 实现 MessageTypeHandlerRegistry | `infra/persistence/message` | role+messageType 能正确装配/拆解 Message | 清库重做 |
+| 阶段 4 | 收口 handler 包结构 | `infra/persistence/message` | 所有 handler 与 registry 迁入 `message.handler` | 清库重做 |
 | 阶段 5 | 重构 MessageRepository | `infra/mysql/repository` | 批量读写 message/toolCall/toolExecution | 清库重做 |
 | 阶段 6 | 重构 Redis hash 存储 | `infra/redis` | session/request/lock 全部 hash，TTL yml 秒级，snapshot DTO 可恢复 | 清 Redis |
-| 阶段 7 | 重构 AgentLoopEngine | `runtime/engine` | 不生成 ToolCallMessage，生成 AssistantMessage(toolCalls)+ToolMessage | 回滚代码 |
-| 阶段 8 | 新增 Provider Projector | `infra/provider/openai` | DeepSeek request 合法，无孤立 tool，无重复 tool_calls | 回滚代码 |
-| 阶段 9 | 重构 PersistenceCoordinator | `runtime/persistence` | MySQL 事务 + Redis commit 后 best-effort | 回滚代码 |
-| 阶段 10 | 测试与清理 | 全模块 | 删除旧逻辑，测试通过 | N/A |
-
-执行顺序不可跳。Codex 必须按阶段落地。
+| 阶段 7 | 重构 SessionStateLoader | `runtime/state` | 只加载最近 N 个 COMPLETED turn | 清 Redis |
+| 阶段 8 | 重构 AgentLoopEngine | `runtime/engine` | 不生成 ToolCallMessage，生成 AssistantMessage(toolCalls)+ToolMessage，并推进状态 | 回滚代码 |
+| 阶段 9 | 新增 Provider Projector | `infra/provider/openai` | provider request 合法，无孤立 tool，无重复 tool_calls | 回滚代码 |
+| 阶段 10 | 重构 PersistenceCoordinator | `runtime/persistence` | T1/T2/T3 事务与 Redis best-effort 落地 | 回滚代码 |
+| 阶段 11 | 测试与清理 | 全模块 | 删除旧逻辑，测试通过 | N/A |
 
 ---
 
@@ -2298,9 +1808,8 @@ mybatis-plus:
 | 旧 ToolCallMessage 残留 | 主链路混乱 | 高 | 物理删除并用测试禁止 | Codex |
 | tool_execution 与 tool_message 不一致 | 审计错误 | 中 | 同事务保存并测试 | Codex |
 | session lock hash Lua 错误 | 并发控制失效 | 中 | Redis lock 单测 | Codex |
-| 旧数据不兼容 | 开发数据失效 | 高 | 当前阶段允许清库 | Victor |
 | Redis 写入失败 | 缓存失效 | 中 | Redis best-effort，失败 evict + WARN | Codex |
-| checkpoint 范围膨胀 | 延误主任务 | 中 | 本轮不创建 agent_checkpoint | Codex |
+| 旧数据不兼容 | 开发数据失效 | 高 | 当前阶段允许清库 | Victor |
 
 ### 15.2 回滚策略
 
@@ -2318,10 +1827,8 @@ mybatis-plus:
 - 普通文本 chat 正常。
 - 工具调用 chat 正常。
 - 历史上下文中工具调用可恢复。
-- 不再出现：
-  - `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`
-- 不再出现：
-  - `assistant message with tool_calls must be followed by tool messages`
+- 不再出现孤立 `role=tool`。
+- 不再出现重复 `assistant(tool_calls)`。
 - `ToolMessage.toolCallId` 与 `AssistantMessage.toolCalls[].toolCallId` 匹配。
 - `ToolMessage.toolCallRecordId` 与 `AssistantMessage.toolCalls[].toolCallRecordId` 匹配。
 - `agent_message` 中不再有 `message_type=TOOL_CALL`。
@@ -2342,7 +1849,7 @@ mybatis-plus:
 - `runtime` 不直接访问 infra。
 - 不再通过主流程二次查库补 message 字段。
 - `ToolCallMessage` 物理删除。
-- `agent_checkpoint` 本轮不创建。
+- handler 目录已统一到 `message.handler`。
 
 ### 16.3 协议与数据验收
 
@@ -2380,8 +1887,9 @@ mybatis-plus:
   - tool message 保存/恢复
   - tool execution 保存/恢复
 - PersistenceCoordinator 测试覆盖：
-  - MySQL 事务成功
-  - MySQL 事务失败回滚
+  - T1 初始化事务
+  - T2 成功收口事务
+  - T3 失败收口事务
   - Redis save 失败不影响响应
   - failure path evict Redis
 
@@ -2423,7 +1931,7 @@ mybatis-plus:
    - `vi.agent.redis.ttl.session-context-seconds`
    - `vi.agent.redis.ttl.request-cache-seconds`
    - `vi.agent.redis.ttl.session-lock-seconds`
-   - `vi.agent.runtime.session-context.max-messages`
+   - `vi.agent.runtime.session-context.max-turns`
    - `vi.agent.runtime.message.validate-tool-chain`
    - `mybatis-plus.configuration.default-enum-type-handler`
 
@@ -2449,8 +1957,8 @@ mybatis-plus:
    - Redis 使用 hash 并保存完整 context snapshot。
    - MySQL 保存完整事实。
    - enum 统一 value + desc，DB/Redis 存 name。
-   - 本轮不创建 agent_checkpoint。
-   - 本轮不做 agent_message_content_part。
+   - 本轮不做长耗时 / retry / fallback / degraded / circuit breaker。
+   - 本轮按最近 completed turn 裁剪上下文。
 
 ---
 
@@ -2458,13 +1966,20 @@ mybatis-plus:
 
 ```text
 你现在是本仓库实现代理。先完整阅读并严格遵守：
-1) 根目录 AGENTS.md
-2) 根目录 PROJECT_PLAN.md
-3) 根目录 ARCHITECTURE.md
-4) 根目录 CODE_REVIEW.md
-5) 本设计文档
+1. 根目录 AGENTS.md
+2. 根目录 PROJECT_PLAN.md
+3. 根目录 ARCHITECTURE.md
+4. 根目录 CODE_REVIEW.md
+5. execution-phase/README.md
+6. 当前阶段 README.md
+7. 当前阶段 design.md
+8. 当前阶段 plan.md
+9. 当前阶段 test.md
+10. 与当前任务相关的历史强契约文档
+11. 相关模块 AGENTS.md
+12. 相关源码与测试
 
-本次任务是 vi-agent-core message / tool runtime 基座重构。
+本次任务是 vi-agent-core message / tool runtime 基座重构（当前阶段版本）。
 
 执行要求：
 1. 严格按本文档“分阶段实施计划”执行，不跳阶段。
@@ -2485,20 +2000,30 @@ mybatis-plus:
 16. Redis TTL 从 yml 配置读取，单位秒。
 17. Redis session context 使用稳定 snapshot DTO。
 18. snapshotVersion 当前只支持 1。
-19. 不再让 ToolCallMessage 作为 Message。
-20. 物理删除 ToolCallMessage。
-21. AssistantMessage 持有 AssistantToolCall。
-22. Tool result 使用 ToolMessage。
-23. Provider 使用 OpenAICompatibleMessageProjector。
-24. Message 装配使用 MessageTypeHandlerRegistry。
-25. requestId 命中 FAILED 固定返回 runStatus=FAILED。
-26. SessionStateLoader 只加载 COMPLETED turn。
-27. provider 前工具链校验失败必须标记 turn FAILED、session ACTIVE、写 RUN_FAILED、evict Redis。
-28. tool_call_id 不做全局唯一，使用内部 tool_call_record_id 全局唯一。
-29. MySQL 多表写入必须事务。
-30. Redis commit 后 best-effort，失败不回滚 DB。
-31. 若旧测试与新语义冲突，直接更新或删除。
-32. 不做与本任务无关的额外架构扩展。
+19. 物理删除 ToolCallMessage。
+20. AssistantMessage 持有 AssistantToolCall。
+21. Tool result 使用 ToolMessage。
+22. MessageTypeHandlerRegistry 保留并迁入 message.handler。
+23. OpenAICompatibleMessageProjector 负责 provider 投影。
+24. requestId 命中 FAILED 固定返回 runStatus=FAILED。
+25. SessionStateLoader 只加载最近 N 个 COMPLETED turn。
+26. provider 前工具链校验失败必须标记 turn FAILED、session ACTIVE、写 RUN_FAILED、evict Redis。
+27. tool_call_id 不做全局唯一，使用内部 tool_call_record_id 全局唯一。
+28. T1/T2/T3 事务必须落地。
+29. Redis commit 后 best-effort，失败不回滚 DB。
+30. 当前阶段保留 tool_call 和 tool_execution 状态推进。
+31. 当前阶段不实现长耗时 / retry / fallback / degraded / circuit breaker。
+32. 若旧测试与新语义冲突，直接更新或删除。
+33. 不做与本任务无关的额外架构扩展。
+
+如果仓库已安装 Superpower 插件，可使用其能力完成：
+- workspace-wide symbol search
+- multi-file targeted edits
+- cross-file reference inspection
+- terminal command execution
+- batch validation
+
+但不要依赖任何不确定或不可复现的插件行为；所有结果仍必须体现在代码、配置、SQL、测试中。
 
 最终交付：
 - 代码
@@ -2508,53 +2033,18 @@ mybatis-plus:
 - 变更总结
 ```
 
-### 18.1 给 Codex Review Agent 的评审指令
-
-```text
-你现在是本仓库的评审代理。请评审本文档是否足以指导 Codex 完成 message / tool runtime 基座重构。
-
-评审标准：
-1. 是否明确 requestId 命中 FAILED 的唯一返回语义。
-2. 是否明确 ToolCallMessage 物理删除。
-3. 是否明确 SessionStateLoader 只加载 COMPLETED turn。
-4. 是否明确 provider 前工具链校验失败后的收口。
-5. 是否明确 tool_call_id 唯一性边界与 tool_call_record_id。
-6. 是否明确 MySQL 事务边界与 Redis best-effort 策略。
-7. 是否明确 Redis snapshot DTO、版本和失败恢复策略。
-8. 是否明确本轮必做与未来占位。
-9. 是否明确 AssistantMessage.toolCalls 与 ToolMessage 的职责。
-10. 是否明确 MySQL 表结构。
-11. 是否明确 enum 存储规则。
-12. 是否明确 Redis hash 规则。
-13. 是否明确 MessageTypeHandlerRegistry。
-14. 是否明确 OpenAICompatibleMessageProjector。
-15. 是否明确 Runtime 主链路变化。
-16. 是否明确测试与验收标准。
-17. 是否存在会导致 Codex 模糊实现的空白点。
-18. 是否存在违反模块依赖方向的问题。
-19. 是否存在过度设计或本次不应实现的内容。
-20. 是否足以通过该文档生成可执行实现 prompt。
-
-评审输出：
-- PASS / FAIL
-- 主要问题
-- 必须补充的内容
-- 可选优化建议
-```
-
----
-
 ## 19. 文档维护规则
 
 - 本文档是 `vi-agent-core` message / tool runtime 基座重构的专题设计文档。
 - 采用增量更新，不做无理由整体改写。
 - 当前阶段不做 `agent_message_content_part`。
 - 当前阶段不创建 `agent_checkpoint`。
+- 当前阶段不做长耗时 / retry / fallback / degraded / circuit breaker。
 - 后续多模态阶段再单独设计 content parts。
 - 后续 context engineering 阶段再引入 `agent_checkpoint`。
 - 后续 plan 阶段基于 `agent_run_event + agent_checkpoint` 扩展。
 - 后续 subagent 阶段基于 `agent_run_event.actor_type=SUBAGENT` 与 `agent_checkpoint.checkpoint_type=SUBAGENT_STATE` 扩展。
-- 后续 memory 阶段单独设计 `agent_memory`，不混入 checkpoint。
+- 后续 memory 阶段单独设计 `agent_memory`。
 - 新增 message 类型必须新增对应 `MessageTypeHandler`。
 - 新增 provider 必须通过 provider-specific projector，不能污染 domain message。
 - 新设计点必须同步落到：术语、契约、领域、存储、主链路、测试、阶段计划。

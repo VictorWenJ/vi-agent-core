@@ -411,11 +411,18 @@ class [StreamEventDtoName] {
 
 ```text
 你现在是本仓库实现代理。先完整阅读并严格遵守：
-1) 根目录 AGENTS.md
-2) 根目录 PROJECT_PLAN.md
-3) 根目录 ARCHITECTURE.md
-4) 根目录 CODE_REVIEW.md
-5) 本设计文档
+1. 根目录 AGENTS.md
+2. 根目录 PROJECT_PLAN.md
+3. 根目录 ARCHITECTURE.md
+4. 根目录 CODE_REVIEW.md
+5. execution-phase/README.md
+6. 当前阶段 README.md
+7. 当前阶段 design.md
+8. 当前阶段 plan.md
+9. 当前阶段 test.md
+10. 与当前任务相关的历史强契约文档
+11. 相关模块 AGENTS.md
+12. 相关源码与测试
 
 执行要求：
 - 严格按本文档“分阶段实施计划”执行，不跳阶段
@@ -432,4 +439,3 @@ class [StreamEventDtoName] {
 - 采用增量更新，不做无理由整体改写。
 - 若仓库基线发生变化，先更新根文档，再同步更新本模板。
 - 新设计点必须同步落到：术语、契约、领域、存储、主链路、测试、阶段计划。
-

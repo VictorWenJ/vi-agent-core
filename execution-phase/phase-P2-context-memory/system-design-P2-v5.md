@@ -646,7 +646,7 @@ class ContextDebugBlockSummary {
 Context Kernel
 ├── Fact Layer
 │   ├── conversation / session / turn / message
-│   ├── tool_call / tool_execution
+│   ├── tool_call / tool_execution  
 │   └── run_event
 ├── Memory Layer
 │   ├── SessionWorkingSet
@@ -2785,11 +2785,18 @@ vi:
 
 ```text
 你现在是本仓库实现代理。先完整阅读并严格遵守：
-1) 根目录 AGENTS.md
-2) 根目录 PROJECT_PLAN.md
-3) 根目录 ARCHITECTURE.md
-4) 根目录 CODE_REVIEW.md
-5) 本设计文档 system-design-P2.md
+1. 根目录 AGENTS.md
+2. 根目录 PROJECT_PLAN.md
+3. 根目录 ARCHITECTURE.md
+4. 根目录 CODE_REVIEW.md
+5. execution-phase/README.md
+6. 当前阶段 README.md
+7. 当前阶段 design.md
+8. 当前阶段 plan.md
+9. 当前阶段 test.md
+10. 与当前任务相关的历史强契约文档
+11. 相关模块 AGENTS.md
+12. 相关源码与测试
 
 执行要求：
 - 以本设计文档为主，旧文档冲突处直接以本稿为准
