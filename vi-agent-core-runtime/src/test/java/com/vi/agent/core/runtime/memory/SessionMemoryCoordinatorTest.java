@@ -6,8 +6,6 @@ import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.ConfirmedFactRecord;
 import com.vi.agent.core.model.memory.ConversationSummary;
-import com.vi.agent.core.model.memory.EvidenceRef;
-import com.vi.agent.core.model.memory.EvidenceTargetType;
 import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
@@ -16,7 +14,6 @@ import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.MessageStatus;
 import com.vi.agent.core.model.message.UserMessage;
-import com.vi.agent.core.model.port.MemoryEvidenceRepository;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
@@ -66,7 +63,9 @@ class SessionMemoryCoordinatorTest {
         assertEquals("task-summary", result.getSummaryTaskId());
         assertNull(result.getNewStateVersion());
         assertNull(result.getNewSummaryVersion());
-        assertEquals(List.of(InternalTaskType.STATE_EXTRACT, InternalTaskType.SUMMARY_EXTRACT), fixture.taskService.invokedTypes);
+        assertEquals(List.of(InternalTaskType.STATE_EXTRACT, InternalTaskType.SUMMARY_EXTRACT, InternalTaskType.EVIDENCE_ENRICH), fixture.taskService.invokedTypes);
+        assertNotNull(fixture.taskService.evidenceCommand);
+        assertTrue(fixture.taskService.evidenceResult.isSkipped());
         assertEquals(1, fixture.extractor.extractCalls);
         assertEquals(1, fixture.summaryExtractor.extractCalls);
         assertEquals(List.of("msg-user-1", "msg-assistant-1"), fixture.taskService.stateCommand.getMessageIds());
@@ -120,7 +119,7 @@ class SessionMemoryCoordinatorTest {
         assertEquals(2, saved.getConfirmedFacts().size());
         assertEquals("new fact", saved.getConfirmedFacts().get(1).getContent());
         assertEquals(saved, fixture.stateCache.saved.get(0));
-        assertTrue(fixture.evidenceRepository.saved.isEmpty());
+        assertNotNull(fixture.evidenceBinder.lastCommand);
     }
 
     @Test
@@ -352,15 +351,23 @@ class SessionMemoryCoordinatorTest {
         fixture.summaryExtractor.result = summaryResult("new summary");
         fixture.evidenceBinder.result = EvidenceBindingResult.builder()
             .success(true)
-            .evidenceId("evd-1")
-            .savedCount(1)
+            .evidenceId("evd-state")
+            .evidenceId("evd-summary")
+            .stateEvidenceId("evd-state")
+            .summaryEvidenceId("evd-summary")
+            .savedCount(2)
             .build();
 
         SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
 
         assertTrue(result.isSuccess());
-        assertEquals(1, result.getEvidenceSavedCount());
-        assertEquals(List.of("evd-1"), result.getEvidenceIds());
+        assertEquals(List.of(InternalTaskType.STATE_EXTRACT, InternalTaskType.SUMMARY_EXTRACT, InternalTaskType.EVIDENCE_ENRICH), fixture.taskService.invokedTypes);
+        assertEquals(2, result.getEvidenceSavedCount());
+        assertEquals(List.of("evd-state", "evd-summary"), result.getEvidenceIds());
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"evidenceIds\":[\"evd-state\",\"evd-summary\"]"));
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"stateEvidenceIds\":[\"evd-state\"]"));
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"summaryEvidenceIds\":[\"evd-summary\"]"));
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"savedCount\":2"));
         assertNotNull(fixture.evidenceBinder.lastCommand);
         assertNotNull(fixture.evidenceBinder.lastCommand.getStateDelta());
         assertNotNull(fixture.evidenceBinder.lastCommand.getNewState());
@@ -394,6 +401,52 @@ class SessionMemoryCoordinatorTest {
         assertEquals(1, fixture.stateRepository.saved.size());
         assertEquals(1, fixture.summaryRepository.saved.size());
         assertTrue(result.getFailureReason().contains("evidence save failed"));
+        assertEquals(InternalTaskStatus.DEGRADED, fixture.taskService.evidenceResult.getStatus());
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"failureReason\":\"evidence save failed\""));
+    }
+
+    @Test
+    void emptyDeltaAndSkippedSummaryShouldRecordEvidenceEnrichSkippedWithoutFakeEvidence() {
+        Fixture fixture = Fixture.create();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertEquals(InternalTaskType.EVIDENCE_ENRICH, fixture.taskService.evidenceCommand.getTaskType());
+        assertTrue(fixture.taskService.evidenceResult.isSkipped());
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"skipped\":true"));
+        assertTrue(fixture.taskService.evidenceResult.getOutputJson().contains("\"savedCount\":0"));
+        assertNull(fixture.evidenceBinder.lastCommand);
+        assertTrue(result.getEvidenceIds().isEmpty());
+        assertEquals(0, result.getEvidenceSavedCount());
+    }
+
+    @Test
+    void taskGoalAndWorkingModeUpdateShouldEnterEvidenceBinding() {
+        Fixture fixture = Fixture.create();
+        fixture.extractor.result = StateDeltaExtractionResult.builder()
+            .success(true)
+            .stateDelta(StateDelta.builder()
+                .taskGoalOverride("new goal")
+                .workingModeOverride(WorkingMode.DEBUG_ANALYSIS)
+                .sourceCandidateId("msg-user-1")
+                .build())
+            .sourceCandidateId("msg-user-1")
+            .build();
+        fixture.evidenceBinder.result = EvidenceBindingResult.builder()
+            .success(true)
+            .evidenceId("evd-goal")
+            .evidenceId("evd-mode")
+            .savedCount(2)
+            .build();
+
+        SessionMemoryUpdateResult result = fixture.coordinator.updateAfterTurn(command());
+
+        assertTrue(result.isSuccess());
+        assertNotNull(fixture.evidenceBinder.lastCommand);
+        assertEquals("new goal", fixture.evidenceBinder.lastCommand.getStateDelta().getTaskGoalOverride());
+        assertEquals(WorkingMode.DEBUG_ANALYSIS, fixture.evidenceBinder.lastCommand.getStateDelta().getWorkingModeOverride());
+        assertEquals(2, result.getEvidenceSavedCount());
     }
 
     @Test
@@ -497,7 +550,6 @@ class SessionMemoryCoordinatorTest {
         private final StubConversationSummaryExtractor summaryExtractor = new StubConversationSummaryExtractor();
         private final StubMemoryEvidenceBinder evidenceBinder = new StubMemoryEvidenceBinder();
         private final StubInternalMemoryTaskService taskService = new StubInternalMemoryTaskService();
-        private final StubEvidenceRepository evidenceRepository = new StubEvidenceRepository();
 
         private static Fixture create() {
             Fixture fixture = new Fixture();
@@ -506,7 +558,6 @@ class SessionMemoryCoordinatorTest {
             TestFieldUtils.setField(fixture.coordinator, "sessionSummaryRepository", fixture.summaryRepository);
             TestFieldUtils.setField(fixture.coordinator, "sessionStateCacheRepository", fixture.stateCache);
             TestFieldUtils.setField(fixture.coordinator, "sessionSummaryCacheRepository", fixture.summaryCache);
-            TestFieldUtils.setField(fixture.coordinator, "memoryEvidenceRepository", fixture.evidenceRepository);
             TestFieldUtils.setField(fixture.coordinator, "messageRepository", fixture.messageRepository);
             TestFieldUtils.setField(fixture.coordinator, "stateDeltaExtractor", fixture.extractor);
             TestFieldUtils.setField(fixture.coordinator, "conversationSummaryExtractor", fixture.summaryExtractor);
@@ -543,6 +594,8 @@ class SessionMemoryCoordinatorTest {
         private final List<InternalTaskType> invokedTypes = new ArrayList<>();
         private InternalMemoryTaskCommand stateCommand;
         private InternalMemoryTaskCommand summaryCommand;
+        private InternalMemoryTaskCommand evidenceCommand;
+        private InternalMemoryTaskResult evidenceResult;
         private boolean throwOnExecute;
 
         @Override
@@ -559,6 +612,22 @@ class SessionMemoryCoordinatorTest {
             if (command.getTaskType() == InternalTaskType.STATE_EXTRACT) {
                 stateCommand = command;
                 return executor.execute("task-state", "{}");
+            }
+            if (command.getTaskType() == InternalTaskType.EVIDENCE_ENRICH) {
+                evidenceCommand = command;
+                evidenceResult = executor == null
+                    ? InternalMemoryTaskResult.builder()
+                        .internalTaskId("task-evidence")
+                        .taskType(command.getTaskType())
+                        .status(InternalTaskStatus.SKIPPED)
+                        .success(true)
+                        .skipped(true)
+                        .outputJson("""
+                            {"success":true,"degraded":false,"skipped":true,"evidenceIds":[],"savedCount":0,"failureReason":null,"stateEvidenceIds":[],"summaryEvidenceIds":[]}
+                            """)
+                        .build()
+                    : executor.execute("task-evidence", "{}");
+                return evidenceResult;
             }
             summaryCommand = command;
             return executor.execute("task-summary", "{}");
@@ -666,35 +735,6 @@ class SessionMemoryCoordinatorTest {
 
         @Override
         public void evict(String sessionId) {
-        }
-    }
-
-    private static final class StubEvidenceRepository implements MemoryEvidenceRepository {
-        private final List<EvidenceRef> saved = new ArrayList<>();
-
-        @Override
-        public void save(EvidenceRef evidenceRef) {
-            saved.add(evidenceRef);
-        }
-
-        @Override
-        public void saveAll(List<EvidenceRef> evidenceRefs) {
-            saved.addAll(evidenceRefs);
-        }
-
-        @Override
-        public Optional<EvidenceRef> findByEvidenceId(String evidenceId) {
-            return Optional.empty();
-        }
-
-        @Override
-        public List<EvidenceRef> listBySessionId(String sessionId) {
-            return List.of();
-        }
-
-        @Override
-        public List<EvidenceRef> listByTarget(EvidenceTargetType targetType, String targetRef) {
-            return List.of();
         }
     }
 

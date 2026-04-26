@@ -10,7 +10,6 @@ import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.StateDelta;
 import com.vi.agent.core.model.message.Message;
-import com.vi.agent.core.model.port.MemoryEvidenceRepository;
 import com.vi.agent.core.model.port.MessageRepository;
 import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
@@ -60,9 +59,6 @@ public class SessionMemoryCoordinator {
 
     @Resource
     private SessionSummaryCacheRepository sessionSummaryCacheRepository;
-
-    @Resource
-    private MemoryEvidenceRepository memoryEvidenceRepository;
 
     @Resource
     private MessageRepository messageRepository;
@@ -310,18 +306,65 @@ public class SessionMemoryCoordinator {
         MemoryUpdatePartial stateUpdate,
         MemoryUpdatePartial summaryUpdate
     ) {
-        if (memoryEvidenceBinder == null) {
-            return EvidenceBindingResult.builder()
-                .success(true)
-                .skipped(true)
-                .build();
+        List<Message> turnMessages = loadCompletedTurnMessages(command);
+        InternalMemoryTaskResult taskResult = internalMemoryTaskService.execute(
+            toEvidenceTaskCommand(command, stateUpdate, summaryUpdate, turnMessages),
+            (internalTaskId, inputJson) -> executeEvidenceEnrichTask(command, stateUpdate, summaryUpdate, turnMessages)
+        );
+        return toEvidenceBindingResult(taskResult);
+    }
+
+    private InternalMemoryTaskCommand toEvidenceTaskCommand(
+        SessionMemoryUpdateCommand command,
+        MemoryUpdatePartial stateUpdate,
+        MemoryUpdatePartial summaryUpdate,
+        List<Message> turnMessages
+    ) {
+        InternalMemoryTaskCommand.InternalMemoryTaskCommandBuilder builder = InternalMemoryTaskCommand.builder()
+            .taskType(InternalTaskType.EVIDENCE_ENRICH)
+            .conversationId(command == null ? null : command.getConversationId())
+            .sessionId(command == null ? null : command.getSessionId())
+            .turnId(command == null ? null : command.getTurnId())
+            .runId(command == null ? null : command.getRunId())
+            .traceId(command == null ? null : command.getTraceId())
+            .currentUserMessageId(command == null ? null : command.getCurrentUserMessageId())
+            .assistantMessageId(command == null ? null : command.getAssistantMessageId())
+            .workingContextSnapshotId(command == null ? null : command.getWorkingContextSnapshotId())
+            .agentMode(resolveAgentMode(command))
+            .stateTaskId(stateUpdate == null ? null : stateUpdate.taskId())
+            .summaryTaskId(summaryUpdate == null ? null : summaryUpdate.taskId())
+            .stateUpdated(stateUpdate != null && stateUpdate.newState() != null)
+            .summaryUpdated(summaryUpdate != null && summaryUpdate.newSummary() != null);
+        for (Message message : nullSafeMessages(turnMessages)) {
+            builder.messageId(message.getMessageId());
         }
+        if (stateUpdate != null && stateUpdate.sourceCandidateIds() != null) {
+            for (String sourceCandidateId : stateUpdate.sourceCandidateIds()) {
+                builder.sourceCandidateId(sourceCandidateId);
+            }
+        }
+        return builder.build();
+    }
+
+    private InternalMemoryTaskResult executeEvidenceEnrichTask(
+        SessionMemoryUpdateCommand command,
+        MemoryUpdatePartial stateUpdate,
+        MemoryUpdatePartial summaryUpdate,
+        List<Message> turnMessages
+    ) {
         if ((stateUpdate == null || stateUpdate.newState() == null)
             && (summaryUpdate == null || summaryUpdate.newSummary() == null)) {
-            return EvidenceBindingResult.builder()
+            return evidenceTaskResult(InternalTaskStatus.SKIPPED, true, false, true, EvidenceBindingResult.builder()
                 .success(true)
                 .skipped(true)
-                .build();
+                .build());
+        }
+        if (memoryEvidenceBinder == null) {
+            return evidenceTaskResult(InternalTaskStatus.SKIPPED, true, false, true, EvidenceBindingResult.builder()
+                .success(true)
+                .skipped(true)
+                .failureReason("memory evidence binder is not configured")
+                .build());
         }
         EvidenceBindingCommand.EvidenceBindingCommandBuilder builder = EvidenceBindingCommand.builder()
             .conversationId(command == null ? null : command.getConversationId())
@@ -338,7 +381,7 @@ public class SessionMemoryCoordinator {
             .latestSummary(summaryUpdate == null ? null : summaryUpdate.latestSummary())
             .newSummary(summaryUpdate == null ? null : summaryUpdate.newSummary())
             .agentMode(resolveAgentMode(command));
-        for (Message message : loadCompletedTurnMessages(command)) {
+        for (Message message : nullSafeMessages(turnMessages)) {
             builder.turnMessage(message);
         }
         if (stateUpdate != null && stateUpdate.sourceCandidateIds() != null) {
@@ -346,7 +389,73 @@ public class SessionMemoryCoordinator {
                 builder.sourceCandidateId(sourceCandidateId);
             }
         }
-        return memoryEvidenceBinder.bind(builder.build());
+        EvidenceBindingResult bindingResult = memoryEvidenceBinder.bind(builder.build());
+        InternalTaskStatus status = evidenceTaskStatus(bindingResult);
+        return evidenceTaskResult(status, bindingResult.isSuccess(), bindingResult.isDegraded(), bindingResult.isSkipped(), bindingResult);
+    }
+
+    private EvidenceBindingResult toEvidenceBindingResult(InternalMemoryTaskResult taskResult) {
+        if (taskResult == null) {
+            return EvidenceBindingResult.builder()
+                .success(false)
+                .degraded(true)
+                .failureReason("EVIDENCE_ENRICH task returned null result")
+                .build();
+        }
+        return EvidenceBindingResult.builder()
+            .success(taskResult.isSuccess() && !taskResult.isDegraded())
+            .degraded(taskResult.isDegraded())
+            .skipped(taskResult.isSkipped())
+            .evidenceIds(taskResult.getEvidenceIds())
+            .stateEvidenceIds(taskResult.getStateEvidenceIds())
+            .summaryEvidenceIds(taskResult.getSummaryEvidenceIds())
+            .savedCount(taskResult.getEvidenceSavedCount())
+            .failureReason(taskResult.getFailureReason())
+            .build();
+    }
+
+    private InternalTaskStatus evidenceTaskStatus(EvidenceBindingResult bindingResult) {
+        if (bindingResult == null) {
+            return InternalTaskStatus.FAILED;
+        }
+        if (bindingResult.isSkipped()) {
+            return InternalTaskStatus.SKIPPED;
+        }
+        if (bindingResult.isDegraded()) {
+            return InternalTaskStatus.DEGRADED;
+        }
+        if (!bindingResult.isSuccess()) {
+            return InternalTaskStatus.FAILED;
+        }
+        return InternalTaskStatus.SUCCEEDED;
+    }
+
+    private InternalMemoryTaskResult evidenceTaskResult(
+        InternalTaskStatus status,
+        boolean success,
+        boolean degraded,
+        boolean skipped,
+        EvidenceBindingResult bindingResult
+    ) {
+        EvidenceBindingResult safeResult = bindingResult == null ? EvidenceBindingResult.builder()
+            .success(false)
+            .degraded(true)
+            .failureReason("evidence binding returned null result")
+            .build() : bindingResult;
+        String outputJson = buildEvidenceTaskOutputJson(safeResult);
+        return InternalMemoryTaskResult.builder()
+            .taskType(InternalTaskType.EVIDENCE_ENRICH)
+            .status(status)
+            .success(success)
+            .degraded(degraded)
+            .skipped(skipped)
+            .evidenceIds(safeResult.getEvidenceIds())
+            .stateEvidenceIds(safeResult.getStateEvidenceIds())
+            .summaryEvidenceIds(safeResult.getSummaryEvidenceIds())
+            .evidenceSavedCount(safeResult.getSavedCount())
+            .failureReason(safeResult.getFailureReason())
+            .outputJson(outputJson)
+            .build();
     }
 
     private InternalMemoryTaskResult executeStateExtractTask(
@@ -734,6 +843,19 @@ public class SessionMemoryCoordinator {
         output.put("stateEvidenceIds", List.of());
         output.put("stateEvidenceSavedCount", 0);
         output.put("evidenceBindingDegraded", false);
+        return JsonUtils.toJson(output);
+    }
+
+    private String buildEvidenceTaskOutputJson(EvidenceBindingResult bindingResult) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("success", bindingResult != null && bindingResult.isSuccess());
+        output.put("degraded", bindingResult != null && bindingResult.isDegraded());
+        output.put("skipped", bindingResult != null && bindingResult.isSkipped());
+        output.put("evidenceIds", bindingResult == null || bindingResult.getEvidenceIds() == null ? List.of() : bindingResult.getEvidenceIds());
+        output.put("savedCount", bindingResult == null ? 0 : bindingResult.getSavedCount());
+        output.put("failureReason", bindingResult == null ? "evidence binding returned null result" : bindingResult.getFailureReason());
+        output.put("stateEvidenceIds", bindingResult == null || bindingResult.getStateEvidenceIds() == null ? List.of() : bindingResult.getStateEvidenceIds());
+        output.put("summaryEvidenceIds", bindingResult == null || bindingResult.getSummaryEvidenceIds() == null ? List.of() : bindingResult.getSummaryEvidenceIds());
         return JsonUtils.toJson(output);
     }
 

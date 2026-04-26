@@ -29,6 +29,14 @@ public class EvidenceBindingResult {
     /** 已保存 evidence 数量。 */
     private final int savedCount;
 
+    /** 已保存的 state evidence ID 列表。 */
+    @Singular("stateEvidenceId")
+    private final List<String> stateEvidenceIds;
+
+    /** 已保存的 summary evidence ID 列表。 */
+    @Singular("summaryEvidenceId")
+    private final List<String> summaryEvidenceIds;
+
     /** 失败或降级原因。 */
     private final String failureReason;
 }

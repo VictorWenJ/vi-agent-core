@@ -41,6 +41,12 @@ public class InternalMemoryTaskService {
     /** D-1 预留任务审计 prompt 版本。 */
     private static final String P2_D_1_TEMPLATE_VERSION = "p2-d-1-v1";
 
+    /** EVIDENCE_ENRICH 确定性绑定审计 key。 */
+    private static final String EVIDENCE_ENRICH_TEMPLATE_KEY = "evidence_bind_deterministic";
+
+    /** EVIDENCE_ENRICH 确定性绑定审计版本。 */
+    private static final String P2_D_4_EVIDENCE_TEMPLATE_VERSION = "p2-d-4-v1";
+
     /** 未知内部任务审计 prompt key。 */
     private static final String UNKNOWN_TEMPLATE_KEY = "internal_memory_task_noop";
 
@@ -167,6 +173,30 @@ public class InternalMemoryTaskService {
                 .status(InternalTaskStatus.SKIPPED)
                 .success(true)
                 .skipped(true)
+                .evidenceIds(java.util.List.of())
+                .stateEvidenceIds(java.util.List.of())
+                .summaryEvidenceIds(java.util.List.of())
+                .evidenceSavedCount(0)
+                .outputJson(outputJson)
+                .build();
+        }
+        if (command.getTaskType() == InternalTaskType.EVIDENCE_ENRICH) {
+            Map<String, Object> output = new LinkedHashMap<>();
+            output.put("success", true);
+            output.put("degraded", false);
+            output.put("skipped", true);
+            output.put("evidenceIds", java.util.List.of());
+            output.put("savedCount", 0);
+            output.put("failureReason", null);
+            output.put("stateEvidenceIds", java.util.List.of());
+            output.put("summaryEvidenceIds", java.util.List.of());
+            String outputJson = JsonUtils.toJson(output);
+            return InternalMemoryTaskResult.builder()
+                .internalTaskId(internalTaskId)
+                .taskType(command.getTaskType())
+                .status(InternalTaskStatus.SKIPPED)
+                .success(true)
+                .skipped(true)
                 .outputJson(outputJson)
                 .build();
         }
@@ -191,6 +221,17 @@ public class InternalMemoryTaskService {
             output.put("summaryUpdated", false);
             output.put("newSummaryVersion", null);
             output.put("failureReason", ex.getMessage());
+            return JsonUtils.toJson(output);
+        }
+        if (command != null && command.getTaskType() == InternalTaskType.EVIDENCE_ENRICH) {
+            output.put("success", false);
+            output.put("degraded", true);
+            output.put("skipped", false);
+            output.put("evidenceIds", java.util.List.of());
+            output.put("savedCount", 0);
+            output.put("failureReason", ex.getMessage());
+            output.put("stateEvidenceIds", java.util.List.of());
+            output.put("summaryEvidenceIds", java.util.List.of());
             return JsonUtils.toJson(output);
         }
         output.put("failed", true);
@@ -249,6 +290,9 @@ public class InternalMemoryTaskService {
         if (taskType == InternalTaskType.SUMMARY_EXTRACT) {
             return SUMMARY_EXTRACT_TEMPLATE_KEY;
         }
+        if (taskType == InternalTaskType.EVIDENCE_ENRICH) {
+            return EVIDENCE_ENRICH_TEMPLATE_KEY;
+        }
         return UNKNOWN_TEMPLATE_KEY;
     }
 
@@ -258,6 +302,9 @@ public class InternalMemoryTaskService {
         }
         if (taskType == InternalTaskType.SUMMARY_EXTRACT) {
             return P2_D_3_SUMMARY_TEMPLATE_VERSION;
+        }
+        if (taskType == InternalTaskType.EVIDENCE_ENRICH) {
+            return P2_D_4_EVIDENCE_TEMPLATE_VERSION;
         }
         return P2_D_1_TEMPLATE_VERSION;
     }
@@ -291,6 +338,11 @@ public class InternalMemoryTaskService {
         input.put("currentStateVersion", command == null ? null : command.getCurrentStateVersion());
         input.put("latestStateVersion", command == null ? null : command.getLatestStateVersion());
         input.put("latestSummaryVersion", command == null ? null : command.getLatestSummaryVersion());
+        input.put("stateTaskId", command == null ? null : command.getStateTaskId());
+        input.put("summaryTaskId", command == null ? null : command.getSummaryTaskId());
+        input.put("stateUpdated", command == null ? null : command.getStateUpdated());
+        input.put("summaryUpdated", command == null ? null : command.getSummaryUpdated());
+        input.put("sourceCandidateIds", command == null ? null : command.getSourceCandidateIds());
         return JsonUtils.toJson(input);
     }
 

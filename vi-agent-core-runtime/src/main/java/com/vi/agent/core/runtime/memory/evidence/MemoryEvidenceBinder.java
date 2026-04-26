@@ -8,6 +8,7 @@ import com.vi.agent.core.model.memory.DecisionRecord;
 import com.vi.agent.core.model.memory.EvidenceRef;
 import com.vi.agent.core.model.memory.EvidenceSource;
 import com.vi.agent.core.model.memory.EvidenceTarget;
+import com.vi.agent.core.model.memory.EvidenceTargetType;
 import com.vi.agent.core.model.memory.OpenLoop;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.StateDelta;
@@ -70,6 +71,8 @@ public class MemoryEvidenceBinder {
                 .success(warnings.isEmpty())
                 .degraded(!warnings.isEmpty())
                 .evidenceIds(evidenceRefs.stream().map(EvidenceRef::getEvidenceId).toList())
+                .stateEvidenceIds(stateEvidenceIds(evidenceRefs))
+                .summaryEvidenceIds(summaryEvidenceIds(evidenceRefs))
                 .savedCount(evidenceRefs.size())
                 .failureReason(String.join("; ", warnings))
                 .build();
@@ -113,6 +116,22 @@ public class MemoryEvidenceBinder {
     ) {
         List<EvidenceRef> evidenceRefs = new ArrayList<>();
         sourceForState(command, warnings).ifPresent(source -> {
+            if (StringUtils.isNotBlank(delta.getTaskGoalOverride())) {
+                evidenceRefs.add(newEvidence(targetFactory.sessionStateField(
+                    newState.getSnapshotId(),
+                    "taskGoal",
+                    "taskGoal",
+                    "sessionState.taskGoal"
+                ), source));
+            }
+            if (delta.getWorkingModeOverride() != null) {
+                evidenceRefs.add(newEvidence(targetFactory.sessionStateField(
+                    newState.getSnapshotId(),
+                    "workingMode",
+                    "workingMode",
+                    "sessionState.workingMode"
+                ), source));
+            }
             for (ConfirmedFactRecord fact : nullSafe(delta.getConfirmedFactsAppend())) {
                 evidenceRefs.add(newEvidence(targetFactory.sessionStateField(newState.getSnapshotId(), "confirmedFacts", fact.getFactId(), "confirmedFacts[" + fact.getFactId() + "]"), source));
             }
@@ -262,6 +281,22 @@ public class MemoryEvidenceBinder {
             .confidence(DEFAULT_CONFIDENCE)
             .createdAt(Instant.now())
             .build();
+    }
+
+    private List<String> stateEvidenceIds(List<EvidenceRef> evidenceRefs) {
+        return evidenceRefs.stream()
+            .filter(evidence -> evidence != null && evidence.getTarget() != null)
+            .filter(evidence -> evidence.getTarget().getTargetType() != EvidenceTargetType.SUMMARY_SEGMENT)
+            .map(EvidenceRef::getEvidenceId)
+            .toList();
+    }
+
+    private List<String> summaryEvidenceIds(List<EvidenceRef> evidenceRefs) {
+        return evidenceRefs.stream()
+            .filter(evidence -> evidence != null && evidence.getTarget() != null)
+            .filter(evidence -> evidence.getTarget().getTargetType() == EvidenceTargetType.SUMMARY_SEGMENT)
+            .map(EvidenceRef::getEvidenceId)
+            .toList();
     }
 
     private <T> List<T> nullSafe(List<T> items) {

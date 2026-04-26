@@ -55,6 +55,21 @@ public class InternalMemoryTaskResult {
     @Singular("sourceCandidateId")
     private final List<String> sourceCandidateIds;
 
+    /** EVIDENCE_ENRICH 保存的 evidence ID 列表。 */
+    @Singular("evidenceId")
+    private final List<String> evidenceIds;
+
+    /** EVIDENCE_ENRICH 保存的 state evidence ID 列表。 */
+    @Singular("stateEvidenceId")
+    private final List<String> stateEvidenceIds;
+
+    /** EVIDENCE_ENRICH 保存的 summary evidence ID 列表。 */
+    @Singular("summaryEvidenceId")
+    private final List<String> summaryEvidenceIds;
+
+    /** EVIDENCE_ENRICH 保存的 evidence 数量。 */
+    private final int evidenceSavedCount;
+
     /** 失败或降级原因。 */
     private final String failureReason;
 

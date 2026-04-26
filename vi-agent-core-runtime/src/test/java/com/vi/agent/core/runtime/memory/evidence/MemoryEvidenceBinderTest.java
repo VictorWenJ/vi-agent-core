@@ -2,6 +2,7 @@ package com.vi.agent.core.runtime.memory.evidence;
 
 import com.vi.agent.core.common.id.EvidenceIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
+import com.vi.agent.core.model.context.WorkingMode;
 import com.vi.agent.core.model.memory.AnswerStyle;
 import com.vi.agent.core.model.memory.ConfirmedFactRecord;
 import com.vi.agent.core.model.memory.ConstraintRecord;
@@ -46,6 +47,8 @@ class MemoryEvidenceBinderTest {
         assertEquals(9, result.getSavedCount());
         assertEquals(9, fixture.repository.saved.size());
         assertEquals(List.of("evd-1", "evd-2", "evd-3", "evd-4", "evd-5", "evd-6", "evd-7", "evd-8", "evd-9"), result.getEvidenceIds());
+        assertEquals(List.of("evd-1", "evd-2", "evd-3", "evd-4", "evd-5", "evd-6", "evd-7", "evd-8"), result.getStateEvidenceIds());
+        assertEquals(List.of("evd-9"), result.getSummaryEvidenceIds());
         assertTrue(fixture.repository.saved.stream().anyMatch(evidence -> evidence.getTarget().getTargetField().equals("confirmedFacts")));
         assertTrue(fixture.repository.saved.stream().anyMatch(evidence -> evidence.getTarget().getTargetField().equals("constraints")));
         assertTrue(fixture.repository.saved.stream().anyMatch(evidence -> evidence.getTarget().getTargetField().equals("decisions")));
@@ -104,6 +107,68 @@ class MemoryEvidenceBinderTest {
         assertEquals(1, result.getSavedCount());
         assertEquals("msg-user-1", fixture.repository.saved.get(0).getSource().getMessageId());
         assertTrue(result.getFailureReason().contains("fallback"));
+    }
+
+    @Test
+    void bindShouldSaveEvidenceForTaskGoalOverride() {
+        Fixture fixture = Fixture.create();
+        EvidenceBindingCommand command = EvidenceBindingCommand.builder()
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .traceId("trace-1")
+            .stateTaskId("task-state")
+            .newState(newState())
+            .stateDelta(StateDelta.builder()
+                .taskGoalOverride("new goal")
+                .sourceCandidateId("msg-user-1")
+                .build())
+            .turnMessage(message("msg-user-1", "goal source"))
+            .sourceCandidateId("msg-user-1")
+            .agentMode(AgentMode.GENERAL)
+            .build();
+
+        EvidenceBindingResult result = fixture.binder.bind(command);
+
+        assertFalse(result.isSkipped());
+        assertEquals(1, result.getSavedCount());
+        EvidenceRef evidence = fixture.repository.saved.get(0);
+        assertEquals(EvidenceTargetType.SESSION_STATE_FIELD, evidence.getTarget().getTargetType());
+        assertEquals("taskGoal", evidence.getTarget().getTargetField());
+        assertEquals("taskGoal", evidence.getTarget().getTargetItemId());
+        assertEquals("sessionState.taskGoal", evidence.getTarget().getDisplayPath());
+    }
+
+    @Test
+    void bindShouldSaveEvidenceForWorkingModeOverride() {
+        Fixture fixture = Fixture.create();
+        EvidenceBindingCommand command = EvidenceBindingCommand.builder()
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .traceId("trace-1")
+            .stateTaskId("task-state")
+            .newState(newState())
+            .stateDelta(StateDelta.builder()
+                .workingModeOverride(WorkingMode.DEBUG_ANALYSIS)
+                .sourceCandidateId("msg-user-1")
+                .build())
+            .turnMessage(message("msg-user-1", "mode source"))
+            .sourceCandidateId("msg-user-1")
+            .agentMode(AgentMode.GENERAL)
+            .build();
+
+        EvidenceBindingResult result = fixture.binder.bind(command);
+
+        assertFalse(result.isSkipped());
+        assertEquals(1, result.getSavedCount());
+        EvidenceRef evidence = fixture.repository.saved.get(0);
+        assertEquals(EvidenceTargetType.SESSION_STATE_FIELD, evidence.getTarget().getTargetType());
+        assertEquals("workingMode", evidence.getTarget().getTargetField());
+        assertEquals("workingMode", evidence.getTarget().getTargetItemId());
+        assertEquals("sessionState.workingMode", evidence.getTarget().getDisplayPath());
     }
 
     @Test

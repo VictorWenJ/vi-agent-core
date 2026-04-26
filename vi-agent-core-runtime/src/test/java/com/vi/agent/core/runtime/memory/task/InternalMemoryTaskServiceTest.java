@@ -115,6 +115,59 @@ class InternalMemoryTaskServiceTest {
     }
 
     @Test
+    void evidenceEnrichShouldRecordDeterministicAuditOutput() {
+        InternalMemoryTaskService service = new InternalMemoryTaskService();
+        RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
+        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
+        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+
+        InternalMemoryTaskResult result = service.execute(
+            evidenceCommand(),
+            (internalTaskId, inputJson) -> InternalMemoryTaskResult.builder()
+                .internalTaskId(internalTaskId)
+                .taskType(InternalTaskType.EVIDENCE_ENRICH)
+                .status(InternalTaskStatus.SUCCEEDED)
+                .success(true)
+                .outputJson("""
+                    {"success":true,"degraded":false,"skipped":false,"evidenceIds":["evd-1"],"savedCount":1,"failureReason":null,"stateEvidenceIds":["evd-1"],"summaryEvidenceIds":[]}
+                    """)
+                .build()
+        );
+
+        assertTrue(result.isSuccess());
+        assertEquals(InternalTaskStatus.SUCCEEDED, result.getStatus());
+        assertEquals(3, repository.saved.size());
+        assertEquals(InternalTaskStatus.PENDING, repository.saved.get(0).getStatus());
+        assertEquals(InternalTaskStatus.RUNNING, repository.saved.get(1).getStatus());
+        assertEquals(InternalTaskStatus.SUCCEEDED, repository.saved.get(2).getStatus());
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"stateTaskId\":\"task-state\""));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"summaryTaskId\":\"task-summary\""));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"stateUpdated\":true"));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"summaryUpdated\":false"));
+        assertTrue(repository.saved.get(0).getRequestJson().contains("\"sourceCandidateIds\":[\"msg-user-1\"]"));
+        assertTrue(repository.saved.get(2).getResponseJson().contains("\"evidenceIds\":[\"evd-1\"]"));
+        assertTrue(repository.saved.get(2).getResponseJson().contains("\"savedCount\":1"));
+        assertPromptTemplate(repository.saved, "evidence_bind_deterministic", "p2-d-4-v1");
+    }
+
+    @Test
+    void evidenceEnrichDefaultTaskShouldRecordSkippedStatus() {
+        InternalMemoryTaskService service = new InternalMemoryTaskService();
+        RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
+        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
+        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+
+        InternalMemoryTaskResult result = service.execute(evidenceCommand());
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.isSkipped());
+        assertEquals(InternalTaskStatus.SKIPPED, result.getStatus());
+        assertTrue(repository.saved.get(2).getResponseJson().contains("\"skipped\":true"));
+        assertTrue(repository.saved.get(2).getResponseJson().contains("\"savedCount\":0"));
+        assertPromptTemplate(repository.saved, "evidence_bind_deterministic", "p2-d-4-v1");
+    }
+
+    @Test
     void taskFailureShouldRecordFailedStatusWithoutThrowing() {
         InternalMemoryTaskService service = new InternalMemoryTaskService() {
             @Override
@@ -200,6 +253,28 @@ class InternalMemoryTaskServiceTest {
             .messageId("msg-assistant-1")
             .latestSummaryVersion(3L)
             .latestStateVersion(2L)
+            .build();
+    }
+
+    private InternalMemoryTaskCommand evidenceCommand() {
+        return InternalMemoryTaskCommand.builder()
+            .taskType(InternalTaskType.EVIDENCE_ENRICH)
+            .conversationId("conv-1")
+            .sessionId("sess-1")
+            .turnId("turn-1")
+            .runId("run-1")
+            .traceId("trace-1")
+            .currentUserMessageId("msg-user-1")
+            .assistantMessageId("msg-assistant-1")
+            .workingContextSnapshotId("wctx-1")
+            .agentMode(AgentMode.GENERAL)
+            .messageId("msg-user-1")
+            .messageId("msg-assistant-1")
+            .stateTaskId("task-state")
+            .summaryTaskId("task-summary")
+            .stateUpdated(true)
+            .summaryUpdated(false)
+            .sourceCandidateId("msg-user-1")
             .build();
     }
 

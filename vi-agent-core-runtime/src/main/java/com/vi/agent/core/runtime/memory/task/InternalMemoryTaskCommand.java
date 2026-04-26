@@ -57,4 +57,20 @@ public class InternalMemoryTaskCommand {
 
     /** 最新摘要版本。 */
     private final Long latestSummaryVersion;
+
+    /** STATE_EXTRACT 内部任务 ID。 */
+    private final String stateTaskId;
+
+    /** SUMMARY_EXTRACT 内部任务 ID。 */
+    private final String summaryTaskId;
+
+    /** 本轮是否成功写入新状态快照。 */
+    private final Boolean stateUpdated;
+
+    /** 本轮是否成功写入新摘要。 */
+    private final Boolean summaryUpdated;
+
+    /** 状态增量候选来源 ID。 */
+    @Singular("sourceCandidateId")
+    private final List<String> sourceCandidateIds;
 }
