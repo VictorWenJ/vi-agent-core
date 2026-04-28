@@ -26,6 +26,7 @@
         <commons-collections4.version>4.5.0</commons-collections4.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <lombok.version>1.18.42</lombok.version>
+        <json-schema-validator.version>2.0.1</json-schema-validator.version>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
         <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
@@ -76,6 +77,11 @@
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.networknt</groupId>
+                <artifactId>json-schema-validator</artifactId>
+                <version>${json-schema-validator.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.vi.agent</groupId>

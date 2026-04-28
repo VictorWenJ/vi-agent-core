@@ -8,6 +8,8 @@ import com.vi.agent.core.model.message.AssistantMessage;
 import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.LlmGateway;
+import com.vi.agent.core.runtime.prompt.PromptContractTestSupport;
+import com.vi.agent.core.runtime.prompt.StructuredLlmOutputContractGuard;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -78,7 +80,10 @@ class LlmConversationSummaryExtractorTest {
         return new LlmConversationSummaryExtractor(
             gateway,
             new ConversationSummaryExtractionPromptBuilder(),
-            new ConversationSummaryExtractionOutputParser(),
+            new ConversationSummaryExtractionOutputParser(
+                PromptContractTestSupport.conversationSummaryContract(),
+                new StructuredLlmOutputContractGuard()
+            ),
             new FixedInternalTaskMessageIdGenerator()
         );
     }

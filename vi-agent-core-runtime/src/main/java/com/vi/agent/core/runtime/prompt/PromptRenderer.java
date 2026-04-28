@@ -24,11 +24,14 @@ import java.util.regex.Pattern;
  */
 public class PromptRenderer {
 
-    /** prompt 占位符匹配表达式。 */
-    private static final Pattern PLACEHOLDER_PATTERN =
-        Pattern.compile("\\{\\{([A-Za-z][A-Za-z0-9_]*)}}");
+    /**
+     * prompt 占位符匹配表达式。
+     */
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([A-Za-z][A-Za-z0-9_]*)}}");
 
-    /** 系统 prompt 运行期只读注册表。 */
+    /**
+     * 系统 prompt 运行期只读注册表。
+     */
     private final SystemPromptRegistry systemPromptRegistry;
 
     /**

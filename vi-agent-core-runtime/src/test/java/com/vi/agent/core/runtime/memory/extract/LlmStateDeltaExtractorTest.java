@@ -6,6 +6,8 @@ import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.LlmGateway;
+import com.vi.agent.core.runtime.prompt.PromptContractTestSupport;
+import com.vi.agent.core.runtime.prompt.StructuredLlmOutputContractGuard;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import org.junit.jupiter.api.Test;
 
@@ -77,7 +79,10 @@ class LlmStateDeltaExtractorTest {
         LlmStateDeltaExtractor extractor = new LlmStateDeltaExtractor();
         TestFieldUtils.setField(extractor, "llmGateway", gateway);
         TestFieldUtils.setField(extractor, "promptBuilder", new StateDeltaExtractionPromptBuilder());
-        TestFieldUtils.setField(extractor, "outputParser", new StateDeltaExtractionOutputParser());
+        TestFieldUtils.setField(extractor, "outputParser", new StateDeltaExtractionOutputParser(
+            PromptContractTestSupport.stateDeltaContract(),
+            new StructuredLlmOutputContractGuard()
+        ));
         TestFieldUtils.setField(extractor, "internalTaskMessageIdGenerator", new FixedInternalTaskMessageIdGenerator());
         return extractor;
     }

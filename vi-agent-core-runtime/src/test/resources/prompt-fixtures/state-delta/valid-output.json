@@ -1,0 +1,66 @@
+{
+  "confirmedFactsAppend": [
+    {
+      "factId": "fact-1",
+      "content": "User prefers concise checklists.",
+      "confidence": 0.9,
+      "lastVerifiedAt": "2026-04-26T00:00:00Z",
+      "stalePolicy": "SESSION"
+    }
+  ],
+  "constraintsAppend": [
+    {
+      "constraintId": "constraint-1",
+      "content": "Do not expose internal evidence ids.",
+      "scope": "SESSION",
+      "confidence": 0.95,
+      "lastVerifiedAt": "2026-04-26T00:00:00Z"
+    }
+  ],
+  "decisionsAppend": [
+    {
+      "decisionId": "decision-1",
+      "content": "Use concise checklist.",
+      "decidedBy": "USER",
+      "decidedAt": "2026-04-26T00:00:00Z",
+      "confidence": 0.9
+    }
+  ],
+  "openLoopsAppend": [
+    {
+      "loopId": "loop-1",
+      "kind": "FOLLOW_UP_ACTION",
+      "content": "Collect I-20.",
+      "status": "OPEN",
+      "sourceType": "USER",
+      "sourceRef": "msg-user-1",
+      "createdAt": "2026-04-26T00:00:00Z",
+      "closedAt": null
+    }
+  ],
+  "recentToolOutcomesAppend": [
+    {
+      "digestId": "digest-1",
+      "toolCallRecordId": "tcr-1",
+      "toolExecutionId": "tex-1",
+      "toolName": "searchSchools",
+      "summary": "Found three candidate schools.",
+      "freshnessPolicy": "SESSION",
+      "validUntil": "2026-04-27T00:00:00Z",
+      "lastVerifiedAt": "2026-04-26T00:00:00Z"
+    }
+  ],
+  "userPreferencesPatch": {
+    "answerStyle": "DIRECT",
+    "detailLevel": "HIGH",
+    "termFormat": "ENGLISH_ZH"
+  },
+  "phaseStatePatch": {
+    "promptEngineeringEnabled": true,
+    "contextAuditEnabled": true,
+    "summaryEnabled": false,
+    "stateExtractionEnabled": true,
+    "compactionEnabled": false
+  },
+  "sourceCandidateIds": ["msg-user-1"]
+}

@@ -1,5 +1,7 @@
 package com.vi.agent.core.runtime.memory.extract;
 
+import com.vi.agent.core.runtime.prompt.PromptContractTestSupport;
+import com.vi.agent.core.runtime.prompt.StructuredLlmOutputContractGuard;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,22 +12,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConversationSummaryExtractionOutputParserTest {
 
-    private final ConversationSummaryExtractionOutputParser parser = new ConversationSummaryExtractionOutputParser();
+    private final ConversationSummaryExtractionOutputParser parser = new ConversationSummaryExtractionOutputParser(
+        PromptContractTestSupport.conversationSummaryContract(),
+        new StructuredLlmOutputContractGuard()
+    );
 
     @Test
-    void parseShouldAcceptValidSummaryJson() {
-        ConversationSummaryExtractionResult result = parser.parse("{\"summaryText\":\"new durable summary\"}");
+    void parseShouldAcceptValidSummaryJsonAfterSchemaGuardPasses() {
+        ConversationSummaryExtractionResult result = parser.parse(
+            PromptContractTestSupport.fixture("prompt-fixtures/summary/valid-output.json")
+        );
 
         assertTrue(result.isSuccess());
         assertFalse(result.isDegraded());
         assertFalse(result.isSkipped());
         assertNotNull(result.getConversationSummary());
-        assertEquals("new durable summary", result.getConversationSummary().getSummaryText());
+        assertEquals("The user prefers concise checklist answers.", result.getConversationSummary().getSummaryText());
     }
 
     @Test
     void parseShouldRecognizeSkippedOutput() {
-        ConversationSummaryExtractionResult result = parser.parse("{\"skipped\":true,\"reason\":\"no meaningful update\"}");
+        ConversationSummaryExtractionResult result = parser.parse(
+            PromptContractTestSupport.fixture("prompt-fixtures/summary/skip-output.json")
+        );
 
         assertTrue(result.isSuccess());
         assertTrue(result.isSkipped());
@@ -34,7 +43,7 @@ class ConversationSummaryExtractionOutputParserTest {
     }
 
     @Test
-    void parseShouldRejectInvalidJson() {
+    void parseShouldRejectInvalidJsonAsDegraded() {
         ConversationSummaryExtractionResult result = parser.parse("{not json");
 
         assertFalse(result.isSuccess());
@@ -43,32 +52,11 @@ class ConversationSummaryExtractionOutputParserTest {
     }
 
     @Test
-    void parseShouldRejectUnknownField() {
-        ConversationSummaryExtractionResult result = parser.parse("{\"summaryText\":\"x\",\"unexpected\":\"y\"}");
-
-        assertFalse(result.isSuccess());
-        assertTrue(result.isDegraded());
-        assertTrue(result.getFailureReason().contains("unexpected"));
-    }
-
-    @Test
-    void parseShouldRejectSystemFieldsGeneratedByLlm() {
-        ConversationSummaryExtractionResult result = parser.parse("{\"summaryText\":\"x\",\"summaryId\":\"summary-x\"}");
-
-        assertFalse(result.isSuccess());
-        assertTrue(result.isDegraded());
-        assertTrue(result.getFailureReason().contains("summaryId"));
-    }
-
-    @Test
-    void parseShouldRejectForbiddenMemoryStateEvidenceDebugAndOperationFields() {
-        assertRejected("{\"summaryText\":\"x\",\"memory\":{}}", "memory");
+    void schemaGuardShouldRejectSystemFieldsGeneratedByLlm() {
+        assertRejected(PromptContractTestSupport.fixture("prompt-fixtures/summary/invalid-system-field-output.json"), "summaryId");
         assertRejected("{\"summaryText\":\"x\",\"messages\":[]}", "messages");
-        assertRejected("{\"summaryText\":\"x\",\"stateDelta\":{}}", "stateDelta");
-        assertRejected("{\"summaryText\":\"x\",\"evidence\":[]}", "evidence");
+        assertRejected("{\"summaryText\":\"x\",\"sourceMessageIds\":[\"msg-1\"]}", "sourceMessageIds");
         assertRejected("{\"summaryText\":\"x\",\"debug\":{}}", "debug");
-        assertRejected("{\"summaryText\":\"x\",\"upsert\":[]}", "upsert");
-        assertRejected("{\"summaryText\":\"x\",\"remove\":[]}", "remove");
     }
 
     private void assertRejected(String json, String fieldName) {

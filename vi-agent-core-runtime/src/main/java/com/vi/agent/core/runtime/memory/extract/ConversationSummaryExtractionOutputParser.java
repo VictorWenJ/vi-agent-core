@@ -1,13 +1,20 @@
 package com.vi.agent.core.runtime.memory.extract;
 
 import com.vi.agent.core.common.util.JsonUtils;
+import com.vi.agent.core.model.llm.NormalizedStructuredLlmOutput;
 import com.vi.agent.core.model.memory.ConversationSummary;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContract;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputMode;
+import com.vi.agent.core.runtime.prompt.StructuredLlmOutputContractGuard;
+import com.vi.agent.core.runtime.prompt.StructuredLlmOutputContractValidationResult;
+import com.vi.agent.core.runtime.prompt.SystemPromptRegistry;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 
 /**
  * 会话摘要抽取输出解析器。
@@ -15,52 +22,82 @@ import java.util.Set;
 @Component
 public class ConversationSummaryExtractionOutputParser {
 
-    private static final Set<String> ALLOWED_FIELDS = Set.of(
-        "summaryText",
-        "skipped",
-        "reason"
-    );
+    /** 会话摘要结构化输出契约。 */
+    private final StructuredLlmOutputContract contract;
 
-    private static final Set<String> FORBIDDEN_FIELDS = Set.of(
-        "summaryId",
-        "sessionId",
-        "conversationId",
-        "summaryVersion",
-        "coveredFromSequenceNo",
-        "coveredToSequenceNo",
-        "summaryTemplateKey",
-        "summaryTemplateVersion",
-        "generatorProvider",
-        "generatorModel",
-        "createdAt",
-        "memory",
-        "messages",
-        "stateDelta",
-        "evidence",
-        "debug",
-        "upsert",
-        "remove"
-    );
+    /** 结构化输出契约守卫。 */
+    private final StructuredLlmOutputContractGuard contractGuard;
 
+    /**
+     * 通过系统 prompt 注册表注入会话摘要输出契约。
+     */
+    @Autowired
+    public ConversationSummaryExtractionOutputParser(
+        SystemPromptRegistry systemPromptRegistry,
+        StructuredLlmOutputContractGuard contractGuard
+    ) {
+        this(
+            systemPromptRegistry.getStructuredLlmOutputContract(StructuredLlmOutputContractKey.CONVERSATION_SUMMARY_OUTPUT),
+            contractGuard
+        );
+    }
+
+    /**
+     * 构造测试可直接注入的会话摘要输出解析器。
+     */
+    ConversationSummaryExtractionOutputParser(
+        StructuredLlmOutputContract contract,
+        StructuredLlmOutputContractGuard contractGuard
+    ) {
+        this.contract = Objects.requireNonNull(contract, "contract must not be null");
+        this.contractGuard = Objects.requireNonNull(contractGuard, "contractGuard must not be null");
+    }
+
+    /**
+     * 解析旧主链路传入的原始 JSON 字符串。
+     */
     public ConversationSummaryExtractionResult parse(String rawOutput) {
         if (StringUtils.isBlank(rawOutput)) {
             return degraded(rawOutput, "invalid summary extraction json: output is blank");
         }
-
         String json = normalizeJson(rawOutput);
+        return parse(NormalizedStructuredLlmOutput.builder()
+            .structuredOutputContractKey(StructuredLlmOutputContractKey.CONVERSATION_SUMMARY_OUTPUT)
+            .actualStructuredOutputMode(StructuredLlmOutputMode.JSON_OBJECT)
+            .outputJson(json)
+            .build(), rawOutput);
+    }
+
+    /**
+     * 解析 provider 归一化后的结构化输出。
+     */
+    public ConversationSummaryExtractionResult parse(NormalizedStructuredLlmOutput output) {
+        if (output == null) {
+            return degraded(null, "invalid summary extraction json: output is null");
+        }
+        return parse(output, output.getOutputJson());
+    }
+
+    /**
+     * 使用 contract guard 完成 schema 校验后再映射会话摘要结果。
+     */
+    private ConversationSummaryExtractionResult parse(
+        NormalizedStructuredLlmOutput output,
+        String rawOutput
+    ) {
+        StructuredLlmOutputContractValidationResult validationResult = contractGuard.validate(contract, output);
+        if (!Boolean.TRUE.equals(validationResult.getSuccess())) {
+            return degraded(rawOutput, "invalid summary extraction json: " + validationResult.getFailureReason());
+        }
+
         Map<?, ?> root;
         try {
-            root = JsonUtils.jsonToBean(json, Map.class);
+            root = JsonUtils.jsonToBean(output.getOutputJson(), Map.class);
         } catch (Exception ex) {
             return degraded(rawOutput, "invalid summary extraction json: " + ex.getMessage());
         }
         if (root == null) {
             return degraded(rawOutput, "invalid summary extraction json: output is not a JSON object");
-        }
-
-        Set<String> invalidFields = invalidFields(root);
-        if (!invalidFields.isEmpty()) {
-            return degraded(rawOutput, "invalid summary extraction json fields: " + String.join(", ", invalidFields));
         }
 
         if (Boolean.TRUE.equals(root.get("skipped"))) {
@@ -91,21 +128,16 @@ public class ConversationSummaryExtractionOutputParser {
             .build();
     }
 
-    private Set<String> invalidFields(Map<?, ?> root) {
-        Set<String> invalid = new LinkedHashSet<>();
-        for (Object field : root.keySet()) {
-            String fieldName = String.valueOf(field);
-            if (FORBIDDEN_FIELDS.contains(fieldName) || !ALLOWED_FIELDS.contains(fieldName)) {
-                invalid.add(fieldName);
-            }
-        }
-        return invalid;
-    }
-
+    /**
+     * 将字段值转成字符串。
+     */
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 去除模型可能返回的 Markdown 代码块边界。
+     */
     private String normalizeJson(String rawOutput) {
         String trimmed = rawOutput.trim();
         if (trimmed.startsWith("```")) {
@@ -118,6 +150,9 @@ public class ConversationSummaryExtractionOutputParser {
         return trimmed;
     }
 
+    /**
+     * 构造 degraded 解析结果。
+     */
     private ConversationSummaryExtractionResult degraded(String rawOutput, String failureReason) {
         return ConversationSummaryExtractionResult.builder()
             .success(false)

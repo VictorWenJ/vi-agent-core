@@ -14,7 +14,23 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "factId": {
+            "type": ["string", "null"]
+          },
+          "content": {
+            "type": ["string", "null"]
+          },
+          "confidence": {
+            "type": ["number", "null"]
+          },
+          "lastVerifiedAt": {
+            "type": ["string", "null"]
+          },
+          "stalePolicy": {
+            "type": ["string", "null"]
+          }
+        }
       }
     },
     "constraintsAppend": {
@@ -22,20 +38,62 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "constraintId": {
+            "type": ["string", "null"]
+          },
+          "content": {
+            "type": ["string", "null"]
+          },
+          "scope": {
+            "type": ["string", "null"]
+          },
+          "confidence": {
+            "type": ["number", "null"]
+          },
+          "lastVerifiedAt": {
+            "type": ["string", "null"]
+          }
+        }
       }
     },
     "userPreferencesPatch": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {}
+      "properties": {
+        "answerStyle": {
+          "type": ["string", "null"]
+        },
+        "detailLevel": {
+          "type": ["string", "null"]
+        },
+        "termFormat": {
+          "type": ["string", "null"]
+        }
+      }
     },
     "decisionsAppend": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "decisionId": {
+            "type": ["string", "null"]
+          },
+          "content": {
+            "type": ["string", "null"]
+          },
+          "decidedBy": {
+            "type": ["string", "null"]
+          },
+          "decidedAt": {
+            "type": ["string", "null"]
+          },
+          "confidence": {
+            "type": ["number", "null"]
+          }
+        }
       }
     },
     "openLoopsAppend": {
@@ -43,7 +101,32 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "loopId": {
+            "type": ["string", "null"]
+          },
+          "kind": {
+            "type": ["string", "null"]
+          },
+          "content": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": ["string", "null"]
+          },
+          "sourceType": {
+            "type": ["string", "null"]
+          },
+          "sourceRef": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": ["string", "null"]
+          },
+          "closedAt": {
+            "type": ["string", "null"]
+          }
+        }
       }
     },
     "openLoopIdsToClose": {
@@ -57,7 +140,32 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "digestId": {
+            "type": ["string", "null"]
+          },
+          "toolCallRecordId": {
+            "type": ["string", "null"]
+          },
+          "toolExecutionId": {
+            "type": ["string", "null"]
+          },
+          "toolName": {
+            "type": ["string", "null"]
+          },
+          "summary": {
+            "type": ["string", "null"]
+          },
+          "freshnessPolicy": {
+            "type": ["string", "null"]
+          },
+          "validUntil": {
+            "type": ["string", "null"]
+          },
+          "lastVerifiedAt": {
+            "type": ["string", "null"]
+          }
+        }
       }
     },
     "workingModeOverride": {
@@ -66,7 +174,23 @@
     "phaseStatePatch": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {}
+      "properties": {
+        "promptEngineeringEnabled": {
+          "type": ["boolean", "null"]
+        },
+        "contextAuditEnabled": {
+          "type": ["boolean", "null"]
+        },
+        "summaryEnabled": {
+          "type": ["boolean", "null"]
+        },
+        "stateExtractionEnabled": {
+          "type": ["boolean", "null"]
+        },
+        "compactionEnabled": {
+          "type": ["boolean", "null"]
+        }
+      }
     },
     "sourceCandidateIds": {
       "type": "array",
@@ -74,18 +198,5 @@
         "type": "string"
       }
     }
-  },
-  "required": [
-    "taskGoalOverride",
-    "confirmedFactsAppend",
-    "constraintsAppend",
-    "userPreferencesPatch",
-    "decisionsAppend",
-    "openLoopsAppend",
-    "openLoopIdsToClose",
-    "recentToolOutcomesAppend",
-    "workingModeOverride",
-    "phaseStatePatch",
-    "sourceCandidateIds"
-  ]
+  }
 }

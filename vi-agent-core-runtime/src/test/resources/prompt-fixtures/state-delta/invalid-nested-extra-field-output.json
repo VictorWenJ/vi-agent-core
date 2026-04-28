@@ -1,0 +1,10 @@
+{
+  "confirmedFactsAppend": [
+    {
+      "factId": "fact-1",
+      "content": "User prefers concise checklists.",
+      "evidenceIds": ["evidence-1"]
+    }
+  ],
+  "sourceCandidateIds": []
+}

@@ -16,5 +16,12 @@
       "type": ["string", "null"]
     }
   },
-  "required": ["summaryText", "skipped", "reason"]
+  "anyOf": [
+    {
+      "required": ["summaryText"]
+    },
+    {
+      "required": ["skipped"]
+    }
+  ]
 }
