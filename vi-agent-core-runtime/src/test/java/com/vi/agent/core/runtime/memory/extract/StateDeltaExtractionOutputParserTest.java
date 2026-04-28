@@ -143,6 +143,31 @@ class StateDeltaExtractionOutputParserTest {
     }
 
     @Test
+    void parserShouldRejectBlankTaskGoalOverride() {
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-blank-task-goal-output.json"),
+            "taskGoalOverride"
+        );
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-whitespace-task-goal-output.json"),
+            "taskGoalOverride"
+        );
+    }
+
+    @Test
+    void parserShouldAcceptNonBlankTaskGoalOverride() {
+        StateDeltaExtractionResult result = parser.parse(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/valid-task-goal-output.json")
+        );
+
+        assertTrue(result.isSuccess());
+        assertFalse(result.isDegraded());
+        assertNotNull(result.getStateDelta());
+        assertEquals("new goal", result.getStateDelta().getTaskGoalOverride());
+        assertFalse(result.getStateDelta().isEmpty());
+    }
+
+    @Test
     void legalSingleAppendRecordOutputsShouldParseSuccessfully() {
         assertSuccess("{\"confirmedFactsAppend\":[{\"factId\":\"f1\",\"content\":\"fact\"}]}");
         assertSuccess("{\"constraintsAppend\":[{\"constraintId\":\"c1\",\"content\":\"constraint\"}]}");

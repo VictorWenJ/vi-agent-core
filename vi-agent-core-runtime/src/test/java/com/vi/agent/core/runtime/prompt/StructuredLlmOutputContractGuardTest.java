@@ -74,6 +74,27 @@ class StructuredLlmOutputContractGuardTest {
     }
 
     @Test
+    void emptyTaskGoalOverrideShouldFailSchemaGuard() {
+        assertStateDeltaRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-blank-task-goal-output.json"),
+            "taskGoalOverride"
+        );
+    }
+
+    @Test
+    void whitespaceTaskGoalOverrideShouldBeLeftToParserBusinessValidation() {
+        StructuredLlmOutputContractValidationResult result = guard.validate(
+            PromptContractTestSupport.stateDeltaContract(),
+            output(
+                StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT,
+                PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-whitespace-task-goal-output.json")
+            )
+        );
+
+        assertTrue(result.getSuccess());
+    }
+
+    @Test
     void validSummaryOutputShouldPassSchemaGuard() {
         StructuredLlmOutputContractValidationResult result = guard.validate(
             PromptContractTestSupport.conversationSummaryContract(),

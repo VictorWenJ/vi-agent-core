@@ -139,6 +139,10 @@ public class StateDeltaExtractionOutputParser {
         if (stateDelta == null) {
             return null;
         }
+        String taskGoalFailureReason = validateTaskGoalOverride(stateDelta.getTaskGoalOverride());
+        if (taskGoalFailureReason != null) {
+            return taskGoalFailureReason;
+        }
         String appendFailureReason = validateAppendRecords(stateDelta);
         if (appendFailureReason != null) {
             return appendFailureReason;
@@ -148,6 +152,19 @@ public class StateDeltaExtractionOutputParser {
             return openLoopIdFailureReason;
         }
         return validateStringItems("sourceCandidateIds", stateDelta.getSourceCandidateIds());
+    }
+
+    /**
+     * 校验任务目标覆盖值不能是空白字符串，避免后续 durable state 合并时覆盖有效 taskGoal。
+     */
+    private String validateTaskGoalOverride(String taskGoalOverride) {
+        if (taskGoalOverride == null) {
+            return null;
+        }
+        if (StringUtils.isBlank(taskGoalOverride)) {
+            return "Invalid StateDelta JSON: taskGoalOverride is blank";
+        }
+        return null;
     }
 
     /**

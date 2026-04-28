@@ -74,6 +74,7 @@ class StructuredOutputSchemaClosedContractTest {
         assertArrayItemStringMinLength(root, "recentToolOutcomesAppend", "summary", 1);
         assertObjectFields(root, "userPreferencesPatch", Set.of("answerStyle", "detailLevel", "termFormat"));
         assertObjectFields(root, "phaseStatePatch", Set.of("promptEngineeringEnabled", "contextAuditEnabled", "summaryEnabled", "stateExtractionEnabled", "compactionEnabled"));
+        assertTrue(root.path("properties").path("taskGoalOverride").path("minLength").asInt() == 1);
         assertTrue(root.path("properties").path("openLoopIdsToClose").path("items").path("minLength").asInt() == 1);
         assertTrue(root.path("properties").path("sourceCandidateIds").path("items").path("minLength").asInt() == 1);
         assertForbiddenAbsent(schemaJson, Set.of("upsert", "remove", "patches", "operations", "memory", "messages",
