@@ -29,4 +29,9 @@ public class ChatCompletionsFunction {
      * 函数参数 JSON 字符串。
      */
     private String arguments;
+
+    /**
+     * 是否要求严格遵守函数参数 schema。
+     */
+    private Boolean strict;
 }

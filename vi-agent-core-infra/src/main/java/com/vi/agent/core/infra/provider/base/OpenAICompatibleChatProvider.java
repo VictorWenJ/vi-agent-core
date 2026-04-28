@@ -4,6 +4,12 @@ import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.exception.ErrorCode;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.common.util.ValidationUtils;
+import com.vi.agent.core.infra.provider.ProviderStructuredOutputCapability;
+import com.vi.agent.core.infra.provider.ProviderStructuredOutputCapabilityValidator;
+import com.vi.agent.core.infra.provider.ProviderStructuredOutputSelection;
+import com.vi.agent.core.infra.provider.ProviderStructuredSchemaCompiler;
+import com.vi.agent.core.infra.provider.StructuredOutputRequestAdapter;
+import com.vi.agent.core.infra.provider.StructuredOutputResponseExtractor;
 import com.vi.agent.core.infra.provider.http.HttpRequestOptions;
 import com.vi.agent.core.infra.provider.openai.OpenAICompatibleMessageProjector;
 import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
@@ -24,6 +30,19 @@ import java.util.function.Consumer;
 @Slf4j
 public abstract class OpenAICompatibleChatProvider implements LlmGateway {
 
+    /** provider schema view 编译器。 */
+    private final ProviderStructuredSchemaCompiler structuredSchemaCompiler = new ProviderStructuredSchemaCompiler();
+
+    /** provider structured output mode 请求前选择器。 */
+    private final ProviderStructuredOutputCapabilityValidator structuredOutputCapabilityValidator =
+        new ProviderStructuredOutputCapabilityValidator(structuredSchemaCompiler);
+
+    /** OpenAI-compatible structured output 请求适配器。 */
+    private final StructuredOutputRequestAdapter structuredOutputRequestAdapter = new StructuredOutputRequestAdapter();
+
+    /** OpenAI-compatible structured output 响应归一化器。 */
+    private final StructuredOutputResponseExtractor structuredOutputResponseExtractor = new StructuredOutputResponseExtractor();
+
     @Resource
     protected LlmHttpExecutor httpExecutor;
 
@@ -33,6 +52,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
     @Override
     public ModelResponse generate(ModelRequest modelRequest) {
         assertConfigured();
+        ProviderStructuredOutputSelection structuredOutputSelection = selectStructuredOutput(modelRequest);
         ChatCompletionsRequest request = buildRequest(modelRequest, false);
         String payload = JsonUtils.toJson(request);
 
@@ -40,7 +60,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             log.info("OpenAICompatibleChatProvider generate payload={}", payload);
             String responseBody = httpExecutor.post(endpoint(), defaultHeaders(), payload, requestOptions());
             log.info("OpenAICompatibleChatProvider generate responseBody={}", responseBody);
-            return parseModelResponse(responseBody);
+            return parseModelResponse(responseBody, structuredOutputSelection);
         } catch (AgentRuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -51,6 +71,12 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
     @Override
     public ModelResponse generateStreaming(ModelRequest modelRequest, Consumer<String> chunkConsumer) {
         assertConfigured();
+        if (modelRequest != null && modelRequest.getStructuredOutputContract() != null) {
+            throw new AgentRuntimeException(
+                ErrorCode.PROVIDER_CALL_FAILED,
+                providerName() + " streaming structured output is not supported in P2-E3"
+            );
+        }
         ChatCompletionsRequest request = buildRequest(modelRequest, true);
         request.setStreamOptions(new ChatCompletionsStreamOptions());
         request.getStreamOptions().setIncludeUsage(true);
@@ -110,6 +136,15 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
     }
 
     protected ChatCompletionsRequest buildRequest(ModelRequest modelRequest, boolean stream) {
+        ProviderStructuredOutputSelection structuredOutputSelection = selectStructuredOutput(modelRequest);
+        return buildRequest(modelRequest, stream, structuredOutputSelection);
+    }
+
+    protected ChatCompletionsRequest buildRequest(
+        ModelRequest modelRequest,
+        boolean stream,
+        ProviderStructuredOutputSelection structuredOutputSelection
+    ) {
         ChatCompletionsRequest request = new ChatCompletionsRequest();
         request.setModel(model());
         request.setStream(stream);
@@ -131,6 +166,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             }
         }
 
+        structuredOutputRequestAdapter.apply(request, structuredOutputSelection);
         return request;
     }
 
@@ -157,6 +193,10 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
     }
 
     protected ModelResponse parseModelResponse(String body) {
+        return parseModelResponse(body, ProviderStructuredOutputSelection.disabled());
+    }
+
+    protected ModelResponse parseModelResponse(String body, ProviderStructuredOutputSelection structuredOutputSelection) {
         ChatCompletionsResponse response = JsonUtils.jsonToBean(body, ChatCompletionsResponse.class);
         if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
             throw new AgentRuntimeException(ErrorCode.PROVIDER_CALL_FAILED, providerName() + " empty response");
@@ -168,7 +208,10 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         }
 
         ChatCompletionsMessage message = choice.getMessage();
-        List<ModelToolCall> toolCalls = toModelToolCalls(message.getToolCalls());
+        List<ModelToolCall> toolCalls = toModelToolCalls(message.getToolCalls(), structuredOutputSelection);
+        StructuredOutputChannelResult structuredOutputChannelResult = Boolean.TRUE.equals(structuredOutputSelection.getEnabled())
+            ? structuredOutputResponseExtractor.extract(response, structuredOutputSelection, providerKey(), response.getModel() == null ? model() : response.getModel())
+            : null;
 
         return ModelResponse.builder()
             .content(Optional.ofNullable(message.getContent()).orElse(""))
@@ -177,6 +220,7 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             .usage(toUsageInfo(response.getUsage(), providerKey(), response.getModel()))
             .provider(providerKey())
             .model(response.getModel() == null ? model() : response.getModel())
+            .structuredOutputChannelResult(structuredOutputChannelResult)
             .build();
     }
 
@@ -270,6 +314,13 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
     }
 
     protected List<ModelToolCall> toModelToolCalls(List<ChatCompletionsToolCall> apiToolCalls) {
+        return toModelToolCalls(apiToolCalls, ProviderStructuredOutputSelection.disabled());
+    }
+
+    protected List<ModelToolCall> toModelToolCalls(
+        List<ChatCompletionsToolCall> apiToolCalls,
+        ProviderStructuredOutputSelection structuredOutputSelection
+    ) {
         if (apiToolCalls == null || apiToolCalls.isEmpty()) {
             return List.of();
         }
@@ -281,6 +332,10 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             }
             String name = apiToolCall.getFunction().getName();
             if (name == null || name.isBlank()) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(structuredOutputSelection.getEnabled())
+                && name.equals(structuredOutputSelection.getFunctionName())) {
                 continue;
             }
             modelToolCalls.add(ModelToolCall.builder()
@@ -366,6 +421,26 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         ValidationUtils.requireNonBlank(baseUrl(), providerKey() + ".baseUrl");
         ValidationUtils.requireNonBlank(apiKey(), providerKey() + ".apiKey");
         ValidationUtils.requireNonBlank(model(), providerKey() + ".model");
+    }
+
+    protected ProviderStructuredOutputSelection selectStructuredOutput(ModelRequest modelRequest) {
+        return structuredOutputCapabilityValidator.select(modelRequest, structuredOutputCapability());
+    }
+
+    protected ProviderStructuredOutputCapability structuredOutputCapability() {
+        return switch (providerKey()) {
+            case "deepseek" -> ProviderStructuredOutputCapability.deepSeek().toBuilder()
+                .modelName(model())
+                .build();
+            case "openai" -> ProviderStructuredOutputCapability.builder()
+                .providerName(providerKey())
+                .modelName(model())
+                .supportsStrictToolCall(true)
+                .supportsJsonSchemaResponseFormat(true)
+                .supportsJsonObject(true)
+                .build();
+            default -> ProviderStructuredOutputCapability.jsonObjectOnly(providerKey(), model());
+        };
     }
 
     protected abstract String providerName();

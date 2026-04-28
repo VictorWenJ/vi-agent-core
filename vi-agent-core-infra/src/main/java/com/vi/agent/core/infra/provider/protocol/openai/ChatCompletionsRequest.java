@@ -52,6 +52,12 @@ public class ChatCompletionsRequest {
     private ChatCompletionsStreamOptions streamOptions;
 
     /**
+     * Provider 响应格式约束。
+     */
+    @JsonProperty("response_format")
+    private Object responseFormat;
+
+    /**
      * 思考类型（DeepSeek）.
      */
     @JsonProperty("thinking_type")

@@ -23,4 +23,7 @@ public class ModelResponse {
     private final String provider;
 
     private final String model;
+
+    /** 内部结构化输出通道归一化结果；普通聊天响应为空。 */
+    private final StructuredOutputChannelResult structuredOutputChannelResult;
 }

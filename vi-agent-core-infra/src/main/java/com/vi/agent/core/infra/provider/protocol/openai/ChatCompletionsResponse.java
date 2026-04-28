@@ -12,6 +12,11 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ChatCompletionsResponse {
 
+    /**
+     * Provider 响应 ID。
+     */
+    private String id;
+
     private List<ChatCompletionsChoice> choices;
 
     private ChatCompletionsUsage usage;
