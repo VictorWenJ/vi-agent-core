@@ -3,11 +3,70 @@
   "type": "object",
   "x-structuredOutputContractKey": "state_delta_output",
   "x-outputTarget": "state_delta_extraction_result",
-  "x-description": "状态增量结构化输出契约",
+  "x-description": "State delta extraction structured output contract.",
   "additionalProperties": false,
   "properties": {
     "taskGoalOverride": {
       "type": ["string", "null"]
+    },
+    "confirmedFactsAppend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "constraintsAppend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "userPreferencesPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "decisionsAppend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "openLoopsAppend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "openLoopIdsToClose": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recentToolOutcomesAppend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "workingModeOverride": {
+      "type": ["string", "null"]
+    },
+    "phaseStatePatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
     },
     "sourceCandidateIds": {
       "type": "array",
@@ -15,5 +74,18 @@
         "type": "string"
       }
     }
-  }
+  },
+  "required": [
+    "taskGoalOverride",
+    "confirmedFactsAppend",
+    "constraintsAppend",
+    "userPreferencesPatch",
+    "decisionsAppend",
+    "openLoopsAppend",
+    "openLoopIdsToClose",
+    "recentToolOutcomesAppend",
+    "workingModeOverride",
+    "phaseStatePatch",
+    "sourceCandidateIds"
+  ]
 }

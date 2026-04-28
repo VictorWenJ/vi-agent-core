@@ -105,10 +105,7 @@ public class SystemPromptRegistryFactory {
             case STATE_DELTA_EXTRACT -> template instanceof StateDeltaExtractPromptTemplate;
             case CONVERSATION_SUMMARY_EXTRACT -> template instanceof ConversationSummaryExtractPromptTemplate;
         };
-        if (!matched && expectedPromptKey != SystemPromptKey.CONVERSATION_SUMMARY_EXTRACT) {
-            throw new IllegalStateException("模板 concrete class 与固定槽位不一致: " + expectedPromptKey.getValue());
-        }
-        if (!matched && template.getStructuredOutputContractKey() != StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT) {
+        if (!matched) {
             throw new IllegalStateException("模板 concrete class 与固定槽位不一致: " + expectedPromptKey.getValue());
         }
     }

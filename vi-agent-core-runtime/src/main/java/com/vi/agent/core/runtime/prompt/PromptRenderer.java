@@ -55,6 +55,8 @@ public class PromptRenderer {
         if (template.getRenderOutputType() == PromptRenderOutputType.TEXT) {
             RenderedContent renderedContent = renderContent(template.getTextTemplate(), variableDeclarations, variables);
             return new TextPromptRenderResult(
+                template.getPromptKey(),
+                template.getPurpose(),
                 metadata(template, renderedContent.renderedVariableNames()),
                 renderedContent.content()
             );
@@ -86,6 +88,8 @@ public class PromptRenderer {
         }
         StructuredLlmOutputContractKey contractKey = template.getStructuredOutputContractKey();
         return new ChatMessagesPromptRenderResult(
+            template.getPromptKey(),
+            template.getPurpose(),
             metadata(template, new ArrayList<>(renderedVariableNames)),
             messages,
             contractKey

@@ -39,7 +39,10 @@ class PromptRendererTest {
 
         TextPromptRenderResult textResult = assertInstanceOf(TextPromptRenderResult.class, result);
         assertEquals("Hello Alice", textResult.getRenderedText());
-        assertEquals(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER, textResult.metadata().getPromptKey());
+        assertEquals(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER, textResult.getPromptKey());
+        assertEquals(PromptPurpose.RUNTIME_INSTRUCTION_RENDER, textResult.getPurpose());
+        assertEquals(PromptRenderOutputType.TEXT, textResult.getRenderOutputType());
+        assertEquals(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER, textResult.getMetadata().getPromptKey());
     }
 
     @Test
@@ -52,10 +55,13 @@ class PromptRendererTest {
             .build());
 
         ChatMessagesPromptRenderResult chatResult = assertInstanceOf(ChatMessagesPromptRenderResult.class, result);
+        assertEquals(SystemPromptKey.STATE_DELTA_EXTRACT, chatResult.getPromptKey());
+        assertEquals(PromptPurpose.STATE_DELTA_EXTRACTION, chatResult.getPurpose());
+        assertEquals(PromptRenderOutputType.CHAT_MESSAGES, chatResult.getRenderOutputType());
         assertEquals(StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT, chatResult.getStructuredOutputContractKey());
-        assertEquals(2, chatResult.getMessages().size());
-        assertEquals(MessageRole.USER, chatResult.getMessages().get(1).getRole());
-        assertTrue(chatResult.getMessages().get(1).getRenderedContent().contains("hello"));
+        assertEquals(2, chatResult.getRenderedMessages().size());
+        assertEquals(MessageRole.USER, chatResult.getRenderedMessages().get(1).getRole());
+        assertTrue(chatResult.getRenderedMessages().get(1).getRenderedContent().contains("hello"));
     }
 
     @Test
@@ -151,11 +157,14 @@ class PromptRendererTest {
             .variable("name", "Alice")
             .build());
 
-        assertEquals(PromptPurpose.RUNTIME_INSTRUCTION_RENDER, result.metadata().getPurpose());
-        assertEquals("template-hash", result.metadata().getTemplateContentHash());
-        assertEquals("manifest-hash", result.metadata().getManifestContentHash());
-        assertEquals("revision", result.metadata().getCatalogRevision());
-        assertEquals(List.of("name"), result.metadata().getRenderedVariableNames());
+        assertEquals(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER, result.getPromptKey());
+        assertEquals(PromptPurpose.RUNTIME_INSTRUCTION_RENDER, result.getPurpose());
+        assertEquals(PromptRenderOutputType.TEXT, result.getRenderOutputType());
+        assertEquals(PromptPurpose.RUNTIME_INSTRUCTION_RENDER, result.getMetadata().getPurpose());
+        assertEquals("template-hash", result.getMetadata().getTemplateContentHash());
+        assertEquals("manifest-hash", result.getMetadata().getManifestContentHash());
+        assertEquals("revision", result.getMetadata().getCatalogRevision());
+        assertEquals(List.of("name"), result.getMetadata().getRenderedVariableNames());
     }
 
     private static RuntimeInstructionRenderPromptTemplate textTemplate(

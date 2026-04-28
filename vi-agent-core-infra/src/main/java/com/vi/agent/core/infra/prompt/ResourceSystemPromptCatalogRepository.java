@@ -21,11 +21,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 基于 classpath resource 的系统 prompt catalog 仓储实现。
  */
 public class ResourceSystemPromptCatalogRepository implements SystemPromptCatalogRepository {
+
+    /** UNTRUSTED_DATA BEGIN 边界匹配表达式。 */
+    private static final Pattern BEGIN_UNTRUSTED_BOUNDARY_PATTERN =
+        Pattern.compile("\\[BEGIN_UNTRUSTED_([A-Z0-9_]+)]");
+
+    /** UNTRUSTED_DATA END 边界匹配表达式。 */
+    private static final Pattern END_UNTRUSTED_BOUNDARY_PATTERN =
+        Pattern.compile("\\[END_UNTRUSTED_([A-Z0-9_]+)]");
 
     /** catalog classpath 根路径。 */
     private final String catalogBasePath;
@@ -138,6 +148,7 @@ public class ResourceSystemPromptCatalogRepository implements SystemPromptCatalo
         }
         String promptContent = readResource(promptDirectory + "/prompt.md");
         validatePlaceholders(promptContent, manifest);
+        validateUntrustedBoundaries(promptContent, manifest);
         AbstractPromptTemplate template = assemblerRegistry.assembleText(
             manifest,
             PromptManifestLoader.normalizeContent(promptContent)
@@ -256,15 +267,47 @@ public class ResourceSystemPromptCatalogRepository implements SystemPromptCatalo
                 if (placeholderIndex < 0) {
                     break;
                 }
-                int latestBegin = templateContent.lastIndexOf("[BEGIN_UNTRUSTED_", placeholderIndex);
-                int latestEndBefore = templateContent.lastIndexOf("[END_UNTRUSTED_", placeholderIndex);
-                int nextEnd = templateContent.indexOf("[END_UNTRUSTED_", placeholderIndex + placeholder.length());
-                if (latestBegin < 0 || latestBegin < latestEndBefore || nextEnd < 0) {
+                BoundaryMarker latestBegin = latestBoundaryBefore(
+                    BEGIN_UNTRUSTED_BOUNDARY_PATTERN,
+                    templateContent,
+                    placeholderIndex
+                );
+                BoundaryMarker latestEndBefore = latestBoundaryBefore(
+                    END_UNTRUSTED_BOUNDARY_PATTERN,
+                    templateContent,
+                    placeholderIndex
+                );
+                BoundaryMarker nextEnd = nextBoundaryAfter(
+                    END_UNTRUSTED_BOUNDARY_PATTERN,
+                    templateContent,
+                    placeholderIndex + placeholder.length()
+                );
+                if (latestBegin == null
+                    || latestEndBefore != null && latestBegin.start() < latestEndBefore.start()
+                    || nextEnd == null
+                    || !latestBegin.name().equals(nextEnd.name())) {
                     throw new IllegalStateException("UNTRUSTED_DATA 变量必须位于成对边界内: " + variable.getVariableName());
                 }
                 searchFrom = placeholderIndex + placeholder.length();
             }
         }
+    }
+
+    private BoundaryMarker latestBoundaryBefore(Pattern pattern, String templateContent, int endExclusive) {
+        Matcher matcher = pattern.matcher(templateContent);
+        BoundaryMarker latest = null;
+        while (matcher.find() && matcher.start() < endExclusive) {
+            latest = new BoundaryMarker(matcher.start(), matcher.end(), matcher.group(1));
+        }
+        return latest;
+    }
+
+    private BoundaryMarker nextBoundaryAfter(Pattern pattern, String templateContent, int startInclusive) {
+        Matcher matcher = pattern.matcher(templateContent);
+        if (matcher.find(startInclusive)) {
+            return new BoundaryMarker(matcher.start(), matcher.end(), matcher.group(1));
+        }
+        return null;
     }
 
     private String readResource(String resourcePath) {
@@ -332,5 +375,20 @@ public class ResourceSystemPromptCatalogRepository implements SystemPromptCatalo
 
         /** contract 内容 hash 映射。 */
         private final Map<StructuredLlmOutputContractKey, String> contractContentHashes = new LinkedHashMap<>();
+    }
+
+    /**
+     * UNTRUSTED_DATA 固定边界标记。
+     */
+    private record BoundaryMarker(
+        /** 边界起始位置。 */
+        int start,
+
+        /** 边界结束位置。 */
+        int end,
+
+        /** BEGIN/END 后缀名称。 */
+        String name
+    ) {
     }
 }

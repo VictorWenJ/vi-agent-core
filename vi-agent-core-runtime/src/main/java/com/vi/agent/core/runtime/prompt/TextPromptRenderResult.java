@@ -1,7 +1,9 @@
 package com.vi.agent.core.runtime.prompt;
 
+import com.vi.agent.core.model.prompt.PromptPurpose;
 import com.vi.agent.core.model.prompt.PromptRenderMetadata;
 import com.vi.agent.core.model.prompt.PromptRenderOutputType;
+import com.vi.agent.core.model.prompt.SystemPromptKey;
 import lombok.Getter;
 
 /**
@@ -16,8 +18,13 @@ public final class TextPromptRenderResult extends AbstractPromptRenderResult {
     /**
      * 构造 TEXT prompt 渲染结果。
      */
-    public TextPromptRenderResult(PromptRenderMetadata metadata, String renderedText) {
-        super(PromptRenderOutputType.TEXT, metadata);
+    public TextPromptRenderResult(
+        SystemPromptKey promptKey,
+        PromptPurpose purpose,
+        PromptRenderMetadata metadata,
+        String renderedText
+    ) {
+        super(promptKey, purpose, PromptRenderOutputType.TEXT, metadata);
         this.renderedText = renderedText;
     }
 }

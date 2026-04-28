@@ -55,7 +55,10 @@ class DefaultSystemPromptRegistryTest {
             registry.get(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER).getPromptKey()
         );
         assertThrows(UnsupportedOperationException.class, () ->
-            registry.templates().put(SystemPromptKey.SESSION_STATE_RENDER, registry.runtimeInstructionRenderTemplate())
+            registry.templates().put(
+                SystemPromptKey.SESSION_STATE_RENDER,
+                registry.getRuntimeInstructionRenderPromptTemplate()
+            )
         );
     }
 

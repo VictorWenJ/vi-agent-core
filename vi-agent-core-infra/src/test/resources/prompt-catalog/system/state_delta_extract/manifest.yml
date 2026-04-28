@@ -1,7 +1,7 @@
 promptKey: state_delta_extract
 purpose: state_delta_extraction
 renderOutputType: chat_messages
-description: 状态增量抽取模板
+description: State delta extraction template.
 structuredOutputContractKey: state_delta_output
 inputVariables:
   - variableName: sessionId
@@ -9,19 +9,19 @@ inputVariables:
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: 会话 ID
+    description: Session ID.
   - variableName: turnId
     variableType: text
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: 回合 ID
+    description: Turn ID.
   - variableName: runId
     variableType: text
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: 运行 ID
+    description: Run ID.
   - variableName: currentStateJson
     variableType: json
     trustLevel: untrusted_data
@@ -29,7 +29,7 @@ inputVariables:
     required: true
     maxChars: 8000
     truncateMarker: "[TRUNCATED]"
-    description: 当前状态 JSON
+    description: Current state JSON.
   - variableName: conversationSummaryText
     variableType: text
     trustLevel: untrusted_data
@@ -37,7 +37,7 @@ inputVariables:
     required: false
     maxChars: 6000
     truncateMarker: "[TRUNCATED]"
-    description: 最新摘要文本
+    description: Current summary text.
     defaultValue: ""
   - variableName: turnMessagesText
     variableType: text
@@ -46,11 +46,11 @@ inputVariables:
     required: true
     maxChars: 12000
     truncateMarker: "[TRUNCATED]"
-    description: 当前 turn 消息文本
+    description: Current turn messages text.
   - variableName: unusedControl
     variableType: text
     trustLevel: trusted_control
     placement: metadata_block
     required: false
-    description: 测试允许 manifest 声明未使用变量
+    description: Declared but unused variable for loader contract coverage.
     defaultValue: ""

@@ -1,7 +1,7 @@
 promptKey: conversation_summary_extract
 purpose: conversation_summary_extraction
 renderOutputType: chat_messages
-description: 会话摘要抽取模板
+description: Conversation summary extraction template.
 structuredOutputContractKey: conversation_summary_output
 inputVariables:
   - variableName: sessionId
@@ -9,19 +9,19 @@ inputVariables:
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: 会话 ID
+    description: Session ID.
   - variableName: turnId
     variableType: text
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: 回合 ID
+    description: Turn ID.
   - variableName: runId
     variableType: text
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: 运行 ID
+    description: Run ID.
   - variableName: previousSummaryText
     variableType: text
     trustLevel: untrusted_data
@@ -29,7 +29,7 @@ inputVariables:
     required: false
     maxChars: 12000
     truncateMarker: "[TRUNCATED]"
-    description: 旧会话摘要文本
+    description: Previous conversation summary text.
     defaultValue: ""
   - variableName: latestStateJson
     variableType: json
@@ -38,7 +38,7 @@ inputVariables:
     required: false
     maxChars: 12000
     truncateMarker: "[TRUNCATED]"
-    description: 最新会话状态 JSON
+    description: Latest session state JSON.
     defaultValue: "{}"
   - variableName: turnMessagesText
     variableType: text
@@ -47,4 +47,4 @@ inputVariables:
     required: true
     maxChars: 16000
     truncateMarker: "[TRUNCATED]"
-    description: 当前 turn 消息文本
+    description: Current turn messages text.

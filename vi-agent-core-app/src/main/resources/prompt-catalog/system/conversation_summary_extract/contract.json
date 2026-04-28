@@ -3,24 +3,18 @@
   "type": "object",
   "x-structuredOutputContractKey": "conversation_summary_output",
   "x-outputTarget": "conversation_summary_extraction_result",
-  "x-description": "会话摘要结构化输出契约",
+  "x-description": "Conversation summary extraction structured output contract.",
   "additionalProperties": false,
   "properties": {
+    "summaryText": {
+      "type": "string"
+    },
     "skipped": {
       "type": "boolean"
     },
     "reason": {
       "type": ["string", "null"]
-    },
-    "summaryText": {
-      "type": "string"
-    },
-    "sourceMessageIds": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
     }
   },
-  "required": ["skipped", "summaryText", "sourceMessageIds"]
+  "required": ["summaryText", "skipped", "reason"]
 }

@@ -11,7 +11,6 @@ import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
 import com.vi.agent.core.model.prompt.SystemPromptKey;
 
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * 默认系统 prompt 运行期只读注册表。
@@ -65,35 +64,39 @@ public class DefaultSystemPromptRegistry implements SystemPromptRegistry {
     }
 
     @Override
-    public RuntimeInstructionRenderPromptTemplate runtimeInstructionRenderTemplate() {
+    public RuntimeInstructionRenderPromptTemplate getRuntimeInstructionRenderPromptTemplate() {
         return (RuntimeInstructionRenderPromptTemplate) get(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER);
     }
 
     @Override
-    public SessionStateRenderPromptTemplate sessionStateRenderTemplate() {
+    public SessionStateRenderPromptTemplate getSessionStateRenderPromptTemplate() {
         return (SessionStateRenderPromptTemplate) get(SystemPromptKey.SESSION_STATE_RENDER);
     }
 
     @Override
-    public ConversationSummaryRenderPromptTemplate conversationSummaryRenderTemplate() {
+    public ConversationSummaryRenderPromptTemplate getConversationSummaryRenderPromptTemplate() {
         return (ConversationSummaryRenderPromptTemplate) get(SystemPromptKey.CONVERSATION_SUMMARY_RENDER);
     }
 
     @Override
-    public StateDeltaExtractPromptTemplate stateDeltaExtractTemplate() {
+    public StateDeltaExtractPromptTemplate getStateDeltaExtractPromptTemplate() {
         return (StateDeltaExtractPromptTemplate) get(SystemPromptKey.STATE_DELTA_EXTRACT);
     }
 
     @Override
-    public ConversationSummaryExtractPromptTemplate conversationSummaryExtractTemplate() {
+    public ConversationSummaryExtractPromptTemplate getConversationSummaryExtractPromptTemplate() {
         return (ConversationSummaryExtractPromptTemplate) get(SystemPromptKey.CONVERSATION_SUMMARY_EXTRACT);
     }
 
     @Override
-    public Optional<StructuredLlmOutputContract> getStructuredLlmOutputContract(
+    public StructuredLlmOutputContract getStructuredLlmOutputContract(
         StructuredLlmOutputContractKey contractKey
     ) {
-        return Optional.ofNullable(contracts.get(contractKey));
+        StructuredLlmOutputContract contract = contracts.get(contractKey);
+        if (contract == null) {
+            throw new PromptRenderException("结构化输出契约不存在: " + contractKey.getValue());
+        }
+        return contract;
     }
 
     @Override

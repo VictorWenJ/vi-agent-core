@@ -74,14 +74,15 @@ public class PromptGovernanceConfig {
     }
 
     private String normalizedCatalogRevision() {
-        String catalogRevision = systemPromptProperties.getCatalogRevision();
-        if (catalogRevision != null && !catalogRevision.isBlank()) {
-            return catalogRevision;
-        }
         if (isNonLocalProfile()) {
-            throw new IllegalStateException("生产或非本地 profile 下 vi.agent.system-prompt.catalog-revision 不能为空");
+            String catalogRevision = systemPromptProperties.getCatalogRevision();
+            if (catalogRevision == null || catalogRevision.isBlank() || "local-dev".equals(catalogRevision.trim())) {
+                throw new IllegalStateException("生产或非本地 profile 中 vi.agent.system-prompt.catalog-revision 不能为空或 local-dev");
+            }
+            return catalogRevision.trim();
         }
-        return "local-dev";
+        String catalogRevision = systemPromptProperties.getCatalogRevision();
+        return catalogRevision == null || catalogRevision.isBlank() ? "local-dev" : catalogRevision.trim();
     }
 
     private boolean isNonLocalProfile() {

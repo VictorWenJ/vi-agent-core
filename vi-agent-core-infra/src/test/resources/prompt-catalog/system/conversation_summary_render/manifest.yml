@@ -1,14 +1,14 @@
 promptKey: conversation_summary_render
 purpose: conversation_summary_render
 renderOutputType: text
-description: 会话摘要上下文渲染模板
+description: Conversation summary render template.
 inputVariables:
   - variableName: summaryVersion
     variableType: number
     trustLevel: trusted_control
     placement: metadata_block
     required: true
-    description: summary 版本
+    description: Conversation summary version.
   - variableName: summaryText
     variableType: text
     trustLevel: untrusted_data
@@ -16,4 +16,4 @@ inputVariables:
     required: true
     maxChars: 8000
     truncateMarker: "[TRUNCATED]"
-    description: 会话摘要正文
+    description: Conversation summary text.

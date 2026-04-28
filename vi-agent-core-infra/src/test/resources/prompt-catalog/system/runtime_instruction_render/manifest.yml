@@ -1,25 +1,25 @@
 promptKey: runtime_instruction_render
 purpose: runtime_instruction_render
 renderOutputType: text
-description: 主聊天运行指令模板
+description: Runtime instruction render template.
 inputVariables:
   - variableName: agentMode
     variableType: enum
     trustLevel: trusted_control
     placement: instruction_block
     required: true
-    description: 当前 AgentMode
+    description: Stable AgentMode value.
   - variableName: workingMode
     variableType: enum
     trustLevel: trusted_control
     placement: instruction_block
     required: false
-    description: 当前 WorkingMode
+    description: Stable WorkingMode value.
     defaultValue: general
   - variableName: phaseStateText
     variableType: text
     trustLevel: trusted_control
     placement: instruction_block
     required: false
-    description: 阶段状态说明
+    description: Phase state text.
     defaultValue: ""

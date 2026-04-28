@@ -1,5 +1,7 @@
 package com.vi.agent.core.infra.prompt;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vi.agent.core.model.prompt.AbstractPromptTemplate;
 import com.vi.agent.core.model.prompt.ConversationSummaryExtractPromptTemplate;
 import com.vi.agent.core.model.prompt.PromptInputPlacement;
@@ -11,15 +13,23 @@ import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
 import com.vi.agent.core.model.prompt.SystemPromptKey;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResourceSystemPromptCatalogRepositoryTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void shouldLoadAllSystemPromptsAndContractsFromClasspath() {
@@ -87,6 +97,28 @@ class ResourceSystemPromptCatalogRepositoryTest {
     }
 
     @Test
+    void shouldFailWhenTextPromptUntrustedDataBoundaryIsInvalid() {
+        assertInvalidCatalog("prompt-catalog-invalid/text-untrusted-no-boundary", SystemPromptKey.SESSION_STATE_RENDER);
+        assertInvalidCatalog("prompt-catalog-invalid/text-untrusted-mismatch", SystemPromptKey.SESSION_STATE_RENDER);
+        assertInvalidCatalog("prompt-catalog-invalid/text-untrusted-outside", SystemPromptKey.SESSION_STATE_RENDER);
+    }
+
+    @Test
+    void shouldLoadTextPromptWhenUntrustedDataBoundaryIsValid() {
+        ResourceSystemPromptCatalogRepository repository =
+            new ResourceSystemPromptCatalogRepository(
+                "prompt-catalog/system",
+                "test-revision",
+                List.of(SystemPromptKey.SESSION_STATE_RENDER)
+            );
+
+        assertEquals(
+            SystemPromptKey.SESSION_STATE_RENDER,
+            repository.findTemplate(SystemPromptKey.SESSION_STATE_RENDER).orElseThrow().getPromptKey()
+        );
+    }
+
+    @Test
     void shouldFailWhenTemplateUsesUndeclaredPlaceholder() {
         assertInvalidCatalog("prompt-catalog-invalid/undeclared-placeholder", SystemPromptKey.RUNTIME_INSTRUCTION_RENDER);
     }
@@ -119,8 +151,73 @@ class ResourceSystemPromptCatalogRepositoryTest {
         ));
     }
 
+    @Test
+    void shouldKeepTestCatalogContractsAlignedWithP2EDesign() throws Exception {
+        String stateContract = resourceText("prompt-catalog/system/state_delta_extract/contract.json");
+        JsonNode stateRoot = OBJECT_MAPPER.readTree(stateContract);
+        assertEquals("object", stateRoot.path("type").asText());
+        assertTrue(stateRoot.has("x-structuredOutputContractKey"));
+        assertTrue(stateRoot.has("x-outputTarget"));
+        assertTrue(stateRoot.has("x-description"));
+        assertEquals(Set.of(
+            "taskGoalOverride",
+            "confirmedFactsAppend",
+            "constraintsAppend",
+            "userPreferencesPatch",
+            "decisionsAppend",
+            "openLoopsAppend",
+            "openLoopIdsToClose",
+            "recentToolOutcomesAppend",
+            "workingModeOverride",
+            "phaseStatePatch",
+            "sourceCandidateIds"
+        ), fieldNames(stateRoot.path("properties")));
+        for (String forbidden : Set.of(
+            "skipped",
+            "reason",
+            "statePatches",
+            "evidenceItems",
+            "operation",
+            "upsert",
+            "remove",
+            "patches",
+            "operations",
+            "debug",
+            "locale",
+            "timezone"
+        )) {
+            assertFalse(stateContract.contains("\"" + forbidden + "\""));
+        }
+
+        String summaryContract = resourceText("prompt-catalog/system/conversation_summary_extract/contract.json");
+        JsonNode summaryRoot = OBJECT_MAPPER.readTree(summaryContract);
+        assertEquals("object", summaryRoot.path("type").asText());
+        assertTrue(summaryRoot.has("x-structuredOutputContractKey"));
+        assertTrue(summaryRoot.has("x-outputTarget"));
+        assertTrue(summaryRoot.has("x-description"));
+        assertEquals(Set.of("summaryText", "skipped", "reason"), fieldNames(summaryRoot.path("properties")));
+        assertFalse(summaryContract.contains("\"sourceMessageIds\""));
+    }
+
     private void assertInvalidCatalog(String basePath, SystemPromptKey promptKey) {
         assertThrows(IllegalStateException.class,
             () -> new ResourceSystemPromptCatalogRepository(basePath, "test-revision", List.of(promptKey)));
+    }
+
+    private String resourceText(String resourcePath) {
+        try (InputStream inputStream = Thread.currentThread()
+            .getContextClassLoader()
+            .getResourceAsStream(resourcePath)) {
+            assertNotNull(inputStream, resourcePath);
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            throw new IllegalStateException("failed to read test resource: " + resourcePath, ex);
+        }
+    }
+
+    private Set<String> fieldNames(JsonNode propertiesNode) {
+        Set<String> names = new LinkedHashSet<>();
+        propertiesNode.fieldNames().forEachRemaining(names::add);
+        return names;
     }
 }

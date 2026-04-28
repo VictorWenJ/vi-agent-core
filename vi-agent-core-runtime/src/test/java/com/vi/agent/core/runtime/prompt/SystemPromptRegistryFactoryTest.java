@@ -39,17 +39,19 @@ class SystemPromptRegistryFactoryTest {
             RuntimeInstructionRenderPromptTemplate.class,
             registry.get(SystemPromptKey.RUNTIME_INSTRUCTION_RENDER)
         );
-        assertInstanceOf(SessionStateRenderPromptTemplate.class, registry.sessionStateRenderTemplate());
-        assertInstanceOf(ConversationSummaryRenderPromptTemplate.class, registry.conversationSummaryRenderTemplate());
-        assertInstanceOf(StateDeltaExtractPromptTemplate.class, registry.stateDeltaExtractTemplate());
+        assertInstanceOf(SessionStateRenderPromptTemplate.class, registry.getSessionStateRenderPromptTemplate());
+        assertInstanceOf(
+            ConversationSummaryRenderPromptTemplate.class,
+            registry.getConversationSummaryRenderPromptTemplate()
+        );
+        assertInstanceOf(StateDeltaExtractPromptTemplate.class, registry.getStateDeltaExtractPromptTemplate());
         assertInstanceOf(
             ConversationSummaryExtractPromptTemplate.class,
-            registry.conversationSummaryExtractTemplate()
+            registry.getConversationSummaryExtractPromptTemplate()
         );
         assertEquals(
             StructuredLlmOutputTarget.STATE_DELTA_EXTRACTION_RESULT,
             registry.getStructuredLlmOutputContract(StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT)
-                .orElseThrow()
                 .getOutputTarget()
         );
     }
@@ -66,6 +68,14 @@ class SystemPromptRegistryFactoryTest {
     void shouldFailFastWhenExtractTemplateUsesDuplicatedContractKey() {
         StubRepository repository = new StubRepository();
         repository.templates.put(SystemPromptKey.CONVERSATION_SUMMARY_EXTRACT, new DuplicateContractTemplate());
+
+        assertThrows(IllegalStateException.class, () -> new SystemPromptRegistryFactory(repository).create());
+    }
+
+    @Test
+    void shouldFailFastWhenConcreteClassDoesNotMatchPromptKey() {
+        StubRepository repository = new StubRepository();
+        repository.templates.put(SystemPromptKey.SESSION_STATE_RENDER, new WrongConcreteClassTemplate());
 
         assertThrows(IllegalStateException.class, () -> new SystemPromptRegistryFactory(repository).create());
     }
@@ -194,6 +204,22 @@ class SystemPromptRegistryFactoryTest {
                 List.of(textVariable("input")),
                 StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT,
                 "duplicate"
+            );
+        }
+    }
+
+    private static final class WrongConcreteClassTemplate extends AbstractPromptTemplate {
+
+        private WrongConcreteClassTemplate() {
+            super(
+                SystemPromptKey.SESSION_STATE_RENDER,
+                PromptPurpose.SESSION_STATE_RENDER,
+                PromptRenderOutputType.TEXT,
+                "state {{input}}",
+                List.of(),
+                List.of(textVariable("input")),
+                null,
+                "wrong concrete"
             );
         }
     }
