@@ -47,11 +47,13 @@ public class ProviderStructuredOutputCapabilityValidator {
         String lastFailureReason = null;
         for (StructuredLlmOutputMode mode : orderedModes) {
             if (!isSupported(mode, actualCapability)) {
-                lastFailureReason = mode.getValue() + " is not supported";
+                if (lastFailureReason == null) {
+                    lastFailureReason = unsupportedReason(mode, actualCapability);
+                }
                 continue;
             }
             if (mode == StructuredLlmOutputMode.JSON_OBJECT) {
-                return buildSelection(request, actualCapability, mode, functionName, null, null);
+                return buildSelection(request, actualCapability, mode, functionName, null, lastFailureReason);
             }
             ProviderStructuredSchemaCompileResult compileResult = schemaCompiler.compile(
                 contract,
@@ -119,6 +121,14 @@ public class ProviderStructuredOutputCapabilityValidator {
             case JSON_SCHEMA_RESPONSE_FORMAT -> Boolean.TRUE.equals(capability.getSupportsJsonSchemaResponseFormat());
             case JSON_OBJECT -> Boolean.TRUE.equals(capability.getSupportsJsonObject());
         };
+    }
+
+    private String unsupportedReason(StructuredLlmOutputMode mode, ProviderStructuredOutputCapability capability) {
+        if (mode == StructuredLlmOutputMode.STRICT_TOOL_CALL
+            && StringUtils.isNotBlank(capability.getStrictToolCallUnavailableReason())) {
+            return capability.getStrictToolCallUnavailableReason();
+        }
+        return mode.getValue() + " is not supported";
     }
 
     private String resolveFunctionName(ModelRequest request, StructuredLlmOutputContract contract) {

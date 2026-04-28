@@ -52,8 +52,9 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
     @Override
     public ModelResponse generate(ModelRequest modelRequest) {
         assertConfigured();
+        assertStructuredOutputDoesNotMixBusinessTools(modelRequest);
         ProviderStructuredOutputSelection structuredOutputSelection = selectStructuredOutput(modelRequest);
-        ChatCompletionsRequest request = buildRequest(modelRequest, false);
+        ChatCompletionsRequest request = buildRequest(modelRequest, false, structuredOutputSelection);
         String payload = JsonUtils.toJson(request);
 
         try {
@@ -166,8 +167,16 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
             }
         }
 
+        customizeRequest(request, modelRequest, stream);
         structuredOutputRequestAdapter.apply(request, structuredOutputSelection);
         return request;
+    }
+
+    /**
+     * 子类定制 OpenAI-compatible 请求的扩展点。
+     */
+    protected void customizeRequest(ChatCompletionsRequest request, ModelRequest modelRequest, boolean stream) {
+        // 默认无 provider-specific 额外字段。
     }
 
     protected ChatCompletionsToolDefinition toApiToolDefinition(ToolDefinition definition) {
@@ -423,15 +432,23 @@ public abstract class OpenAICompatibleChatProvider implements LlmGateway {
         ValidationUtils.requireNonBlank(model(), providerKey() + ".model");
     }
 
+    protected void assertStructuredOutputDoesNotMixBusinessTools(ModelRequest modelRequest) {
+        if (modelRequest != null
+            && modelRequest.getStructuredOutputContract() != null
+            && CollectionUtils.isNotEmpty(modelRequest.getTools())) {
+            throw new AgentRuntimeException(
+                ErrorCode.PROVIDER_CALL_FAILED,
+                "P2-E3 structured output cannot be mixed with business tools"
+            );
+        }
+    }
+
     protected ProviderStructuredOutputSelection selectStructuredOutput(ModelRequest modelRequest) {
         return structuredOutputCapabilityValidator.select(modelRequest, structuredOutputCapability());
     }
 
     protected ProviderStructuredOutputCapability structuredOutputCapability() {
         return switch (providerKey()) {
-            case "deepseek" -> ProviderStructuredOutputCapability.deepSeek().toBuilder()
-                .modelName(model())
-                .build();
             case "openai" -> ProviderStructuredOutputCapability.builder()
                 .providerName(providerKey())
                 .modelName(model())

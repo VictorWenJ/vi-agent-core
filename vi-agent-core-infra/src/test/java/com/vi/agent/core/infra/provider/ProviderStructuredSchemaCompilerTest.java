@@ -48,6 +48,38 @@ class ProviderStructuredSchemaCompilerTest {
     }
 
     @Test
+    void objectPropertiesMustExactlyMatchRequiredForStrictToolCall() {
+        assertStrictIncompatible(
+            ProviderStructuredOutputTestSupport.missingRequiredStrictCandidateContract(),
+            "required missing property"
+        );
+        assertStrictIncompatible(
+            ProviderStructuredOutputTestSupport.extraRequiredStrictCandidateContract(),
+            "required unknown property"
+        );
+        assertStrictIncompatible(
+            ProviderStructuredOutputTestSupport.nestedObjectMissingRequiredContract(),
+            "required missing property"
+        );
+    }
+
+    @Test
+    void objectMustDeclareAdditionalPropertiesFalseForStrictToolCall() {
+        assertStrictIncompatible(
+            ProviderStructuredOutputTestSupport.missingAdditionalPropertiesContract(),
+            "additionalProperties:false"
+        );
+    }
+
+    @Test
+    void unsupportedStringAndArrayKeywordsShouldBeStrictIncompatible() {
+        assertStrictIncompatible(ProviderStructuredOutputTestSupport.stringMinLengthContract(), "minLength");
+        assertStrictIncompatible(ProviderStructuredOutputTestSupport.stringMaxLengthContract(), "maxLength");
+        assertStrictIncompatible(ProviderStructuredOutputTestSupport.arrayMinItemsContract(), "minItems");
+        assertStrictIncompatible(ProviderStructuredOutputTestSupport.arrayMaxItemsContract(), "maxItems");
+    }
+
+    @Test
     void complexOneOfSchemaShouldReturnUnavailableForStrictToolCall() {
         ProviderStructuredSchemaCompileResult result = compiler.compile(
             ProviderStructuredOutputTestSupport.oneOfSummaryContract(),
@@ -58,6 +90,11 @@ class ProviderStructuredSchemaCompilerTest {
 
         assertFalse(result.getAvailable());
         assertTrue(result.getFailureReason().contains("oneOf"));
+    }
+
+    @Test
+    void anyOfShouldFailSafeUntilCompilerSupportsItSafely() {
+        assertStrictIncompatible(ProviderStructuredOutputTestSupport.anyOfContract(), "anyOf");
     }
 
     @Test
@@ -75,5 +112,17 @@ class ProviderStructuredSchemaCompilerTest {
 
         assertFalse(result.getAvailable());
         assertTrue(result.getFailureReason().contains("schema"));
+    }
+
+    private void assertStrictIncompatible(StructuredLlmOutputContract contract, String expectedFailureReason) {
+        ProviderStructuredSchemaCompileResult result = compiler.compile(
+            contract,
+            StructuredLlmOutputMode.STRICT_TOOL_CALL,
+            "deepseek",
+            "deepseek-chat"
+        );
+
+        assertFalse(result.getAvailable());
+        assertTrue(result.getFailureReason().contains(expectedFailureReason), result.getFailureReason());
     }
 }

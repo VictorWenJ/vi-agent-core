@@ -2,6 +2,7 @@ package com.vi.agent.core.infra.provider;
 
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
 import com.vi.agent.core.infra.provider.config.DeepSeekProperties;
+import com.vi.agent.core.infra.provider.ProviderStructuredOutputCapability;
 import com.vi.agent.core.infra.provider.protocol.openai.ChatCompletionsRequest;
 import com.vi.agent.core.model.llm.ModelRequest;
 import jakarta.annotation.Resource;
@@ -59,11 +60,18 @@ public class DeepSeekChatProvider extends OpenAICompatibleChatProvider {
     }
 
     @Override
-    protected ChatCompletionsRequest buildRequest(ModelRequest modelRequest, boolean stream) {
-        ChatCompletionsRequest request = super.buildRequest(modelRequest, stream);
+    protected void customizeRequest(ChatCompletionsRequest request, ModelRequest modelRequest, boolean stream) {
         request.setThinkingType(properties.getThinkingType());
         request.setMaxTokens(properties.getMaxTokens());
         request.setTemperature(properties.getTemperature());
-        return request;
+    }
+
+    @Override
+    protected ProviderStructuredOutputCapability structuredOutputCapability() {
+        return ProviderStructuredOutputCapability.deepSeek(
+            properties.getBaseUrl(),
+            properties.getModel(),
+            properties.getStrictToolCallEnabled()
+        );
     }
 }

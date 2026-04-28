@@ -30,6 +30,11 @@ public class DeepSeekProperties {
     private String baseUrl = "https://api.deepseek.com";
 
     /**
+     * 是否启用 DeepSeek beta strict tool call 结构化输出能力。
+     */
+    private Boolean strictToolCallEnabled = false;
+
+    /**
      * Chat API path.
      */
     private String chatPath = "/chat/completions";

@@ -3,6 +3,7 @@ package com.vi.agent.core.infra.provider.openai;
 import com.vi.agent.core.common.exception.AgentRuntimeException;
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.infra.provider.ProviderStructuredOutputTestSupport;
+import com.vi.agent.core.infra.provider.ProviderStructuredOutputCapability;
 import com.vi.agent.core.infra.provider.base.OpenAICompatibleChatProvider;
 import com.vi.agent.core.infra.provider.http.HttpRequestOptions;
 import com.vi.agent.core.infra.provider.http.LlmHttpExecutor;
@@ -10,6 +11,7 @@ import com.vi.agent.core.infra.provider.protocol.openai.ChatCompletionsRequest;
 import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
 import com.vi.agent.core.model.message.UserMessage;
+import com.vi.agent.core.model.tool.ToolDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -44,7 +46,7 @@ class OpenAICompatibleChatProviderTest {
             "emit_state_delta",
             "{\"taskGoalOverride\":\"new goal\"}"
         ));
-        TestProvider provider = new TestProvider(executor);
+        TestProvider provider = new TestProvider(executor, "https://api.deepseek.com/beta", true);
 
         ModelResponse response = provider.generate(ModelRequest.builder()
             .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "extract")))
@@ -78,7 +80,7 @@ class OpenAICompatibleChatProviderTest {
     @Test
     void selectedModeFailureShouldNotRetryOrSilentlyDowngrade() {
         RecordingHttpExecutor executor = new RecordingHttpExecutor(responseWithContent("{}"));
-        TestProvider provider = new TestProvider(executor);
+        TestProvider provider = new TestProvider(executor, "https://api.deepseek.com/beta", true);
 
         ModelResponse response = provider.generate(ModelRequest.builder()
             .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "extract")))
@@ -95,7 +97,7 @@ class OpenAICompatibleChatProviderTest {
     void providerRequestFailureShouldNotRetryOrSilentlyDowngrade() {
         RecordingHttpExecutor executor = new RecordingHttpExecutor(responseWithContent("{}"));
         executor.throwOnPost = true;
-        TestProvider provider = new TestProvider(executor);
+        TestProvider provider = new TestProvider(executor, "https://api.deepseek.com/beta", true);
 
         assertThrows(AgentRuntimeException.class, () -> provider.generate(ModelRequest.builder()
             .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "extract")))
@@ -103,6 +105,53 @@ class OpenAICompatibleChatProviderTest {
             .build()));
 
         assertEquals(1, executor.postCount);
+    }
+
+    @Test
+    void structuredSelectionShouldBeCalculatedOncePerGenerateCall() {
+        RecordingHttpExecutor executor = new RecordingHttpExecutor(responseWithToolCall(
+            "emit_state_delta",
+            "{\"taskGoalOverride\":\"new goal\"}"
+        ));
+        CountingProvider provider = new CountingProvider(executor);
+
+        provider.generate(ModelRequest.builder()
+            .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "extract")))
+            .structuredOutputContract(ProviderStructuredOutputTestSupport.strictCompatibleStateDeltaContract())
+            .build());
+
+        assertEquals(1, provider.capabilityCallCount);
+    }
+
+    @Test
+    void structuredOutputWithBusinessToolsShouldFailFastInP2E3() {
+        RecordingHttpExecutor executor = new RecordingHttpExecutor(responseWithContent("{}"));
+        TestProvider provider = new TestProvider(executor);
+
+        assertThrows(AgentRuntimeException.class, () -> provider.generate(ModelRequest.builder()
+            .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "extract")))
+            .tools(List.of(ToolDefinition.builder()
+                .name("business_tool")
+                .description("business tool")
+                .parametersJson("{\"type\":\"object\",\"properties\":{}}")
+                .build()))
+            .structuredOutputContract(ProviderStructuredOutputTestSupport.nonStrictCompatibleStateDeltaContract())
+            .build()));
+
+        assertEquals(0, executor.postCount);
+    }
+
+    @Test
+    void subclassRequestCustomizationShouldStillRunWithStructuredSelection() {
+        RecordingHttpExecutor executor = new RecordingHttpExecutor(responseWithContent("{\"taskGoalOverride\":\"new goal\"}"));
+        CustomizingProvider provider = new CustomizingProvider(executor);
+
+        provider.generate(ModelRequest.builder()
+            .messages(List.of(UserMessage.create("msg-1", "conv-1", "sess-1", "turn-1", "run-1", 1L, "extract")))
+            .structuredOutputContract(ProviderStructuredOutputTestSupport.nonStrictCompatibleStateDeltaContract())
+            .build());
+
+        assertTrue(executor.body.contains("\"thinking_type\":\"disabled\""));
     }
 
     private static String responseWithContent(String content) {
@@ -152,12 +201,22 @@ class OpenAICompatibleChatProviderTest {
             """.formatted(JsonUtils.toJson(functionName), JsonUtils.toJson(arguments));
     }
 
-    private static final class TestProvider extends OpenAICompatibleChatProvider {
+    private static class TestProvider extends OpenAICompatibleChatProvider {
 
         private TestProvider(RecordingHttpExecutor executor) {
+            this(executor, "https://api.deepseek.com", false);
+        }
+
+        private TestProvider(RecordingHttpExecutor executor, String baseUrl, boolean strictToolCallEnabled) {
             this.httpExecutor = executor;
             this.messageProjector = new OpenAICompatibleMessageProjector();
+            this.baseUrl = baseUrl;
+            this.strictToolCallEnabled = strictToolCallEnabled;
         }
+
+        private final String baseUrl;
+
+        private final boolean strictToolCallEnabled;
 
         @Override
         protected String providerName() {
@@ -171,7 +230,7 @@ class OpenAICompatibleChatProviderTest {
 
         @Override
         protected String baseUrl() {
-            return "https://example.invalid";
+            return baseUrl;
         }
 
         @Override
@@ -197,6 +256,38 @@ class OpenAICompatibleChatProviderTest {
         @Override
         protected int readTimeoutMs() {
             return 1000;
+        }
+
+        @Override
+        protected ProviderStructuredOutputCapability structuredOutputCapability() {
+            return ProviderStructuredOutputCapability.deepSeek(baseUrl(), model(), strictToolCallEnabled);
+        }
+    }
+
+    private static final class CountingProvider extends TestProvider {
+
+        private int capabilityCallCount;
+
+        private CountingProvider(RecordingHttpExecutor executor) {
+            super(executor, "https://api.deepseek.com/beta", true);
+        }
+
+        @Override
+        protected ProviderStructuredOutputCapability structuredOutputCapability() {
+            capabilityCallCount++;
+            return super.structuredOutputCapability();
+        }
+    }
+
+    private static final class CustomizingProvider extends TestProvider {
+
+        private CustomizingProvider(RecordingHttpExecutor executor) {
+            super(executor, "https://api.deepseek.com", false);
+        }
+
+        @Override
+        protected void customizeRequest(ChatCompletionsRequest request, ModelRequest modelRequest, boolean stream) {
+            request.setThinkingType("disabled");
         }
     }
 

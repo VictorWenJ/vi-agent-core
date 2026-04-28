@@ -23,10 +23,10 @@ public final class ProviderStructuredOutputTestSupport {
               "additionalProperties": false,
               "properties": {
                 "taskGoalOverride": {
-                  "type": "string",
-                  "minLength": 1
+                  "type": "string"
                 }
-              }
+              },
+              "required": ["taskGoalOverride"]
             }
             """);
     }
@@ -41,11 +41,144 @@ public final class ProviderStructuredOutputTestSupport {
               "x-description": "Non strict state delta.",
               "additionalProperties": false,
               "properties": {
-                "taskGoalOverride": {
-                  "type": ["string", "null"],
-                  "minLength": 1
-                }
+                  "taskGoalOverride": {
+                    "type": ["string", "null"],
+                    "minLength": 1
+                  }
+              },
+              "required": ["taskGoalOverride"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract missingRequiredStrictCandidateContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "taskGoalOverride": { "type": "string" }
               }
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract extraRequiredStrictCandidateContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "taskGoalOverride": { "type": "string" }
+              },
+              "required": ["taskGoalOverride", "unknownField"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract missingAdditionalPropertiesContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "properties": {
+                "taskGoalOverride": { "type": "string" }
+              },
+              "required": ["taskGoalOverride"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract stringMinLengthContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "taskGoalOverride": { "type": "string", "minLength": 1 }
+              },
+              "required": ["taskGoalOverride"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract stringMaxLengthContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "taskGoalOverride": { "type": "string", "maxLength": 64 }
+              },
+              "required": ["taskGoalOverride"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract arrayMinItemsContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sourceCandidateIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string" }
+                }
+              },
+              "required": ["sourceCandidateIds"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract arrayMaxItemsContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sourceCandidateIds": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": { "type": "string" }
+                }
+              },
+              "required": ["sourceCandidateIds"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract nestedObjectMissingRequiredContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "phaseStatePatch": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "summaryEnabled": { "type": "boolean" }
+                  }
+                }
+              },
+              "required": ["phaseStatePatch"]
+            }
+            """);
+    }
+
+    public static StructuredLlmOutputContract anyOfContract() {
+        return stateDeltaContract("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "taskGoalOverride": { "type": "string" }
+              },
+              "required": ["taskGoalOverride"],
+              "anyOf": [
+                { "required": ["taskGoalOverride"] }
+              ]
             }
             """);
     }

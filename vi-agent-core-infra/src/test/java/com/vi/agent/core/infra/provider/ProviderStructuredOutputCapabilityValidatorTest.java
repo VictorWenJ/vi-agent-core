@@ -16,12 +16,12 @@ class ProviderStructuredOutputCapabilityValidatorTest {
     );
 
     @Test
-    void deepSeekStrictCompatibleSchemaShouldSelectStrictToolCall() {
+    void deepSeekBetaEndpointAndStrictEnabledShouldSelectStrictToolCall() {
         ProviderStructuredOutputSelection selection = validator.select(
             ModelRequest.builder()
                 .structuredOutputContract(ProviderStructuredOutputTestSupport.strictCompatibleStateDeltaContract())
                 .build(),
-            ProviderStructuredOutputCapability.deepSeek()
+            ProviderStructuredOutputCapability.deepSeek("https://api.deepseek.com/beta", "deepseek-chat", true)
         );
 
         assertTrue(selection.getEnabled());
@@ -32,12 +32,53 @@ class ProviderStructuredOutputCapabilityValidatorTest {
     }
 
     @Test
-    void deepSeekNonStrictSchemaShouldSelectJsonObjectBeforeRequest() {
+    void deepSeekNormalEndpointShouldNotSelectStrictToolCallByDefault() {
+        ProviderStructuredOutputSelection selection = validator.select(
+            ModelRequest.builder()
+                .structuredOutputContract(ProviderStructuredOutputTestSupport.strictCompatibleStateDeltaContract())
+                .build(),
+            ProviderStructuredOutputCapability.deepSeek("https://api.deepseek.com", "deepseek-chat", false)
+        );
+
+        assertTrue(selection.getEnabled());
+        assertEquals(StructuredLlmOutputMode.JSON_OBJECT, selection.getSelectedStructuredOutputMode());
+        assertEquals(0, selection.getRetryCount());
+    }
+
+    @Test
+    void deepSeekNormalEndpointWithStrictEnabledShouldFallbackBeforeRequest() {
+        ProviderStructuredOutputSelection selection = validator.select(
+            ModelRequest.builder()
+                .structuredOutputContract(ProviderStructuredOutputTestSupport.strictCompatibleStateDeltaContract())
+                .build(),
+            ProviderStructuredOutputCapability.deepSeek("https://api.deepseek.com", "deepseek-chat", true)
+        );
+
+        assertTrue(selection.getEnabled());
+        assertEquals(StructuredLlmOutputMode.JSON_OBJECT, selection.getSelectedStructuredOutputMode());
+        assertTrue(selection.getFailureReason().contains("beta"));
+    }
+
+    @Test
+    void deepSeekBetaEndpointWithStrictDisabledShouldFallbackBeforeRequest() {
+        ProviderStructuredOutputSelection selection = validator.select(
+            ModelRequest.builder()
+                .structuredOutputContract(ProviderStructuredOutputTestSupport.strictCompatibleStateDeltaContract())
+                .build(),
+            ProviderStructuredOutputCapability.deepSeek("https://api.deepseek.com/beta", "deepseek-chat", false)
+        );
+
+        assertTrue(selection.getEnabled());
+        assertEquals(StructuredLlmOutputMode.JSON_OBJECT, selection.getSelectedStructuredOutputMode());
+    }
+
+    @Test
+    void deepSeekStrictIncompatibleSchemaShouldSelectJsonObjectBeforeRequest() {
         ProviderStructuredOutputSelection selection = validator.select(
             ModelRequest.builder()
                 .structuredOutputContract(ProviderStructuredOutputTestSupport.nonStrictCompatibleStateDeltaContract())
                 .build(),
-            ProviderStructuredOutputCapability.deepSeek()
+            ProviderStructuredOutputCapability.deepSeek("https://api.deepseek.com/beta", "deepseek-chat", true)
         );
 
         assertTrue(selection.getEnabled());

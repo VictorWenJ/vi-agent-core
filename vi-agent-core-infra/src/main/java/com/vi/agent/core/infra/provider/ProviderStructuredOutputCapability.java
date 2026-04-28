@@ -16,6 +16,9 @@ public class ProviderStructuredOutputCapability {
     /** 模型名称。 */
     String modelName;
 
+    /** provider base URL，用于判断 beta / capability 边界。 */
+    String baseUrl;
+
     /** 是否支持 strict tool call。 */
     Boolean supportsStrictToolCall;
 
@@ -25,16 +28,41 @@ public class ProviderStructuredOutputCapability {
     /** 是否支持 JSON object response_format。 */
     Boolean supportsJsonObject;
 
+    /** strict tool call 不可用时的原因。 */
+    String strictToolCallUnavailableReason;
+
     /**
-     * DeepSeek 当前 structured output 能力。
+     * DeepSeek 默认 structured output 能力；普通 endpoint 默认不启用 strict tool call。
      */
     public static ProviderStructuredOutputCapability deepSeek() {
+        return deepSeek("https://api.deepseek.com", "deepseek-chat", false);
+    }
+
+    /**
+     * DeepSeek structured output 能力，strict tool call 需同时满足显式开关和 beta endpoint。
+     */
+    public static ProviderStructuredOutputCapability deepSeek(
+        String baseUrl,
+        String modelName,
+        Boolean strictToolCallEnabled
+    ) {
+        boolean betaEndpoint = baseUrl != null && baseUrl.contains("/beta");
+        boolean strictEnabled = Boolean.TRUE.equals(strictToolCallEnabled);
+        boolean supportsStrict = strictEnabled && betaEndpoint;
+        String unavailableReason = null;
+        if (!supportsStrict) {
+            unavailableReason = strictEnabled
+                ? "DeepSeek strict tool call requires beta endpoint"
+                : "DeepSeek strict tool call is disabled";
+        }
         return ProviderStructuredOutputCapability.builder()
             .providerName("deepseek")
-            .modelName("deepseek-chat")
-            .supportsStrictToolCall(true)
+            .modelName(modelName)
+            .baseUrl(baseUrl)
+            .supportsStrictToolCall(supportsStrict)
             .supportsJsonSchemaResponseFormat(false)
             .supportsJsonObject(true)
+            .strictToolCallUnavailableReason(unavailableReason)
             .build();
     }
 

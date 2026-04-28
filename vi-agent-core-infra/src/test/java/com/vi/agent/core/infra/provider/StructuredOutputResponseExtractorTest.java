@@ -114,7 +114,7 @@ class StructuredOutputResponseExtractorTest {
             ModelRequest.builder()
                 .structuredOutputContract(ProviderStructuredOutputTestSupport.strictCompatibleStateDeltaContract())
                 .build(),
-            ProviderStructuredOutputCapability.deepSeek()
+            ProviderStructuredOutputCapability.deepSeek("https://api.deepseek.com/beta", "deepseek-chat", true)
         );
     }
 

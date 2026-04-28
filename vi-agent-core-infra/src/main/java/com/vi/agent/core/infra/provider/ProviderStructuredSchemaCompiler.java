@@ -8,7 +8,9 @@ import com.vi.agent.core.model.prompt.StructuredLlmOutputMode;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 将业务结构化输出契约编译为 provider 请求使用的 schema view。
@@ -109,24 +111,57 @@ public class ProviderStructuredSchemaCompiler {
     private String validateStrictNode(JsonNode node) {
         if (node.isObject()) {
             if (node.has("oneOf")) {
-                return "strict tool call schema does not support oneOf";
+                return "composition keyword unsupported by current compiler: oneOf";
             }
             if (node.has("anyOf")) {
-                return "strict tool call schema does not support anyOf";
+                return "composition keyword unsupported by current compiler: anyOf";
             }
             if (node.has("allOf")) {
-                return "strict tool call schema does not support allOf";
+                return "composition keyword unsupported by current compiler: allOf";
             }
             if (node.path("type").isArray()) {
-                return "strict tool call schema does not support type array";
+                return "type array unsupported in strict mode";
             }
-            if ("object".equals(node.path("type").asText())
-                && (!node.has("additionalProperties") || node.path("additionalProperties").asBoolean(true))) {
-                return "strict tool call object schema must declare additionalProperties:false";
+            String unsupportedKeyword = findUnsupportedStrictKeyword(node);
+            if (unsupportedKeyword != null) {
+                return unsupportedKeyword + " unsupported in strict mode";
             }
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                String failureReason = validateStrictNode(fields.next().getValue());
+            String type = node.path("type").asText();
+            if ("object".equals(type)) {
+                String objectFailureReason = validateStrictObject(node);
+                if (objectFailureReason != null) {
+                    return objectFailureReason;
+                }
+            }
+            if ("string".equals(type)) {
+                if (node.has("minLength")) {
+                    return "string minLength unsupported in strict mode";
+                }
+                if (node.has("maxLength")) {
+                    return "string maxLength unsupported in strict mode";
+                }
+            }
+            if ("array".equals(type)) {
+                if (node.has("minItems")) {
+                    return "array minItems unsupported in strict mode";
+                }
+                if (node.has("maxItems")) {
+                    return "array maxItems unsupported in strict mode";
+                }
+            }
+            JsonNode propertiesNode = node.path("properties");
+            if (propertiesNode.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> fields = propertiesNode.fields();
+                while (fields.hasNext()) {
+                    String failureReason = validateStrictNode(fields.next().getValue());
+                    if (failureReason != null) {
+                        return failureReason;
+                    }
+                }
+            }
+            JsonNode itemsNode = node.path("items");
+            if (itemsNode.isObject()) {
+                String failureReason = validateStrictNode(itemsNode);
                 if (failureReason != null) {
                     return failureReason;
                 }
@@ -137,6 +172,70 @@ public class ProviderStructuredSchemaCompiler {
                 if (failureReason != null) {
                     return failureReason;
                 }
+            }
+        }
+        return null;
+    }
+
+    private String validateStrictObject(JsonNode node) {
+        if (!node.has("additionalProperties") || node.path("additionalProperties").asBoolean(true)) {
+            return "object schema must declare additionalProperties:false";
+        }
+        if (!node.has("properties") || !node.path("properties").isObject()) {
+            return "object schema must declare properties";
+        }
+        Set<String> propertyNames = fieldNames(node.path("properties"));
+        Set<String> requiredNames = requiredNames(node.path("required"));
+        for (String propertyName : propertyNames) {
+            if (!requiredNames.contains(propertyName)) {
+                return "object required missing property: " + propertyName;
+            }
+        }
+        for (String requiredName : requiredNames) {
+            if (!propertyNames.contains(requiredName)) {
+                return "object required unknown property: " + requiredName;
+            }
+        }
+        return null;
+    }
+
+    private Set<String> fieldNames(JsonNode propertiesNode) {
+        Set<String> names = new LinkedHashSet<>();
+        Iterator<String> iterator = propertiesNode.fieldNames();
+        while (iterator.hasNext()) {
+            names.add(iterator.next());
+        }
+        return names;
+    }
+
+    private Set<String> requiredNames(JsonNode requiredNode) {
+        Set<String> names = new LinkedHashSet<>();
+        if (requiredNode == null || !requiredNode.isArray()) {
+            return names;
+        }
+        for (JsonNode requiredItem : requiredNode) {
+            names.add(requiredItem.asText());
+        }
+        return names;
+    }
+
+    private String findUnsupportedStrictKeyword(JsonNode node) {
+        Set<String> supportedKeywords = Set.of(
+            "$schema",
+            "type",
+            "additionalProperties",
+            "properties",
+            "required",
+            "items",
+            "enum",
+            "const",
+            "description"
+        );
+        Iterator<String> fieldNames = node.fieldNames();
+        while (fieldNames.hasNext()) {
+            String fieldName = fieldNames.next();
+            if (!supportedKeywords.contains(fieldName)) {
+                return fieldName;
             }
         }
         return null;
