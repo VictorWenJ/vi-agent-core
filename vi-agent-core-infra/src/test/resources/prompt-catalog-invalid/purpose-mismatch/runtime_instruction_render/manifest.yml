@@ -1,0 +1,5 @@
+promptKey: runtime_instruction_render
+purpose: session_state_render
+renderOutputType: text
+description: 错误 purpose
+inputVariables: []

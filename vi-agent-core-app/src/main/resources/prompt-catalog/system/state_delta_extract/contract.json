@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "x-structuredOutputContractKey": "state_delta_output",
+  "x-outputTarget": "state_delta_extraction_result",
+  "x-description": "状态增量结构化输出契约",
+  "additionalProperties": false,
+  "properties": {
+    "skipped": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": ["string", "null"]
+    },
+    "taskGoalOverride": {
+      "type": ["string", "null"]
+    },
+    "statePatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string",
+            "enum": ["set", "remove"]
+          },
+          "value": {}
+        },
+        "required": ["path", "operation"]
+      }
+    },
+    "evidenceItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceMessageId": {
+            "type": ["string", "null"]
+          },
+          "quote": {
+            "type": "string"
+          },
+          "note": {
+            "type": ["string", "null"]
+          }
+        },
+        "required": ["quote"]
+      }
+    }
+  },
+  "required": ["skipped", "statePatches", "evidenceItems"]
+}

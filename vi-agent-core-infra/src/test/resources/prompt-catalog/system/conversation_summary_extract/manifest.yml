@@ -1,0 +1,50 @@
+promptKey: conversation_summary_extract
+purpose: conversation_summary_extraction
+renderOutputType: chat_messages
+description: 会话摘要抽取模板
+structuredOutputContractKey: conversation_summary_output
+inputVariables:
+  - variableName: sessionId
+    variableType: text
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: true
+    description: 会话 ID
+  - variableName: turnId
+    variableType: text
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: true
+    description: 回合 ID
+  - variableName: runId
+    variableType: text
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: true
+    description: 运行 ID
+  - variableName: previousSummaryText
+    variableType: text
+    trustLevel: untrusted_data
+    placement: data_block
+    required: false
+    maxChars: 8000
+    truncateMarker: "[TRUNCATED]"
+    description: 旧 summary 文本
+    defaultValue: ""
+  - variableName: latestStateJson
+    variableType: json
+    trustLevel: untrusted_data
+    placement: data_block
+    required: false
+    maxChars: 8000
+    truncateMarker: "[TRUNCATED]"
+    description: 最新 state JSON
+    defaultValue: "{}"
+  - variableName: turnMessagesText
+    variableType: text
+    trustLevel: untrusted_data
+    placement: data_block
+    required: true
+    maxChars: 12000
+    truncateMarker: "[TRUNCATED]"
+    description: 当前 turn 消息文本

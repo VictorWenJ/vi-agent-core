@@ -1,0 +1,5 @@
+promptKey: runtime_instruction_render
+purpose: runtime_instruction_render
+renderOutputType: text
+description: 未声明占位符
+inputVariables: []

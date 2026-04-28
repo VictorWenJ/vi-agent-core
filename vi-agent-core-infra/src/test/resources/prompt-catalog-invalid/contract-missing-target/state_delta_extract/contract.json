@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "x-structuredOutputContractKey": "state_delta_output",
+  "x-description": "缺少 target",
+  "additionalProperties": false
+}

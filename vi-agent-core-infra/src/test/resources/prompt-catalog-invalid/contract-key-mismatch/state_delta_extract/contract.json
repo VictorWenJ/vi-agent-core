@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "x-structuredOutputContractKey": "conversation_summary_output",
+  "x-outputTarget": "state_delta_extraction_result",
+  "x-description": "错误 key",
+  "additionalProperties": false
+}

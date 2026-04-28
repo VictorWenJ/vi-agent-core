@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "x-structuredOutputContractKey": "state_delta_output",
+  "x-outputTarget": "state_delta_extraction_result",
+  "x-description": "状态增量",
+  "additionalProperties": false
+}

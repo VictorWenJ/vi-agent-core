@@ -1,0 +1,6 @@
+promptKey: runtime_instruction_render
+purpose: runtime_instruction_render
+renderOutputType: text
+description: render 绑定 contract
+structuredOutputContractKey: state_delta_output
+inputVariables: []

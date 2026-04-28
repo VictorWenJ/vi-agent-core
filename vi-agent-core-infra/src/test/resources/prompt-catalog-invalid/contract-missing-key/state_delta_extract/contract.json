@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "x-outputTarget": "state_delta_extraction_result",
+  "x-description": "缺少 key",
+  "additionalProperties": false
+}

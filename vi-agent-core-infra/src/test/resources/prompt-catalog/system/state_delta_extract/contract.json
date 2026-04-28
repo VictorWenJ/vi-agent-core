@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "x-structuredOutputContractKey": "state_delta_output",
+  "x-outputTarget": "state_delta_extraction_result",
+  "x-description": "状态增量结构化输出契约",
+  "additionalProperties": false,
+  "properties": {
+    "taskGoalOverride": {
+      "type": ["string", "null"]
+    },
+    "sourceCandidateIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

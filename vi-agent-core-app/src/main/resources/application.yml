@@ -61,6 +61,11 @@ vi:
       state-extraction-enabled: ${MEMORY_STATE_EXTRACT_ENABLED:true}
       summary-update-enabled: ${MEMORY_SUMMARY_EXTRACT_ENABLED:true}
 
+    system-prompt:
+      fail-fast: true
+      catalog-base-path: ${VI_AGENT_PROMPT_CATALOG_BASE_PATH:prompt-catalog/system}
+      catalog-revision: ${VI_AGENT_PROMPT_CATALOG_REVISION:local-dev}
+
     provider:
       routing:
         default-provider: ${DEFAULT_LLM_PROVIDER:deepseek}

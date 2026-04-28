@@ -1,0 +1,19 @@
+promptKey: session_state_render
+purpose: session_state_render
+renderOutputType: text
+description: 会话状态上下文渲染模板
+inputVariables:
+  - variableName: stateVersion
+    variableType: number
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: true
+    description: state 版本
+  - variableName: sessionStateText
+    variableType: text
+    trustLevel: untrusted_data
+    placement: data_block
+    required: true
+    maxChars: 8000
+    truncateMarker: "[TRUNCATED]"
+    description: 会话状态文本

@@ -1,0 +1,13 @@
+promptKey: state_delta_extract
+purpose: state_delta_extraction
+renderOutputType: chat_messages
+description: UNTRUSTED_DATA 缺少 truncateMarker
+structuredOutputContractKey: state_delta_output
+inputVariables:
+  - variableName: turnMessagesText
+    variableType: text
+    trustLevel: untrusted_data
+    placement: data_block
+    required: true
+    maxChars: 100
+    description: turn 文本
