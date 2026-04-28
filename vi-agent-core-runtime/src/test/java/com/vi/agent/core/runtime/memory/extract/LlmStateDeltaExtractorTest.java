@@ -2,11 +2,18 @@ package com.vi.agent.core.runtime.memory.extract;
 
 import com.vi.agent.core.common.id.InternalTaskMessageIdGenerator;
 import com.vi.agent.core.model.context.AgentMode;
+import com.vi.agent.core.model.llm.NormalizedStructuredLlmOutput;
 import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
+import com.vi.agent.core.model.llm.StructuredOutputChannelResult;
+import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.LlmGateway;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputMode;
+import com.vi.agent.core.runtime.memory.extract.prompt.StateDeltaExtractionPromptVariablesFactory;
 import com.vi.agent.core.runtime.prompt.PromptContractTestSupport;
+import com.vi.agent.core.runtime.prompt.PromptRuntimeTestSupport;
 import com.vi.agent.core.runtime.prompt.StructuredLlmOutputContractGuard;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import org.junit.jupiter.api.Test;
@@ -23,7 +30,7 @@ class LlmStateDeltaExtractorTest {
 
     @Test
     void validDeltaFromLlmShouldReturnSuccessfulExtraction() {
-        RecordingLlmGateway gateway = new RecordingLlmGateway("""
+        RecordingLlmGateway gateway = new RecordingLlmGateway(successChannel("""
             {
               "confirmedFactsAppend": [
                 {
@@ -33,7 +40,7 @@ class LlmStateDeltaExtractorTest {
               ],
               "sourceCandidateIds": ["msg-user-1"]
             }
-            """);
+            """));
         LlmStateDeltaExtractor extractor = extractor(gateway);
 
         StateDeltaExtractionResult result = extractor.extract(command());
@@ -49,17 +56,44 @@ class LlmStateDeltaExtractorTest {
         assertEquals(2, gateway.lastRequest.getMessages().size());
         assertEquals("itaskmsg-system-fixed", gateway.lastRequest.getMessages().get(0).getMessageId());
         assertEquals("itaskmsg-user-fixed", gateway.lastRequest.getMessages().get(1).getMessageId());
+        assertEquals(MessageRole.SYSTEM, gateway.lastRequest.getMessages().get(0).getRole());
+        assertEquals(MessageRole.USER, gateway.lastRequest.getMessages().get(1).getRole());
+        assertTrue(gateway.lastRequest.getMessages().get(1).getContentText().contains("[BEGIN_UNTRUSTED_CURRENT_TURN_MESSAGES]"));
+        assertEquals(StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT, gateway.lastRequest.getStructuredOutputContract().getStructuredOutputContractKey());
+        assertEquals("emit_state_delta", gateway.lastRequest.getStructuredOutputFunctionName());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, result.getPromptRenderMetadata().getCatalogRevision());
     }
 
     @Test
     void emptyDeltaFromLlmShouldReturnSuccessfulEmptyExtraction() {
-        LlmStateDeltaExtractor extractor = extractor(new RecordingLlmGateway("{\"sourceCandidateIds\":[]}"));
+        LlmStateDeltaExtractor extractor = extractor(new RecordingLlmGateway(successChannel("{\"sourceCandidateIds\":[]}")));
 
         StateDeltaExtractionResult result = extractor.extract(command());
 
         assertTrue(result.isSuccess());
         assertFalse(result.isDegraded());
         assertTrue(result.getStateDelta().isEmpty());
+    }
+
+    @Test
+    void structuredChannelFailureShouldReturnDegradedWithoutRawContentFallback() {
+        RecordingLlmGateway gateway = new RecordingLlmGateway(StructuredOutputChannelResult.builder()
+            .success(false)
+            .actualStructuredOutputMode(StructuredLlmOutputMode.STRICT_TOOL_CALL)
+            .retryCount(0)
+            .failureReason("missing tool call")
+            .build());
+        gateway.content = """
+            {"confirmedFactsAppend":[{"factId":"fact-1","content":"should not parse raw content"}]}
+            """;
+        LlmStateDeltaExtractor extractor = extractor(gateway);
+
+        StateDeltaExtractionResult result = extractor.extract(command());
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertTrue(result.getFailureReason().contains("missing tool call"));
+        assertNotNull(result.getStructuredOutputChannelResult());
     }
 
     @Test
@@ -76,15 +110,17 @@ class LlmStateDeltaExtractorTest {
     }
 
     private LlmStateDeltaExtractor extractor(LlmGateway gateway) {
-        LlmStateDeltaExtractor extractor = new LlmStateDeltaExtractor();
-        TestFieldUtils.setField(extractor, "llmGateway", gateway);
-        TestFieldUtils.setField(extractor, "promptBuilder", new StateDeltaExtractionPromptBuilder());
-        TestFieldUtils.setField(extractor, "outputParser", new StateDeltaExtractionOutputParser(
-            PromptContractTestSupport.stateDeltaContract(),
-            new StructuredLlmOutputContractGuard()
-        ));
-        TestFieldUtils.setField(extractor, "internalTaskMessageIdGenerator", new FixedInternalTaskMessageIdGenerator());
-        return extractor;
+        return new LlmStateDeltaExtractor(
+            gateway,
+            PromptRuntimeTestSupport.promptRenderer(),
+            PromptRuntimeTestSupport.systemPromptRegistry(),
+            new StateDeltaExtractionPromptVariablesFactory(),
+            new StateDeltaExtractionOutputParser(
+                PromptContractTestSupport.stateDeltaContract(),
+                new StructuredLlmOutputContractGuard()
+            ),
+            new FixedInternalTaskMessageIdGenerator()
+        );
     }
 
     private StateDeltaExtractionCommand command() {
@@ -109,13 +145,14 @@ class LlmStateDeltaExtractorTest {
     }
 
     private static final class RecordingLlmGateway implements LlmGateway {
-        private final String content;
+        private String content;
+        private final StructuredOutputChannelResult channelResult;
         private int generateCalls;
         private boolean throwOnGenerate;
         private ModelRequest lastRequest;
 
-        private RecordingLlmGateway(String content) {
-            this.content = content;
+        private RecordingLlmGateway(StructuredOutputChannelResult channelResult) {
+            this.channelResult = channelResult;
         }
 
         @Override
@@ -127,6 +164,7 @@ class LlmStateDeltaExtractorTest {
             }
             return ModelResponse.builder()
                 .content(content)
+                .structuredOutputChannelResult(channelResult)
                 .build();
         }
 
@@ -134,5 +172,20 @@ class LlmStateDeltaExtractorTest {
         public ModelResponse generateStreaming(ModelRequest modelRequest, Consumer<String> chunkConsumer) {
             throw new UnsupportedOperationException("state extraction does not use streaming");
         }
+    }
+
+    private static StructuredOutputChannelResult successChannel(String outputJson) {
+        return StructuredOutputChannelResult.builder()
+            .success(true)
+            .actualStructuredOutputMode(StructuredLlmOutputMode.JSON_OBJECT)
+            .retryCount(0)
+            .output(NormalizedStructuredLlmOutput.builder()
+                .structuredOutputContractKey(StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT)
+                .actualStructuredOutputMode(StructuredLlmOutputMode.JSON_OBJECT)
+                .outputJson(outputJson)
+                .providerName("fake-provider")
+                .modelName("fake-model")
+                .build())
+            .build();
     }
 }

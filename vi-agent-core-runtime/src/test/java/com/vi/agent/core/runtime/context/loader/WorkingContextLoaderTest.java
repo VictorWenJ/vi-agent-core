@@ -20,13 +20,16 @@ import com.vi.agent.core.runtime.context.audit.WorkingContextSnapshotService;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetCalculator;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetProperties;
 import com.vi.agent.core.runtime.context.builder.ContextBlockFactory;
+import com.vi.agent.core.runtime.context.prompt.ContextBlockPromptVariablesFactory;
 import com.vi.agent.core.runtime.context.builder.WorkingContextBuilder;
 import com.vi.agent.core.runtime.context.planner.ContextPlanner;
 import com.vi.agent.core.runtime.context.policy.ContextPolicyResolver;
 import com.vi.agent.core.runtime.context.policy.DefaultContextPolicy;
 import com.vi.agent.core.runtime.context.projector.WorkingContextProjector;
+import com.vi.agent.core.runtime.context.render.SessionStateBlockRenderer;
 import com.vi.agent.core.runtime.context.validation.WorkingContextValidator;
 import com.vi.agent.core.runtime.persistence.SessionWorkingSetLoader;
+import com.vi.agent.core.runtime.prompt.PromptRuntimeTestSupport;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import org.junit.jupiter.api.Test;
 
@@ -85,7 +88,13 @@ class WorkingContextLoaderTest {
         TestFieldUtils.setField(loader, "sessionStateRepository", new StubSessionStateRepository());
         TestFieldUtils.setField(loader, "sessionSummaryRepository", new StubSessionSummaryRepository());
         TestFieldUtils.setField(loader, "contextBudgetCalculator", budgetCalculator);
-        TestFieldUtils.setField(loader, "contextBlockFactory", new ContextBlockFactory(budgetCalculator));
+        TestFieldUtils.setField(loader, "contextBlockFactory", new ContextBlockFactory(
+            budgetCalculator,
+            new SessionStateBlockRenderer(),
+            new com.vi.agent.core.common.id.ContextBlockIdGenerator(),
+            PromptRuntimeTestSupport.promptRenderer(),
+            new ContextBlockPromptVariablesFactory()
+        ));
         TestFieldUtils.setField(loader, "contextPlanner", new ContextPlanner(new ContextPolicyResolver(new DefaultContextPolicy())));
         TestFieldUtils.setField(loader, "workingContextBuilder", workingContextBuilder);
         TestFieldUtils.setField(loader, "workingContextProjector", new WorkingContextProjector());

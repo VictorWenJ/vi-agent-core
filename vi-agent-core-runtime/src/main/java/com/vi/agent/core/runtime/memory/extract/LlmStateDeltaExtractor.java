@@ -1,17 +1,31 @@
 package com.vi.agent.core.runtime.memory.extract;
 
 import com.vi.agent.core.common.id.InternalTaskMessageIdGenerator;
+import com.vi.agent.core.model.llm.NormalizedStructuredLlmOutput;
 import com.vi.agent.core.model.llm.ModelRequest;
 import com.vi.agent.core.model.llm.ModelResponse;
+import com.vi.agent.core.model.llm.StructuredOutputChannelResult;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.model.message.MessageRole;
 import com.vi.agent.core.model.message.SystemMessage;
 import com.vi.agent.core.model.message.UserMessage;
 import com.vi.agent.core.model.port.LlmGateway;
-import jakarta.annotation.Resource;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContract;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
+import com.vi.agent.core.model.prompt.SystemPromptKey;
+import com.vi.agent.core.runtime.memory.extract.prompt.StateDeltaExtractionPromptVariablesFactory;
+import com.vi.agent.core.runtime.prompt.ChatMessagesPromptRenderResult;
+import com.vi.agent.core.runtime.prompt.PromptRenderRequest;
+import com.vi.agent.core.runtime.prompt.PromptRenderResult;
+import com.vi.agent.core.runtime.prompt.PromptRenderedMessage;
+import com.vi.agent.core.runtime.prompt.PromptRenderer;
+import com.vi.agent.core.runtime.prompt.SystemPromptRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * LLM-backed StateDelta extractor for the internal STATE_EXTRACT task.
@@ -20,17 +34,42 @@ import java.util.List;
 @Component
 public class LlmStateDeltaExtractor implements StateDeltaExtractor {
 
-    @Resource
-    private LlmGateway llmGateway;
+    /** LLM 调用网关。 */
+    private final LlmGateway llmGateway;
 
-    @Resource
-    private StateDeltaExtractionPromptBuilder promptBuilder;
+    /** 系统 prompt 渲染器。 */
+    private final PromptRenderer promptRenderer;
 
-    @Resource
-    private StateDeltaExtractionOutputParser outputParser;
+    /** 系统 prompt 只读注册表。 */
+    private final SystemPromptRegistry systemPromptRegistry;
 
-    @Resource
-    private InternalTaskMessageIdGenerator internalTaskMessageIdGenerator;
+    /** 状态增量抽取变量工厂。 */
+    private final StateDeltaExtractionPromptVariablesFactory promptVariablesFactory;
+
+    /** 状态增量输出解析器。 */
+    private final StateDeltaExtractionOutputParser outputParser;
+
+    /** 内部任务消息 ID 生成器。 */
+    private final InternalTaskMessageIdGenerator internalTaskMessageIdGenerator;
+
+    /**
+     * 构造基于 Prompt Governance 的状态增量抽取器。
+     */
+    public LlmStateDeltaExtractor(
+        @Qualifier("llmGateway") LlmGateway llmGateway,
+        PromptRenderer promptRenderer,
+        SystemPromptRegistry systemPromptRegistry,
+        StateDeltaExtractionPromptVariablesFactory promptVariablesFactory,
+        StateDeltaExtractionOutputParser outputParser,
+        InternalTaskMessageIdGenerator internalTaskMessageIdGenerator
+    ) {
+        this.llmGateway = llmGateway;
+        this.promptRenderer = Objects.requireNonNull(promptRenderer, "promptRenderer must not be null");
+        this.systemPromptRegistry = Objects.requireNonNull(systemPromptRegistry, "systemPromptRegistry must not be null");
+        this.promptVariablesFactory = Objects.requireNonNull(promptVariablesFactory, "promptVariablesFactory must not be null");
+        this.outputParser = Objects.requireNonNull(outputParser, "outputParser must not be null");
+        this.internalTaskMessageIdGenerator = Objects.requireNonNull(internalTaskMessageIdGenerator, "internalTaskMessageIdGenerator must not be null");
+    }
 
     @Override
     public StateDeltaExtractionResult extract(StateDeltaExtractionCommand command) {
@@ -38,17 +77,34 @@ public class LlmStateDeltaExtractor implements StateDeltaExtractor {
             if (llmGateway == null) {
                 return degraded("state delta extraction LLM gateway is not configured");
             }
-            String prompt = promptBuilder.buildPrompt(command);
+            ChatMessagesPromptRenderResult renderResult = renderPrompt(command);
+            StructuredLlmOutputContract contract = systemPromptRegistry.getStructuredLlmOutputContract(
+                StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT
+            );
             ModelResponse response = llmGateway.generate(ModelRequest.builder()
                 .conversationId(command == null ? null : command.getConversationId())
                 .sessionId(command == null ? null : command.getSessionId())
                 .turnId(command == null ? null : command.getTurnId())
                 .runId(command == null ? null : command.getRunId())
-                .messages(buildPromptMessages(command, prompt))
+                .messages(buildPromptMessages(command, renderResult.getRenderedMessages()))
                 .tools(List.of())
+                .structuredOutputContract(contract)
+                .structuredOutputFunctionName("emit_state_delta")
                 .build());
-            String rawOutput = response == null ? null : response.getContent();
-            return outputParser.parse(rawOutput);
+            StructuredOutputChannelResult channelResult = response == null ? null : response.getStructuredOutputChannelResult();
+            if (channelResult == null || !Boolean.TRUE.equals(channelResult.getSuccess())) {
+                return degraded(
+                    renderResult,
+                    channelResult,
+                    channelFailureReason(channelResult)
+                );
+            }
+            NormalizedStructuredLlmOutput output = channelResult.getOutput();
+            StateDeltaExtractionResult parsed = outputParser.parse(output);
+            return parsed.toBuilder()
+                .promptRenderMetadata(renderResult.getMetadata())
+                .structuredOutputChannelResult(channelResult)
+                .build();
         } catch (Exception ex) {
             log.warn("State delta extraction LLM call failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -58,27 +114,58 @@ public class LlmStateDeltaExtractor implements StateDeltaExtractor {
         }
     }
 
-    private List<Message> buildPromptMessages(StateDeltaExtractionCommand command, String prompt) {
-        return List.of(
-            SystemMessage.create(
+    /**
+     * 渲染状态增量抽取 prompt。
+     */
+    private ChatMessagesPromptRenderResult renderPrompt(StateDeltaExtractionCommand command) {
+        PromptRenderResult result = promptRenderer.render(PromptRenderRequest.builder()
+            .promptKey(SystemPromptKey.STATE_DELTA_EXTRACT)
+            .variables(promptVariablesFactory.variables(command))
+            .build());
+        if (!(result instanceof ChatMessagesPromptRenderResult chatMessagesPromptRenderResult)) {
+            throw new IllegalStateException("STATE_DELTA_EXTRACT 必须渲染为 CHAT_MESSAGES");
+        }
+        return chatMessagesPromptRenderResult;
+    }
+
+    /**
+     * 将渲染后的 prompt 消息转换为 provider-neutral Message。
+     */
+    private List<Message> buildPromptMessages(StateDeltaExtractionCommand command, List<PromptRenderedMessage> renderedMessages) {
+        return renderedMessages.stream()
+            .map(message -> toInternalMessage(command, message))
+            .toList();
+    }
+
+    /**
+     * 构造内部 worker 消息，仅允许 SYSTEM 与 USER。
+     */
+    private Message toInternalMessage(StateDeltaExtractionCommand command, PromptRenderedMessage renderedMessage) {
+        MessageRole role = renderedMessage.getRole();
+        long sequenceNo = renderedMessage.getOrder() == null ? -1L : renderedMessage.getOrder();
+        if (role == MessageRole.SYSTEM) {
+            return SystemMessage.create(
                 nextInternalMessageId("system"),
                 command == null ? null : command.getConversationId(),
                 command == null ? null : command.getSessionId(),
                 command == null ? null : command.getTurnId(),
                 command == null ? null : command.getRunId(),
-                -2L,
-                "You are an internal memory extraction worker. Return only strict StateDelta JSON."
-            ),
-            UserMessage.create(
+                sequenceNo,
+                renderedMessage.getRenderedContent()
+            );
+        }
+        if (role == MessageRole.USER) {
+            return UserMessage.create(
                 nextInternalMessageId("user"),
                 command == null ? null : command.getConversationId(),
                 command == null ? null : command.getSessionId(),
                 command == null ? null : command.getTurnId(),
                 command == null ? null : command.getRunId(),
-                -1L,
-                prompt
-            )
-        );
+                sequenceNo,
+                renderedMessage.getRenderedContent()
+            );
+        }
+        throw new IllegalStateException("STATE_DELTA_EXTRACT 只允许 SYSTEM/USER 消息: " + role);
     }
 
     private String nextInternalMessageId(String role) {
@@ -92,5 +179,35 @@ public class LlmStateDeltaExtractor implements StateDeltaExtractor {
             .failureReason(failureReason)
             .sourceCandidateIds(List.of())
             .build();
+    }
+
+    /**
+     * 构造携带 prompt/channel audit 元数据的降级结果。
+     */
+    private StateDeltaExtractionResult degraded(
+        ChatMessagesPromptRenderResult renderResult,
+        StructuredOutputChannelResult channelResult,
+        String failureReason
+    ) {
+        return StateDeltaExtractionResult.builder()
+            .success(false)
+            .degraded(true)
+            .failureReason(failureReason)
+            .sourceCandidateIds(List.of())
+            .promptRenderMetadata(renderResult.getMetadata())
+            .structuredOutputChannelResult(channelResult)
+            .build();
+    }
+
+    /**
+     * 解析 provider 结构化输出通道失败原因。
+     */
+    private String channelFailureReason(StructuredOutputChannelResult channelResult) {
+        if (channelResult == null) {
+            return "state delta structured output channel result is missing";
+        }
+        return channelResult.getFailureReason() == null || channelResult.getFailureReason().isBlank()
+            ? "state delta structured output channel failed"
+            : channelResult.getFailureReason();
     }
 }

@@ -34,6 +34,11 @@ import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskCommand;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskExecutor;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskResult;
 import com.vi.agent.core.runtime.memory.task.InternalMemoryTaskService;
+import com.vi.agent.core.runtime.prompt.PromptRuntimeTestSupport;
+import com.vi.agent.core.model.prompt.PromptPurpose;
+import com.vi.agent.core.model.prompt.PromptRenderMetadata;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
+import com.vi.agent.core.model.prompt.SystemPromptKey;
 import com.vi.agent.core.runtime.support.TestFieldUtils;
 import org.junit.jupiter.api.Test;
 
@@ -234,8 +239,8 @@ class SessionMemoryCoordinatorTest {
         assertEquals(1L, saved.getCoveredFromSequenceNo());
         assertEquals(2L, saved.getCoveredToSequenceNo());
         assertEquals("new summary", saved.getSummaryText());
-        assertEquals("summary_extract_inline", saved.getSummaryTemplateKey());
-        assertEquals("p2-d-3-v1", saved.getSummaryTemplateVersion());
+        assertEquals("conversation_summary_extract", saved.getSummaryTemplateKey());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, saved.getSummaryTemplateVersion());
         assertEquals("fake-provider", saved.getGeneratorProvider());
         assertEquals("fake-model", saved.getGeneratorModel());
         assertEquals(saved, fixture.summaryCache.saved.get(0));
@@ -536,6 +541,20 @@ class SessionMemoryCoordinatorTest {
             .generatorProvider("fake-provider")
             .generatorModel("fake-model")
             .rawOutput("{\"summaryText\":\"" + summaryText + "\"}")
+            .promptRenderMetadata(summaryPromptMetadata())
+            .build();
+    }
+
+    private static PromptRenderMetadata summaryPromptMetadata() {
+        return PromptRenderMetadata.builder()
+            .promptKey(SystemPromptKey.CONVERSATION_SUMMARY_EXTRACT)
+            .purpose(PromptPurpose.CONVERSATION_SUMMARY_EXTRACTION)
+            .structuredOutputContractKey(StructuredLlmOutputContractKey.CONVERSATION_SUMMARY_OUTPUT)
+            .templateContentHash("template-hash-summary")
+            .manifestContentHash("manifest-hash-summary")
+            .contractContentHash("contract-hash-summary")
+            .catalogRevision(PromptRuntimeTestSupport.CATALOG_REVISION)
+            .renderedVariableName("turnMessagesText")
             .build();
     }
 

@@ -20,13 +20,17 @@ import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.ToolOutcomeDigest;
 import com.vi.agent.core.model.memory.ToolOutcomeFreshnessPolicy;
 import com.vi.agent.core.model.message.Message;
+import com.vi.agent.core.common.id.ContextBlockIdGenerator;
 import com.vi.agent.core.model.message.SummaryMessage;
 import com.vi.agent.core.runtime.context.ContextTestFixtures;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetCalculator;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetProperties;
 import com.vi.agent.core.runtime.context.loader.MemoryLoadBundle;
 import com.vi.agent.core.runtime.context.loader.WorkingContextLoadCommand;
+import com.vi.agent.core.runtime.context.prompt.ContextBlockPromptVariablesFactory;
 import com.vi.agent.core.runtime.context.projector.WorkingContextProjector;
+import com.vi.agent.core.runtime.context.render.SessionStateBlockRenderer;
+import com.vi.agent.core.runtime.prompt.PromptRuntimeTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -39,7 +43,7 @@ class ContextBlockFactoryTest {
 
     @Test
     void buildBlocksShouldCreateRequiredBlocksAndKeepRawRecentMessagesOnly() {
-        ContextBlockFactory factory = new ContextBlockFactory(new ContextBudgetCalculator(new ContextBudgetProperties(200, 20, 20, 10)));
+        ContextBlockFactory factory = factory(new ContextBudgetProperties(200, 20, 20, 10));
         Message recentMessage = ContextTestFixtures.recentUserMessage();
         MemoryLoadBundle bundle = MemoryLoadBundle.builder()
             .workingSetVersion(2L)
@@ -62,10 +66,16 @@ class ContextBlockFactoryTest {
         ), blocks.stream().map(ContextBlock::getBlockType).toList());
         assertInstanceOf(RuntimeInstructionBlock.class, blocks.get(0));
         assertTrue(blocks.get(0).isRequired());
-        assertEquals("p2-c-v1", blocks.get(0).getSourceRefs().get(0).getSourceVersion());
+        assertEquals("runtime_instruction_render", ((RuntimeInstructionBlock) blocks.get(0)).getPromptTemplateKey());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, ((RuntimeInstructionBlock) blocks.get(0)).getPromptTemplateVersion());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, blocks.get(0).getSourceRefs().get(0).getSourceVersion());
         assertInstanceOf(SessionStateBlock.class, blocks.get(1));
+        assertEquals("session_state_render", ((SessionStateBlock) blocks.get(1)).getPromptTemplateKey());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, ((SessionStateBlock) blocks.get(1)).getPromptTemplateVersion());
         assertEquals("3", blocks.get(1).getSourceRefs().get(0).getSourceVersion());
         assertInstanceOf(ConversationSummaryBlock.class, blocks.get(2));
+        assertEquals("conversation_summary_render", ((ConversationSummaryBlock) blocks.get(2)).getPromptTemplateKey());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, ((ConversationSummaryBlock) blocks.get(2)).getPromptTemplateVersion());
         assertEquals("4", blocks.get(2).getSourceRefs().get(0).getSourceVersion());
         RecentMessagesBlock recentMessagesBlock = (RecentMessagesBlock) blocks.get(3);
         assertEquals(List.of(recentMessage), recentMessagesBlock.getRawMessages());
@@ -77,7 +87,7 @@ class ContextBlockFactoryTest {
 
     @Test
     void buildBlocksShouldOmitStateAndSummaryWhenAbsent() {
-        ContextBlockFactory factory = new ContextBlockFactory(new ContextBudgetCalculator(new ContextBudgetProperties(200, 20, 20, 10)));
+        ContextBlockFactory factory = factory(new ContextBudgetProperties(200, 20, 20, 10));
         MemoryLoadBundle bundle = MemoryLoadBundle.builder()
             .workingSetVersion(2L)
             .recentRawMessages(List.of())
@@ -97,7 +107,7 @@ class ContextBlockFactoryTest {
 
     @Test
     void buildBlocksShouldRenderConcreteSessionStateAndProjectIt() {
-        ContextBlockFactory factory = new ContextBlockFactory(new ContextBudgetCalculator(new ContextBudgetProperties(500, 20, 20, 10)));
+        ContextBlockFactory factory = factory(new ContextBudgetProperties(500, 20, 20, 10));
         MemoryLoadBundle bundle = MemoryLoadBundle.builder()
             .workingSetVersion(2L)
             .recentRawMessages(List.of())
@@ -115,6 +125,9 @@ class ContextBlockFactoryTest {
 
         assertEquals(ContextSourceType.SESSION_STATE_SNAPSHOT, stateBlock.getSourceRefs().get(0).getSourceType());
         assertEquals("5", stateBlock.getSourceRefs().get(0).getSourceVersion());
+        assertEquals("session_state_render", stateBlock.getPromptTemplateKey());
+        assertEquals(PromptRuntimeTestSupport.CATALOG_REVISION, stateBlock.getPromptTemplateVersion());
+        assertTrue(stateBlock.getRenderedText().contains("[BEGIN_UNTRUSTED_SESSION_STATE_TEXT]"));
         assertTrue(stateBlock.getRenderedText().contains("Fact content for prompt."));
         assertTrue(stateBlock.getRenderedText().contains("Constraint content for prompt."));
         assertTrue(stateBlock.getRenderedText().contains("Decision text."));
@@ -122,6 +135,16 @@ class ContextBlockFactoryTest {
         assertTrue(stateBlock.getRenderedText().contains("toolA - Tool summary text."));
         assertTrue(stateMessage.getContentText().contains("Fact content for prompt."));
         assertTrue(stateMessage.getContentText().contains("Constraint content for prompt."));
+    }
+
+    private ContextBlockFactory factory(ContextBudgetProperties properties) {
+        return new ContextBlockFactory(
+            new ContextBudgetCalculator(properties),
+            new SessionStateBlockRenderer(),
+            new ContextBlockIdGenerator(),
+            PromptRuntimeTestSupport.promptRenderer(),
+            new ContextBlockPromptVariablesFactory()
+        );
     }
 
     private WorkingContextLoadCommand loadCommand() {

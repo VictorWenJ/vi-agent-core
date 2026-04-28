@@ -1,13 +1,19 @@
 package com.vi.agent.core.runtime.memory.task;
 
 import com.vi.agent.core.common.id.InternalTaskIdGenerator;
+import com.vi.agent.core.model.llm.StructuredOutputChannelResult;
 import com.vi.agent.core.model.context.AgentMode;
 import com.vi.agent.core.model.memory.InternalLlmTaskRecord;
 import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.StateDelta;
 import com.vi.agent.core.model.port.InternalLlmTaskRepository;
-import com.vi.agent.core.runtime.support.TestFieldUtils;
+import com.vi.agent.core.model.prompt.PromptPurpose;
+import com.vi.agent.core.model.prompt.PromptRenderMetadata;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
+import com.vi.agent.core.model.prompt.StructuredLlmOutputMode;
+import com.vi.agent.core.model.prompt.SystemPromptKey;
+import com.vi.agent.core.runtime.prompt.PromptRuntimeTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -23,10 +29,8 @@ class InternalMemoryTaskServiceTest {
 
     @Test
     void stateExtractShouldRecordPendingRunningAndSucceededInlineTask() {
-        InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
-        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
-        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+        InternalMemoryTaskService service = service(repository);
 
         InternalMemoryTaskResult result = service.execute(
             stateCommand(),
@@ -38,6 +42,12 @@ class InternalMemoryTaskServiceTest {
                 .stateDelta(StateDelta.builder().sourceCandidateId("msg-user-1").build())
                 .newStateVersion(2L)
                 .sourceCandidateId("msg-user-1")
+                .promptRenderMetadata(promptMetadata(SystemPromptKey.STATE_DELTA_EXTRACT, StructuredLlmOutputContractKey.STATE_DELTA_OUTPUT))
+                .structuredOutputChannelResult(StructuredOutputChannelResult.builder()
+                    .success(true)
+                    .actualStructuredOutputMode(StructuredLlmOutputMode.JSON_OBJECT)
+                    .retryCount(0)
+                    .build())
                 .outputJson("""
                     {"success":true,"degraded":false,"stateDeltaEmpty":true,"newStateVersion":2,"failureReason":null,"sourceCandidateIds":["msg-user-1"]}
                     """)
@@ -61,15 +71,15 @@ class InternalMemoryTaskServiceTest {
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"messageIds\":[\"msg-user-1\",\"msg-assistant-1\"]"));
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"currentStateVersion\":1"));
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"newStateVersion\":2"));
-        assertPromptTemplate(repository.saved, "state_extract_inline", "p2-d-2-v1");
+        assertPromptTemplate(repository.saved, "state_delta_extract", PromptRuntimeTestSupport.CATALOG_REVISION);
+        assertPromptAudit(repository.saved.get(2), "state_delta_extract", "state_delta_output");
+        assertTrue(repository.saved.get(2).getRequestJson().contains("\"actualStructuredOutputMode\":\"json_object\""));
     }
 
     @Test
     void summaryExtractShouldRecordSkippedDeterministicTask() {
-        InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
-        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
-        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+        InternalMemoryTaskService service = service(repository);
 
         InternalMemoryTaskResult result = service.execute(summaryCommand());
 
@@ -83,15 +93,14 @@ class InternalMemoryTaskServiceTest {
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"messageIds\":[\"msg-user-1\",\"msg-assistant-1\"]"));
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"latestSummaryVersion\":3"));
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"latestStateVersion\":2"));
-        assertPromptTemplate(repository.saved, "summary_extract_inline", "p2-d-3-v1");
+        assertPromptTemplate(repository.saved, "conversation_summary_extract", PromptRuntimeTestSupport.CATALOG_REVISION);
+        assertPromptAudit(repository.saved.get(2), "conversation_summary_extract", "conversation_summary_output");
     }
 
     @Test
     void summaryExtractExecutorShouldRecordSucceededOutputWithNewSummaryVersion() {
-        InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
-        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
-        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+        InternalMemoryTaskService service = service(repository);
 
         InternalMemoryTaskResult result = service.execute(
             summaryCommand(),
@@ -111,15 +120,14 @@ class InternalMemoryTaskServiceTest {
         assertEquals(4L, result.getNewSummaryVersion());
         assertEquals(InternalTaskStatus.SUCCEEDED, repository.saved.get(2).getStatus());
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"newSummaryVersion\":4"));
-        assertPromptTemplate(repository.saved, "summary_extract_inline", "p2-d-3-v1");
+        assertPromptTemplate(repository.saved, "conversation_summary_extract", PromptRuntimeTestSupport.CATALOG_REVISION);
+        assertPromptAudit(repository.saved.get(2), "conversation_summary_extract", "conversation_summary_output");
     }
 
     @Test
     void evidenceEnrichShouldRecordDeterministicAuditOutput() {
-        InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
-        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
-        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+        InternalMemoryTaskService service = service(repository);
 
         InternalMemoryTaskResult result = service.execute(
             evidenceCommand(),
@@ -147,15 +155,13 @@ class InternalMemoryTaskServiceTest {
         assertTrue(repository.saved.get(0).getRequestJson().contains("\"sourceCandidateIds\":[\"msg-user-1\"]"));
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"evidenceIds\":[\"evd-1\"]"));
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"savedCount\":1"));
-        assertPromptTemplate(repository.saved, "evidence_bind_deterministic", "p2-d-4-v1");
+        assertPromptTemplate(repository.saved, "evidence_bind_deterministic", PromptRuntimeTestSupport.CATALOG_REVISION);
     }
 
     @Test
     void evidenceEnrichDefaultTaskShouldRecordSkippedStatus() {
-        InternalMemoryTaskService service = new InternalMemoryTaskService();
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
-        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
-        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+        InternalMemoryTaskService service = service(repository);
 
         InternalMemoryTaskResult result = service.execute(evidenceCommand());
 
@@ -164,7 +170,7 @@ class InternalMemoryTaskServiceTest {
         assertEquals(InternalTaskStatus.SKIPPED, result.getStatus());
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"skipped\":true"));
         assertTrue(repository.saved.get(2).getResponseJson().contains("\"savedCount\":0"));
-        assertPromptTemplate(repository.saved, "evidence_bind_deterministic", "p2-d-4-v1");
+        assertPromptTemplate(repository.saved, "evidence_bind_deterministic", PromptRuntimeTestSupport.CATALOG_REVISION);
     }
 
     @Test
@@ -176,8 +182,7 @@ class InternalMemoryTaskServiceTest {
             }
         };
         RecordingInternalTaskRepository repository = new RecordingInternalTaskRepository();
-        TestFieldUtils.setField(service, "internalLlmTaskRepository", repository);
-        TestFieldUtils.setField(service, "internalTaskIdGenerator", new FixedInternalTaskIdGenerator());
+        service = service(repository, service);
 
         InternalMemoryTaskResult result = service.execute(command(InternalTaskType.STATE_EXTRACT));
 
@@ -189,7 +194,32 @@ class InternalMemoryTaskServiceTest {
         assertEquals(InternalTaskStatus.PENDING, repository.saved.get(0).getStatus());
         assertEquals(InternalTaskStatus.RUNNING, repository.saved.get(1).getStatus());
         assertEquals(InternalTaskStatus.FAILED, repository.saved.get(2).getStatus());
-        assertPromptTemplate(repository.saved, "state_extract_inline", "p2-d-2-v1");
+        assertPromptTemplate(repository.saved, "state_delta_extract", PromptRuntimeTestSupport.CATALOG_REVISION);
+        assertPromptAudit(repository.saved.get(2), "state_delta_extract", "state_delta_output");
+    }
+
+    private InternalMemoryTaskService service(RecordingInternalTaskRepository repository) {
+        return new InternalMemoryTaskService(
+            repository,
+            new FixedInternalTaskIdGenerator(),
+            new InternalTaskPromptResolver(PromptRuntimeTestSupport.systemPromptRegistry())
+        );
+    }
+
+    private InternalMemoryTaskService service(
+        RecordingInternalTaskRepository repository,
+        InternalMemoryTaskService template
+    ) {
+        return new InternalMemoryTaskService(
+            repository,
+            new FixedInternalTaskIdGenerator(),
+            new InternalTaskPromptResolver(PromptRuntimeTestSupport.systemPromptRegistry())
+        ) {
+            @Override
+            protected InternalMemoryTaskResult runDeterministicTask(InternalMemoryTaskCommand command, String internalTaskId) {
+                return template.runDeterministicTask(command, internalTaskId);
+            }
+        };
     }
 
     private void assertPromptTemplate(List<InternalLlmTaskRecord> records, String expectedKey, String expectedVersion) {
@@ -202,6 +232,36 @@ class InternalMemoryTaskServiceTest {
             assertFalse(record.getPromptTemplateVersion().isBlank());
             assertEquals(expectedVersion, record.getPromptTemplateVersion());
         }
+    }
+
+    private void assertPromptAudit(InternalLlmTaskRecord record, String expectedPromptKey, String expectedContractKey) {
+        assertTrue(record.getRequestJson().contains("\"promptAudit\""));
+        assertTrue(record.getRequestJson().contains("\"promptKey\":\"" + expectedPromptKey + "\""));
+        assertTrue(record.getRequestJson().contains("\"structuredOutputContractKey\":\"" + expectedContractKey + "\""));
+        assertTrue(record.getRequestJson().contains("\"templateContentHash\""));
+        assertTrue(record.getRequestJson().contains("\"manifestContentHash\""));
+        assertTrue(record.getRequestJson().contains("\"contractContentHash\""));
+        assertTrue(record.getRequestJson().contains("\"catalogRevision\":\"" + PromptRuntimeTestSupport.CATALOG_REVISION + "\""));
+        assertTrue(record.getRequestJson().contains("\"retryCount\":0"));
+        assertTrue(record.getRequestJson().contains("\"failureReason\""));
+    }
+
+    private PromptRenderMetadata promptMetadata(
+        SystemPromptKey promptKey,
+        StructuredLlmOutputContractKey contractKey
+    ) {
+        return PromptRenderMetadata.builder()
+            .promptKey(promptKey)
+            .purpose(promptKey == SystemPromptKey.STATE_DELTA_EXTRACT
+                ? PromptPurpose.STATE_DELTA_EXTRACTION
+                : PromptPurpose.CONVERSATION_SUMMARY_EXTRACTION)
+            .structuredOutputContractKey(contractKey)
+            .templateContentHash("template-hash")
+            .manifestContentHash("manifest-hash")
+            .contractContentHash("contract-hash")
+            .catalogRevision(PromptRuntimeTestSupport.CATALOG_REVISION)
+            .renderedVariableName("turnMessagesText")
+            .build();
     }
 
     private InternalMemoryTaskCommand command(InternalTaskType taskType) {

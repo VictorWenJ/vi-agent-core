@@ -1,7 +1,11 @@
 Metadata:
+- conversationId: {{conversationId}}
 - sessionId: {{sessionId}}
 - turnId: {{turnId}}
 - runId: {{runId}}
+- traceId: {{traceId}}
+- agentMode: {{agentMode}}
+- workingContextSnapshotId: {{workingContextSnapshotId}}
 
 [BEGIN_UNTRUSTED_SESSION_STATE_JSON]
 {{currentStateJson}}

@@ -8,16 +8,15 @@ import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.StateDelta;
 import com.vi.agent.core.model.port.InternalLlmTaskRepository;
-import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionPromptBuilder;
-import com.vi.agent.core.runtime.memory.extract.StateDeltaExtractionPromptBuilder;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Internal memory task audit service.
@@ -26,35 +25,35 @@ import java.util.Map;
 @Service
 public class InternalMemoryTaskService {
 
-    /** STATE_EXTRACT 审计 prompt key。 */
-    private static final String STATE_EXTRACT_TEMPLATE_KEY = StateDeltaExtractionPromptBuilder.PROMPT_TEMPLATE_KEY;
+    /** 内部任务审计仓储。 */
+    private final InternalLlmTaskRepository internalLlmTaskRepository;
 
-    /** SUMMARY_EXTRACT 审计 prompt key。 */
-    private static final String SUMMARY_EXTRACT_TEMPLATE_KEY = ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_KEY;
+    /** 内部任务 ID 生成器。 */
+    private final InternalTaskIdGenerator internalTaskIdGenerator;
 
-    /** STATE_EXTRACT 审计 prompt 版本。 */
-    private static final String P2_D_2_STATE_TEMPLATE_VERSION = StateDeltaExtractionPromptBuilder.PROMPT_TEMPLATE_VERSION;
+    /** 内部任务 prompt key / audit metadata 解析器。 */
+    private final InternalTaskPromptResolver internalTaskPromptResolver;
 
-    /** SUMMARY_EXTRACT 审计 prompt 版本。 */
-    private static final String P2_D_3_SUMMARY_TEMPLATE_VERSION = ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_VERSION;
+    /**
+     * Spring 构造器注入。
+     */
+    @Autowired
+    public InternalMemoryTaskService(
+        InternalLlmTaskRepository internalLlmTaskRepository,
+        InternalTaskIdGenerator internalTaskIdGenerator,
+        InternalTaskPromptResolver internalTaskPromptResolver
+    ) {
+        this.internalLlmTaskRepository = internalLlmTaskRepository;
+        this.internalTaskIdGenerator = Objects.requireNonNull(internalTaskIdGenerator, "internalTaskIdGenerator must not be null");
+        this.internalTaskPromptResolver = Objects.requireNonNull(internalTaskPromptResolver, "internalTaskPromptResolver must not be null");
+    }
 
-    /** D-1 预留任务审计 prompt 版本。 */
-    private static final String P2_D_1_TEMPLATE_VERSION = "p2-d-1-v1";
-
-    /** EVIDENCE_ENRICH 确定性绑定审计 key。 */
-    private static final String EVIDENCE_ENRICH_TEMPLATE_KEY = "evidence_bind_deterministic";
-
-    /** EVIDENCE_ENRICH 确定性绑定审计版本。 */
-    private static final String P2_D_4_EVIDENCE_TEMPLATE_VERSION = "p2-d-4-v1";
-
-    /** 未知内部任务审计 prompt key。 */
-    private static final String UNKNOWN_TEMPLATE_KEY = "internal_memory_task_noop";
-
-    @Resource
-    private InternalLlmTaskRepository internalLlmTaskRepository;
-
-    @Resource
-    private InternalTaskIdGenerator internalTaskIdGenerator;
+    /**
+     * 测试子类使用的默认构造器。
+     */
+    protected InternalMemoryTaskService() {
+        this(null, new InternalTaskIdGenerator(), new InternalTaskPromptResolver(null));
+    }
 
     public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command) {
         return execute(command, (internalTaskId, inputJson) -> runDeterministicTask(command, internalTaskId));
@@ -63,7 +62,7 @@ public class InternalMemoryTaskService {
     public InternalMemoryTaskResult execute(InternalMemoryTaskCommand command, InternalMemoryTaskExecutor executor) {
         String internalTaskId = nextInternalTaskId();
         Instant startedAt = Instant.now();
-        String inputJson = buildInputJson(command);
+        String inputJson = buildInputJson(command, null, null);
 
         boolean auditOk = saveAudit(buildRecord(command, internalTaskId, inputJson, null, InternalTaskStatus.PENDING, null, null, null, startedAt, null));
         auditOk = saveAudit(buildRecord(command, internalTaskId, inputJson, null, InternalTaskStatus.RUNNING, null, null, null, startedAt, null)) && auditOk;
@@ -78,10 +77,11 @@ public class InternalMemoryTaskService {
             }
             Instant completedAt = Instant.now();
             Long durationMs = Duration.between(startedAt, completedAt).toMillis();
+            String finalInputJson = buildInputJson(command, result, result.getFailureReason());
             auditOk = saveAudit(buildRecord(
                 command,
                 internalTaskId,
-                inputJson,
+                finalInputJson,
                 result.getOutputJson(),
                 result.getStatus(),
                 resolveErrorCode(result),
@@ -99,7 +99,7 @@ public class InternalMemoryTaskService {
             return result.toBuilder()
                 .internalTaskId(internalTaskId)
                 .taskType(command == null ? null : command.getTaskType())
-                .inputJson(inputJson)
+                .inputJson(finalInputJson)
                 .build();
         } catch (Exception ex) {
             log.warn("Internal memory task failed, taskType={}, sessionId={}, turnId={}",
@@ -110,10 +110,11 @@ public class InternalMemoryTaskService {
             Instant completedAt = Instant.now();
             Long durationMs = Duration.between(startedAt, completedAt).toMillis();
             String outputJson = buildFailureOutputJson(command, ex);
+            String finalInputJson = buildInputJson(command, null, ex.getMessage());
             saveAudit(buildRecord(
                 command,
                 internalTaskId,
-                inputJson,
+                finalInputJson,
                 outputJson,
                 InternalTaskStatus.FAILED,
                 "INTERNAL_MEMORY_TASK_FAILED",
@@ -129,7 +130,7 @@ public class InternalMemoryTaskService {
                 .success(false)
                 .degraded(true)
                 .failureReason(ex.getMessage())
-                .inputJson(inputJson)
+                .inputJson(finalInputJson)
                 .outputJson(outputJson)
                 .build();
         }
@@ -270,8 +271,8 @@ public class InternalMemoryTaskService {
             .turnId(command == null ? null : command.getTurnId())
             .runId(command == null ? null : command.getRunId())
             .checkpointTrigger(CheckpointTrigger.POST_TURN)
-            .promptTemplateKey(resolvePromptTemplateKey(command == null ? null : command.getTaskType()))
-            .promptTemplateVersion(resolvePromptTemplateVersion(command == null ? null : command.getTaskType()))
+            .promptTemplateKey(internalTaskPromptResolver.resolvePromptTemplateKey(command == null ? null : command.getTaskType()))
+            .promptTemplateVersion(internalTaskPromptResolver.resolvePromptTemplateVersion(command == null ? null : command.getTaskType()))
             .requestJson(inputJson)
             .responseJson(outputJson)
             .status(status)
@@ -281,32 +282,6 @@ public class InternalMemoryTaskService {
             .createdAt(createdAt)
             .completedAt(completedAt)
             .build();
-    }
-
-    private String resolvePromptTemplateKey(InternalTaskType taskType) {
-        if (taskType == InternalTaskType.STATE_EXTRACT) {
-            return STATE_EXTRACT_TEMPLATE_KEY;
-        }
-        if (taskType == InternalTaskType.SUMMARY_EXTRACT) {
-            return SUMMARY_EXTRACT_TEMPLATE_KEY;
-        }
-        if (taskType == InternalTaskType.EVIDENCE_ENRICH) {
-            return EVIDENCE_ENRICH_TEMPLATE_KEY;
-        }
-        return UNKNOWN_TEMPLATE_KEY;
-    }
-
-    private String resolvePromptTemplateVersion(InternalTaskType taskType) {
-        if (taskType == InternalTaskType.STATE_EXTRACT) {
-            return P2_D_2_STATE_TEMPLATE_VERSION;
-        }
-        if (taskType == InternalTaskType.SUMMARY_EXTRACT) {
-            return P2_D_3_SUMMARY_TEMPLATE_VERSION;
-        }
-        if (taskType == InternalTaskType.EVIDENCE_ENRICH) {
-            return P2_D_4_EVIDENCE_TEMPLATE_VERSION;
-        }
-        return P2_D_1_TEMPLATE_VERSION;
     }
 
     private String resolveErrorCode(InternalMemoryTaskResult result) {
@@ -322,7 +297,11 @@ public class InternalMemoryTaskService {
         return null;
     }
 
-    private String buildInputJson(InternalMemoryTaskCommand command) {
+    private String buildInputJson(
+        InternalMemoryTaskCommand command,
+        InternalMemoryTaskResult result,
+        String failureReason
+    ) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("taskType", command == null || command.getTaskType() == null ? null : command.getTaskType().name());
         input.put("conversationId", command == null ? null : command.getConversationId());
@@ -343,6 +322,12 @@ public class InternalMemoryTaskService {
         input.put("stateUpdated", command == null ? null : command.getStateUpdated());
         input.put("summaryUpdated", command == null ? null : command.getSummaryUpdated());
         input.put("sourceCandidateIds", command == null ? null : command.getSourceCandidateIds());
+        input.put("promptAudit", internalTaskPromptResolver.promptAudit(
+            command == null ? null : command.getTaskType(),
+            result == null ? null : result.getPromptRenderMetadata(),
+            result == null ? null : result.getStructuredOutputChannelResult(),
+            failureReason
+        ));
         return JsonUtils.toJson(input);
     }
 

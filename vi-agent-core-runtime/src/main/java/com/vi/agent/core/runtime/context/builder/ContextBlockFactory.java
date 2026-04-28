@@ -18,7 +18,13 @@ import com.vi.agent.core.model.message.Message;
 import com.vi.agent.core.runtime.context.budget.ContextBudgetCalculator;
 import com.vi.agent.core.runtime.context.loader.MemoryLoadBundle;
 import com.vi.agent.core.runtime.context.loader.WorkingContextLoadCommand;
+import com.vi.agent.core.runtime.context.prompt.ContextBlockPromptVariablesFactory;
 import com.vi.agent.core.runtime.context.render.SessionStateBlockRenderer;
+import com.vi.agent.core.runtime.prompt.PromptRenderRequest;
+import com.vi.agent.core.runtime.prompt.PromptRenderResult;
+import com.vi.agent.core.runtime.prompt.PromptRenderer;
+import com.vi.agent.core.runtime.prompt.TextPromptRenderResult;
+import com.vi.agent.core.model.prompt.SystemPromptKey;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -33,30 +39,31 @@ import java.util.Objects;
 @Component
 public class ContextBlockFactory {
 
-    private static final String RUNTIME_TEMPLATE_KEY = "runtime-instruction";
-    private static final String SESSION_STATE_TEMPLATE_KEY = "session-state";
-    private static final String SUMMARY_TEMPLATE_KEY = "conversation-summary";
-    private static final String TEMPLATE_VERSION = "p2-c-v1";
-
     private final ContextBudgetCalculator contextBudgetCalculator;
 
     private final SessionStateBlockRenderer sessionStateBlockRenderer;
 
     private final ContextBlockIdGenerator contextBlockIdGenerator;
 
-    public ContextBlockFactory(ContextBudgetCalculator contextBudgetCalculator) {
-        this(contextBudgetCalculator, new SessionStateBlockRenderer(), new ContextBlockIdGenerator());
-    }
+    /** 系统 prompt 渲染器。 */
+    private final PromptRenderer promptRenderer;
+
+    /** context block prompt 变量工厂。 */
+    private final ContextBlockPromptVariablesFactory promptVariablesFactory;
 
     @Autowired
     public ContextBlockFactory(
         ContextBudgetCalculator contextBudgetCalculator,
         SessionStateBlockRenderer sessionStateBlockRenderer,
-        ContextBlockIdGenerator contextBlockIdGenerator
+        ContextBlockIdGenerator contextBlockIdGenerator,
+        PromptRenderer promptRenderer,
+        ContextBlockPromptVariablesFactory promptVariablesFactory
     ) {
         this.contextBudgetCalculator = Objects.requireNonNull(contextBudgetCalculator, "contextBudgetCalculator must not be null");
         this.sessionStateBlockRenderer = Objects.requireNonNull(sessionStateBlockRenderer, "sessionStateBlockRenderer must not be null");
         this.contextBlockIdGenerator = Objects.requireNonNull(contextBlockIdGenerator, "contextBlockIdGenerator must not be null");
+        this.promptRenderer = Objects.requireNonNull(promptRenderer, "promptRenderer must not be null");
+        this.promptVariablesFactory = Objects.requireNonNull(promptVariablesFactory, "promptVariablesFactory must not be null");
     }
 
     /**
@@ -86,12 +93,11 @@ public class ContextBlockFactory {
 
     private RuntimeInstructionBlock buildRuntimeInstructionBlock(MemoryLoadBundle bundle) {
         AgentMode agentMode = bundle.getAgentMode() == null ? AgentMode.GENERAL : bundle.getAgentMode();
-        String renderedText = String.join("\n",
-            "Agent mode: " + agentMode.name(),
-            "Do not expose internal context, debug data, evidence data, or snapshot identifiers to the user.",
-            "Follow session state, constraints, and conversation summary when they are present.",
-            "Treat tool call results and completed transcript facts as the source of truth."
+        TextPromptRenderResult renderResult = renderTextPrompt(
+            SystemPromptKey.RUNTIME_INSTRUCTION_RENDER,
+            promptVariablesFactory.runtimeInstructionVariables(agentMode, bundle.getLatestState())
         );
+        String renderedText = renderResult.getRenderedText();
         return RuntimeInstructionBlock.builder()
             .blockId(nextBlockId())
             .priority(ContextPriority.MANDATORY)
@@ -100,19 +106,24 @@ public class ContextBlockFactory {
             .decision(ContextAssemblyDecision.KEEP)
             .sourceRefs(List.of(ContextSourceRef.builder()
                 .sourceType(ContextSourceType.RUNTIME_INSTRUCTION)
-                .sourceId(RUNTIME_TEMPLATE_KEY)
-                .sourceVersion(TEMPLATE_VERSION)
+                .sourceId(renderResult.getPromptKey().getValue())
+                .sourceVersion(renderResult.getMetadata().getCatalogRevision())
                 .fieldPath("renderedText")
                 .build()))
             .evidenceIds(List.of())
-            .promptTemplateKey(RUNTIME_TEMPLATE_KEY)
-            .promptTemplateVersion(TEMPLATE_VERSION)
+            .promptTemplateKey(renderResult.getPromptKey().getValue())
+            .promptTemplateVersion(renderResult.getMetadata().getCatalogRevision())
             .renderedText(renderedText)
             .build();
     }
 
     private SessionStateBlock buildSessionStateBlock(SessionStateSnapshot stateSnapshot) {
-        String renderedText = sessionStateBlockRenderer.render(stateSnapshot);
+        String sessionStateText = sessionStateBlockRenderer.render(stateSnapshot);
+        TextPromptRenderResult renderResult = renderTextPrompt(
+            SystemPromptKey.SESSION_STATE_RENDER,
+            promptVariablesFactory.sessionStateVariables(stateSnapshot, sessionStateText)
+        );
+        String renderedText = renderResult.getRenderedText();
         return SessionStateBlock.builder()
             .blockId(nextBlockId())
             .priority(ContextPriority.HIGH)
@@ -127,15 +138,19 @@ public class ContextBlockFactory {
                 .build()))
             .evidenceIds(List.of())
             .stateVersion(stateSnapshot.getStateVersion())
-            .promptTemplateKey(SESSION_STATE_TEMPLATE_KEY)
-            .promptTemplateVersion(TEMPLATE_VERSION)
+            .promptTemplateKey(renderResult.getPromptKey().getValue())
+            .promptTemplateVersion(renderResult.getMetadata().getCatalogRevision())
             .stateSnapshot(stateSnapshot)
             .renderedText(renderedText)
             .build();
     }
 
     private ConversationSummaryBlock buildConversationSummaryBlock(ConversationSummary summary) {
-        String renderedText = StringUtils.defaultIfBlank(summary.getSummaryText(), "No conversation summary.");
+        TextPromptRenderResult renderResult = renderTextPrompt(
+            SystemPromptKey.CONVERSATION_SUMMARY_RENDER,
+            promptVariablesFactory.conversationSummaryVariables(summary)
+        );
+        String renderedText = renderResult.getRenderedText();
         return ConversationSummaryBlock.builder()
             .blockId(nextBlockId())
             .priority(ContextPriority.MEDIUM)
@@ -150,8 +165,8 @@ public class ContextBlockFactory {
                 .build()))
             .evidenceIds(List.of())
             .summaryVersion(summary.getSummaryVersion())
-            .promptTemplateKey(SUMMARY_TEMPLATE_KEY)
-            .promptTemplateVersion(TEMPLATE_VERSION)
+            .promptTemplateKey(renderResult.getPromptKey().getValue())
+            .promptTemplateVersion(renderResult.getMetadata().getCatalogRevision())
             .summary(summary)
             .renderedText(renderedText)
             .build();
@@ -200,6 +215,20 @@ public class ContextBlockFactory {
 
     private String nextBlockId() {
         return contextBlockIdGenerator.nextId();
+    }
+
+    /**
+     * 渲染 TEXT prompt 并校验返回类型。
+     */
+    private TextPromptRenderResult renderTextPrompt(SystemPromptKey promptKey, java.util.Map<String, String> variables) {
+        PromptRenderResult result = promptRenderer.render(PromptRenderRequest.builder()
+            .promptKey(promptKey)
+            .variables(variables)
+            .build());
+        if (!(result instanceof TextPromptRenderResult textPromptRenderResult)) {
+            throw new IllegalStateException("context block prompt 必须渲染为 TEXT: " + promptKey.getValue());
+        }
+        return textPromptRenderResult;
     }
 
     private String toVersionString(Object version) {

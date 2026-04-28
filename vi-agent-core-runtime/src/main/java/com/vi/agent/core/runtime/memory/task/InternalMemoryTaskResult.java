@@ -5,6 +5,8 @@ import com.vi.agent.core.model.memory.InternalTaskStatus;
 import com.vi.agent.core.model.memory.InternalTaskType;
 import com.vi.agent.core.model.memory.SessionStateSnapshot;
 import com.vi.agent.core.model.memory.StateDelta;
+import com.vi.agent.core.model.llm.StructuredOutputChannelResult;
+import com.vi.agent.core.model.prompt.PromptRenderMetadata;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
@@ -78,4 +80,10 @@ public class InternalMemoryTaskResult {
 
     /** 内部任务输出 JSON。 */
     private final String outputJson;
+
+    /** 本次 prompt 渲染审计元数据。 */
+    private final PromptRenderMetadata promptRenderMetadata;
+
+    /** Provider 结构化输出通道结果。 */
+    private final StructuredOutputChannelResult structuredOutputChannelResult;
 }

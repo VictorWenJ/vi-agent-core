@@ -4,6 +4,13 @@ renderOutputType: chat_messages
 description: Conversation summary extraction template.
 structuredOutputContractKey: conversation_summary_output
 inputVariables:
+  - variableName: conversationId
+    variableType: text
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: false
+    description: Conversation ID.
+    defaultValue: ""
   - variableName: sessionId
     variableType: text
     trustLevel: trusted_control
@@ -22,6 +29,27 @@ inputVariables:
     placement: metadata_block
     required: true
     description: Run ID.
+  - variableName: traceId
+    variableType: text
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: false
+    description: Trace ID.
+    defaultValue: ""
+  - variableName: agentMode
+    variableType: enum
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: false
+    description: Agent mode.
+    defaultValue: general
+  - variableName: workingContextSnapshotId
+    variableType: text
+    trustLevel: trusted_control
+    placement: metadata_block
+    required: false
+    description: Working context snapshot ID.
+    defaultValue: ""
   - variableName: previousSummaryText
     variableType: text
     trustLevel: untrusted_data

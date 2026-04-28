@@ -15,6 +15,8 @@ import com.vi.agent.core.model.port.SessionStateCacheRepository;
 import com.vi.agent.core.model.port.SessionStateRepository;
 import com.vi.agent.core.model.port.SessionSummaryCacheRepository;
 import com.vi.agent.core.model.port.SessionSummaryRepository;
+import com.vi.agent.core.model.prompt.PromptRenderMetadata;
+import com.vi.agent.core.model.prompt.SystemPromptKey;
 import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionCommand;
 import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionResult;
 import com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractor;
@@ -473,7 +475,7 @@ public class SessionMemoryCoordinator {
                 String failureReason = extractionResult == null
                     ? "state delta extraction returned null result"
                     : extractionResult.getFailureReason();
-                return stateTaskResult(
+                return withStatePromptAudit(stateTaskResult(
                     internalTaskId,
                     InternalTaskStatus.DEGRADED,
                     false,
@@ -483,10 +485,10 @@ public class SessionMemoryCoordinator {
                     null,
                     failureReason,
                     sourceCandidateIds
-                );
+                ), extractionResult);
             }
             if (stateDelta == null || stateDelta.isEmpty()) {
-                return stateTaskResult(
+                return withStatePromptAudit(stateTaskResult(
                     internalTaskId,
                     InternalTaskStatus.SUCCEEDED,
                     true,
@@ -496,7 +498,7 @@ public class SessionMemoryCoordinator {
                     null,
                     null,
                     sourceCandidateIds
-                );
+                ), extractionResult);
             }
 
             SessionStateSnapshot baseState = latestState == null ? emptyState(command) : latestState;
@@ -509,7 +511,7 @@ public class SessionMemoryCoordinator {
                     command == null ? null : command.getSessionId(),
                     command == null ? null : command.getTurnId(),
                     ex);
-                return stateTaskResult(
+                return withStatePromptAudit(stateTaskResult(
                     internalTaskId,
                     InternalTaskStatus.FAILED,
                     false,
@@ -519,12 +521,12 @@ public class SessionMemoryCoordinator {
                     null,
                     ex.getMessage(),
                     sourceCandidateIds
-                );
+                ), extractionResult);
             }
 
             String redisFailure = refreshStateCache(nextState);
             if (redisFailure != null) {
-                return stateTaskResult(
+                return withStatePromptAudit(stateTaskResult(
                     internalTaskId,
                     InternalTaskStatus.DEGRADED,
                     false,
@@ -534,9 +536,9 @@ public class SessionMemoryCoordinator {
                     nextState.getStateVersion(),
                     redisFailure,
                     sourceCandidateIds
-                );
+                ), extractionResult);
             }
-            return stateTaskResult(
+            return withStatePromptAudit(stateTaskResult(
                 internalTaskId,
                 InternalTaskStatus.SUCCEEDED,
                 true,
@@ -546,7 +548,7 @@ public class SessionMemoryCoordinator {
                 nextState.getStateVersion(),
                 null,
                 sourceCandidateIds
-            );
+            ), extractionResult);
         } catch (Exception ex) {
             log.warn("STATE_EXTRACT task execution failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -606,7 +608,7 @@ public class SessionMemoryCoordinator {
                 String failureReason = extractionResult == null
                     ? "summary extraction returned null result"
                     : extractionResult.getFailureReason();
-                return summaryTaskResult(
+                return withSummaryPromptAudit(summaryTaskResult(
                     internalTaskId,
                     InternalTaskStatus.DEGRADED,
                     false,
@@ -615,12 +617,12 @@ public class SessionMemoryCoordinator {
                     null,
                     null,
                     failureReason
-                );
+                ), extractionResult);
             }
             if (extractionResult.isSkipped() || extractionResult.getConversationSummary() == null
                 || extractionResult.getConversationSummary().getSummaryText() == null
                 || extractionResult.getConversationSummary().getSummaryText().isBlank()) {
-                return summaryTaskResult(
+                return withSummaryPromptAudit(summaryTaskResult(
                     internalTaskId,
                     InternalTaskStatus.SKIPPED,
                     true,
@@ -629,7 +631,7 @@ public class SessionMemoryCoordinator {
                     null,
                     null,
                     extractionResult.getFailureReason()
-                );
+                ), extractionResult);
             }
 
             ConversationSummary nextSummary = buildNextSummary(command, latestSummary, extractionResult, turnMessages);
@@ -640,7 +642,7 @@ public class SessionMemoryCoordinator {
                     command == null ? null : command.getSessionId(),
                     command == null ? null : command.getTurnId(),
                     ex);
-                return summaryTaskResult(
+                return withSummaryPromptAudit(summaryTaskResult(
                     internalTaskId,
                     InternalTaskStatus.FAILED,
                     false,
@@ -649,12 +651,12 @@ public class SessionMemoryCoordinator {
                     null,
                     null,
                     ex.getMessage()
-                );
+                ), extractionResult);
             }
 
             String redisFailure = refreshSummaryCache(nextSummary);
             if (redisFailure != null) {
-                return summaryTaskResult(
+                return withSummaryPromptAudit(summaryTaskResult(
                     internalTaskId,
                     InternalTaskStatus.DEGRADED,
                     false,
@@ -663,9 +665,9 @@ public class SessionMemoryCoordinator {
                     nextSummary,
                     nextSummary.getSummaryVersion(),
                     redisFailure
-                );
+                ), extractionResult);
             }
-            return summaryTaskResult(
+            return withSummaryPromptAudit(summaryTaskResult(
                 internalTaskId,
                 InternalTaskStatus.SUCCEEDED,
                 true,
@@ -674,7 +676,7 @@ public class SessionMemoryCoordinator {
                 nextSummary,
                 nextSummary.getSummaryVersion(),
                 null
-            );
+            ), extractionResult);
         } catch (Exception ex) {
             log.warn("SUMMARY_EXTRACT task execution failed, sessionId={}, turnId={}",
                 command == null ? null : command.getSessionId(),
@@ -744,12 +746,53 @@ public class SessionMemoryCoordinator {
             .coveredFromSequenceNo(coveredFromSequenceNo)
             .coveredToSequenceNo(coveredToSequenceNo)
             .summaryText(extractionResult.getConversationSummary().getSummaryText())
-            .summaryTemplateKey(com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_KEY)
-            .summaryTemplateVersion(com.vi.agent.core.runtime.memory.extract.ConversationSummaryExtractionPromptBuilder.PROMPT_TEMPLATE_VERSION)
+            .summaryTemplateKey(SystemPromptKey.CONVERSATION_SUMMARY_EXTRACT.getValue())
+            .summaryTemplateVersion(catalogRevision(extractionResult.getPromptRenderMetadata()))
             .generatorProvider(extractionResult.getGeneratorProvider())
             .generatorModel(extractionResult.getGeneratorModel())
             .createdAt(Instant.now())
             .build();
+    }
+
+    /**
+     * 将状态抽取 prompt / channel 元数据附加到内部任务结果。
+     */
+    private InternalMemoryTaskResult withStatePromptAudit(
+        InternalMemoryTaskResult taskResult,
+        StateDeltaExtractionResult extractionResult
+    ) {
+        if (taskResult == null || extractionResult == null) {
+            return taskResult;
+        }
+        return taskResult.toBuilder()
+            .promptRenderMetadata(extractionResult.getPromptRenderMetadata())
+            .structuredOutputChannelResult(extractionResult.getStructuredOutputChannelResult())
+            .build();
+    }
+
+    /**
+     * 将摘要抽取 prompt / channel 元数据附加到内部任务结果。
+     */
+    private InternalMemoryTaskResult withSummaryPromptAudit(
+        InternalMemoryTaskResult taskResult,
+        ConversationSummaryExtractionResult extractionResult
+    ) {
+        if (taskResult == null || extractionResult == null) {
+            return taskResult;
+        }
+        return taskResult.toBuilder()
+            .promptRenderMetadata(extractionResult.getPromptRenderMetadata())
+            .structuredOutputChannelResult(extractionResult.getStructuredOutputChannelResult())
+            .build();
+    }
+
+    /**
+     * 解析摘要保存使用的 catalogRevision。
+     */
+    private String catalogRevision(PromptRenderMetadata promptRenderMetadata) {
+        return promptRenderMetadata == null || promptRenderMetadata.getCatalogRevision() == null
+            ? "local-dev"
+            : promptRenderMetadata.getCatalogRevision();
     }
 
     private InternalMemoryTaskResult stateTaskResult(
