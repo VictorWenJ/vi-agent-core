@@ -33,13 +33,41 @@ class ConversationSummaryExtractionOutputParserTest {
     @Test
     void parseShouldRecognizeSkippedOutput() {
         ConversationSummaryExtractionResult result = parser.parse(
-            PromptContractTestSupport.fixture("prompt-fixtures/summary/skip-output.json")
+            PromptContractTestSupport.fixture("prompt-fixtures/summary/valid-skipped-output.json")
         );
 
         assertTrue(result.isSuccess());
         assertTrue(result.isSkipped());
         assertFalse(result.isDegraded());
         assertNull(result.getConversationSummary());
+    }
+
+    @Test
+    void parseShouldAcceptValidSummaryJsonWithSkippedFalse() {
+        ConversationSummaryExtractionResult result = parser.parse("""
+            {
+              "summaryText": "valid summary",
+              "skipped": false
+            }
+            """);
+
+        assertTrue(result.isSuccess());
+        assertFalse(result.isDegraded());
+        assertFalse(result.isSkipped());
+        assertEquals("valid summary", result.getConversationSummary().getSummaryText());
+    }
+
+    @Test
+    void skippedFalseWithoutSummaryTextShouldReturnDegraded() {
+        assertDegraded(PromptContractTestSupport.fixture(
+            "prompt-fixtures/summary/invalid-skipped-false-no-summary-output.json"
+        ));
+    }
+
+    @Test
+    void blankSummaryTextShouldReturnDegradedInsteadOfSkipped() {
+        assertDegraded(PromptContractTestSupport.fixture("prompt-fixtures/summary/invalid-blank-summary-output.json"));
+        assertDegraded("{\"summaryText\":\"   \"}");
     }
 
     @Test
@@ -65,5 +93,14 @@ class ConversationSummaryExtractionOutputParserTest {
         assertFalse(result.isSuccess());
         assertTrue(result.isDegraded());
         assertTrue(result.getFailureReason().contains(fieldName));
+    }
+
+    private void assertDegraded(String json) {
+        ConversationSummaryExtractionResult result = parser.parse(json);
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertFalse(result.isSkipped());
+        assertNull(result.getConversationSummary());
     }
 }

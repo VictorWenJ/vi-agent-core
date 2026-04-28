@@ -16,10 +16,12 @@
         "additionalProperties": false,
         "properties": {
           "factId": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "content": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "confidence": {
             "type": ["number", "null"]
@@ -30,7 +32,8 @@
           "stalePolicy": {
             "type": ["string", "null"]
           }
-        }
+        },
+        "required": ["factId", "content"]
       }
     },
     "constraintsAppend": {
@@ -40,10 +43,12 @@
         "additionalProperties": false,
         "properties": {
           "constraintId": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "content": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "scope": {
             "type": ["string", "null"]
@@ -54,7 +59,8 @@
           "lastVerifiedAt": {
             "type": ["string", "null"]
           }
-        }
+        },
+        "required": ["constraintId", "content"]
       }
     },
     "userPreferencesPatch": {
@@ -79,10 +85,12 @@
         "additionalProperties": false,
         "properties": {
           "decisionId": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "content": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "decidedBy": {
             "type": ["string", "null"]
@@ -93,7 +101,8 @@
           "confidence": {
             "type": ["number", "null"]
           }
-        }
+        },
+        "required": ["decisionId", "content"]
       }
     },
     "openLoopsAppend": {
@@ -103,13 +112,15 @@
         "additionalProperties": false,
         "properties": {
           "loopId": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "kind": {
             "type": ["string", "null"]
           },
           "content": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "status": {
             "type": ["string", "null"]
@@ -126,13 +137,15 @@
           "closedAt": {
             "type": ["string", "null"]
           }
-        }
+        },
+        "required": ["loopId", "content"]
       }
     },
     "openLoopIdsToClose": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     },
     "recentToolOutcomesAppend": {
@@ -142,7 +155,8 @@
         "additionalProperties": false,
         "properties": {
           "digestId": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "toolCallRecordId": {
             "type": ["string", "null"]
@@ -154,7 +168,8 @@
             "type": ["string", "null"]
           },
           "summary": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "freshnessPolicy": {
             "type": ["string", "null"]
@@ -165,7 +180,8 @@
           "lastVerifiedAt": {
             "type": ["string", "null"]
           }
-        }
+        },
+        "required": ["digestId", "summary"]
       }
     },
     "workingModeOverride": {
@@ -195,7 +211,8 @@
     "sourceCandidateIds": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     }
   }

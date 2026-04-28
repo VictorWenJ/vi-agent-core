@@ -53,12 +53,29 @@ class StructuredOutputSchemaClosedContractTest {
         assertObjectSchemasClosed(root);
         assertFields(root.path("properties"), STATE_DELTA_FIELDS);
         assertNestedFields(root, "confirmedFactsAppend", Set.of("factId", "content", "confidence", "lastVerifiedAt", "stalePolicy"));
+        assertArrayItemRequires(root, "confirmedFactsAppend", Set.of("factId", "content"));
+        assertArrayItemStringMinLength(root, "confirmedFactsAppend", "factId", 1);
+        assertArrayItemStringMinLength(root, "confirmedFactsAppend", "content", 1);
         assertNestedFields(root, "constraintsAppend", Set.of("constraintId", "content", "scope", "confidence", "lastVerifiedAt"));
+        assertArrayItemRequires(root, "constraintsAppend", Set.of("constraintId", "content"));
+        assertArrayItemStringMinLength(root, "constraintsAppend", "constraintId", 1);
+        assertArrayItemStringMinLength(root, "constraintsAppend", "content", 1);
         assertNestedFields(root, "decisionsAppend", Set.of("decisionId", "content", "decidedBy", "decidedAt", "confidence"));
+        assertArrayItemRequires(root, "decisionsAppend", Set.of("decisionId", "content"));
+        assertArrayItemStringMinLength(root, "decisionsAppend", "decisionId", 1);
+        assertArrayItemStringMinLength(root, "decisionsAppend", "content", 1);
         assertNestedFields(root, "openLoopsAppend", Set.of("loopId", "kind", "content", "status", "sourceType", "sourceRef", "createdAt", "closedAt"));
+        assertArrayItemRequires(root, "openLoopsAppend", Set.of("loopId", "content"));
+        assertArrayItemStringMinLength(root, "openLoopsAppend", "loopId", 1);
+        assertArrayItemStringMinLength(root, "openLoopsAppend", "content", 1);
         assertNestedFields(root, "recentToolOutcomesAppend", Set.of("digestId", "toolCallRecordId", "toolExecutionId", "toolName", "summary", "freshnessPolicy", "validUntil", "lastVerifiedAt"));
+        assertArrayItemRequires(root, "recentToolOutcomesAppend", Set.of("digestId", "summary"));
+        assertArrayItemStringMinLength(root, "recentToolOutcomesAppend", "digestId", 1);
+        assertArrayItemStringMinLength(root, "recentToolOutcomesAppend", "summary", 1);
         assertObjectFields(root, "userPreferencesPatch", Set.of("answerStyle", "detailLevel", "termFormat"));
         assertObjectFields(root, "phaseStatePatch", Set.of("promptEngineeringEnabled", "contextAuditEnabled", "summaryEnabled", "stateExtractionEnabled", "compactionEnabled"));
+        assertTrue(root.path("properties").path("openLoopIdsToClose").path("items").path("minLength").asInt() == 1);
+        assertTrue(root.path("properties").path("sourceCandidateIds").path("items").path("minLength").asInt() == 1);
         assertForbiddenAbsent(schemaJson, Set.of("upsert", "remove", "patches", "operations", "memory", "messages",
             "fullState", "sessionState", "debug", "phaseKey", "phaseName", "locale", "timezone", "statePatches", "evidenceItems"));
     }
@@ -72,6 +89,9 @@ class StructuredOutputSchemaClosedContractTest {
         assertTrue(root.has("x-description"));
         assertObjectSchemasClosed(root);
         assertFields(root.path("properties"), SUMMARY_FIELDS);
+        assertTrue(root.has("oneOf"));
+        assertFalse(root.has("anyOf"));
+        assertTrue(root.path("properties").path("summaryText").path("minLength").asInt() == 1);
         assertForbiddenAbsent(schemaJson, Set.of("sourceMessageIds", "summaryId", "sessionId", "conversationId",
             "summaryVersion", "coveredFromSequenceNo", "coveredToSequenceNo", "summaryTemplateKey",
             "generatorProvider", "generatorModel", "createdAt", "memory", "messages", "stateDelta",
@@ -93,6 +113,25 @@ class StructuredOutputSchemaClosedContractTest {
 
     private void assertObjectFields(JsonNode root, String fieldName, Set<String> expectedFields) {
         assertFields(root.path("properties").path(fieldName).path("properties"), expectedFields);
+    }
+
+    private void assertArrayItemRequires(JsonNode root, String fieldName, Set<String> expectedRequiredFields) {
+        JsonNode requiredNode = root.path("properties").path(fieldName).path("items").path("required");
+        Set<String> actualRequiredFields = new java.util.LinkedHashSet<>();
+        for (JsonNode item : requiredNode) {
+            actualRequiredFields.add(item.asText());
+        }
+        assertTrue(actualRequiredFields.equals(expectedRequiredFields), fieldName + " required fields: " + actualRequiredFields);
+    }
+
+    private void assertArrayItemStringMinLength(
+        JsonNode root,
+        String fieldName,
+        String itemFieldName,
+        int expectedMinLength
+    ) {
+        JsonNode fieldNode = root.path("properties").path(fieldName).path("items").path("properties").path(itemFieldName);
+        assertTrue(fieldNode.path("minLength").asInt() == expectedMinLength, fieldName + "." + itemFieldName);
     }
 
     private void assertForbiddenAbsent(String schemaJson, Set<String> forbiddenFields) {

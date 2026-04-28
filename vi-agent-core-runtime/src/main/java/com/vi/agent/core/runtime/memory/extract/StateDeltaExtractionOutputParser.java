@@ -2,7 +2,12 @@ package com.vi.agent.core.runtime.memory.extract;
 
 import com.vi.agent.core.common.util.JsonUtils;
 import com.vi.agent.core.model.llm.NormalizedStructuredLlmOutput;
+import com.vi.agent.core.model.memory.ConfirmedFactRecord;
+import com.vi.agent.core.model.memory.ConstraintRecord;
+import com.vi.agent.core.model.memory.DecisionRecord;
+import com.vi.agent.core.model.memory.OpenLoop;
 import com.vi.agent.core.model.memory.StateDelta;
+import com.vi.agent.core.model.memory.ToolOutcomeDigest;
 import com.vi.agent.core.model.prompt.StructuredLlmOutputContract;
 import com.vi.agent.core.model.prompt.StructuredLlmOutputContractKey;
 import com.vi.agent.core.model.prompt.StructuredLlmOutputMode;
@@ -90,6 +95,10 @@ public class StateDeltaExtractionOutputParser {
 
         try {
             StateDelta stateDelta = JsonUtils.jsonToBean(output.getOutputJson(), StateDelta.class);
+            String semanticFailureReason = validateBusinessSemantics(stateDelta);
+            if (semanticFailureReason != null) {
+                return degraded(rawOutput, semanticFailureReason);
+            }
             List<String> sourceCandidateIds = stateDelta == null || CollectionUtils.isEmpty(stateDelta.getSourceCandidateIds())
                 ? List.of()
                 : List.copyOf(stateDelta.getSourceCandidateIds());
@@ -123,6 +132,105 @@ public class StateDeltaExtractionOutputParser {
     /**
      * 构造 degraded 解析结果。
      */
+    /**
+     * 校验 schema 通过后仍需确认的最低业务语义。
+     */
+    private String validateBusinessSemantics(StateDelta stateDelta) {
+        if (stateDelta == null) {
+            return null;
+        }
+        String appendFailureReason = validateAppendRecords(stateDelta);
+        if (appendFailureReason != null) {
+            return appendFailureReason;
+        }
+        String openLoopIdFailureReason = validateStringItems("openLoopIdsToClose", stateDelta.getOpenLoopIdsToClose());
+        if (openLoopIdFailureReason != null) {
+            return openLoopIdFailureReason;
+        }
+        return validateStringItems("sourceCandidateIds", stateDelta.getSourceCandidateIds());
+    }
+
+    /**
+     * 校验 append record 的 required 字段在 trim 后仍具备有效业务内容。
+     */
+    private String validateAppendRecords(StateDelta stateDelta) {
+        if (CollectionUtils.isNotEmpty(stateDelta.getConfirmedFactsAppend())) {
+            for (ConfirmedFactRecord item : stateDelta.getConfirmedFactsAppend()) {
+                String failureReason = validateTextPair("confirmedFactsAppend", item == null ? null : item.getFactId(), "factId", item == null ? null : item.getContent(), "content");
+                if (failureReason != null) {
+                    return failureReason;
+                }
+            }
+        }
+        if (CollectionUtils.isNotEmpty(stateDelta.getConstraintsAppend())) {
+            for (ConstraintRecord item : stateDelta.getConstraintsAppend()) {
+                String failureReason = validateTextPair("constraintsAppend", item == null ? null : item.getConstraintId(), "constraintId", item == null ? null : item.getContent(), "content");
+                if (failureReason != null) {
+                    return failureReason;
+                }
+            }
+        }
+        if (CollectionUtils.isNotEmpty(stateDelta.getDecisionsAppend())) {
+            for (DecisionRecord item : stateDelta.getDecisionsAppend()) {
+                String failureReason = validateTextPair("decisionsAppend", item == null ? null : item.getDecisionId(), "decisionId", item == null ? null : item.getContent(), "content");
+                if (failureReason != null) {
+                    return failureReason;
+                }
+            }
+        }
+        if (CollectionUtils.isNotEmpty(stateDelta.getOpenLoopsAppend())) {
+            for (OpenLoop item : stateDelta.getOpenLoopsAppend()) {
+                String failureReason = validateTextPair("openLoopsAppend", item == null ? null : item.getLoopId(), "loopId", item == null ? null : item.getContent(), "content");
+                if (failureReason != null) {
+                    return failureReason;
+                }
+            }
+        }
+        if (CollectionUtils.isNotEmpty(stateDelta.getRecentToolOutcomesAppend())) {
+            for (ToolOutcomeDigest item : stateDelta.getRecentToolOutcomesAppend()) {
+                String failureReason = validateTextPair("recentToolOutcomesAppend", item == null ? null : item.getDigestId(), "digestId", item == null ? null : item.getSummary(), "summary");
+                if (failureReason != null) {
+                    return failureReason;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 校验一组 ID / 正文字段均非空白。
+     */
+    private String validateTextPair(
+        String path,
+        String idValue,
+        String idFieldName,
+        String contentValue,
+        String contentFieldName
+    ) {
+        if (StringUtils.isBlank(idValue)) {
+            return "Invalid StateDelta JSON: " + path + "." + idFieldName + " is blank";
+        }
+        if (StringUtils.isBlank(contentValue)) {
+            return "Invalid StateDelta JSON: " + path + "." + contentFieldName + " is blank";
+        }
+        return null;
+    }
+
+    /**
+     * 校验字符串数组中的每个值在 trim 后非空。
+     */
+    private String validateStringItems(String path, List<String> items) {
+        if (CollectionUtils.isEmpty(items)) {
+            return null;
+        }
+        for (String item : items) {
+            if (StringUtils.isBlank(item)) {
+                return "Invalid StateDelta JSON: " + path + " contains blank item";
+            }
+        }
+        return null;
+    }
+
     private StateDeltaExtractionResult degraded(String rawOutput, String failureReason) {
         return StateDeltaExtractionResult.builder()
             .success(false)

@@ -50,6 +50,30 @@ class StructuredLlmOutputContractGuardTest {
     }
 
     @Test
+    void stateDeltaEmptyAppendRecordsShouldFailSchemaGuard() {
+        assertStateDeltaRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-confirmed-fact-output.json"),
+            "factId"
+        );
+        assertStateDeltaRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-constraint-output.json"),
+            "constraintId"
+        );
+        assertStateDeltaRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-decision-output.json"),
+            "decisionId"
+        );
+        assertStateDeltaRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-open-loop-output.json"),
+            "loopId"
+        );
+        assertStateDeltaRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-tool-outcome-output.json"),
+            "digestId"
+        );
+    }
+
+    @Test
     void validSummaryOutputShouldPassSchemaGuard() {
         StructuredLlmOutputContractValidationResult result = guard.validate(
             PromptContractTestSupport.conversationSummaryContract(),
@@ -68,11 +92,27 @@ class StructuredLlmOutputContractGuardTest {
             PromptContractTestSupport.conversationSummaryContract(),
             output(
                 StructuredLlmOutputContractKey.CONVERSATION_SUMMARY_OUTPUT,
-                PromptContractTestSupport.fixture("prompt-fixtures/summary/skip-output.json")
+                PromptContractTestSupport.fixture("prompt-fixtures/summary/valid-skipped-output.json")
             )
         );
 
         assertTrue(result.getSuccess());
+    }
+
+    @Test
+    void skippedFalseWithoutSummaryTextShouldFailSchemaGuard() {
+        assertSummaryRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/summary/invalid-skipped-false-no-summary-output.json"),
+            "summaryText"
+        );
+    }
+
+    @Test
+    void emptySummaryTextShouldFailSchemaGuard() {
+        assertSummaryRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/summary/invalid-blank-summary-output.json"),
+            "summaryText"
+        );
     }
 
     @Test

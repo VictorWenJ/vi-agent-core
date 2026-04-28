@@ -111,12 +111,7 @@ public class ConversationSummaryExtractionOutputParser {
 
         String summaryText = asString(root.get("summaryText"));
         if (StringUtils.isBlank(summaryText)) {
-            return ConversationSummaryExtractionResult.builder()
-                .success(true)
-                .skipped(true)
-                .rawOutput(rawOutput)
-                .failureReason("summaryText is blank")
-                .build();
+            return degraded(rawOutput, "invalid summary extraction json: summaryText is blank");
         }
 
         return ConversationSummaryExtractionResult.builder()

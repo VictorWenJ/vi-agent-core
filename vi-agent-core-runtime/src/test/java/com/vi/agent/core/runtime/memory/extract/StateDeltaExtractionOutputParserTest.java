@@ -108,4 +108,62 @@ class StateDeltaExtractionOutputParserTest {
         assertTrue(result.isDegraded());
         assertTrue(result.getFailureReason().contains("evidenceIds"));
     }
+
+    @Test
+    void schemaGuardShouldRejectEmptyAppendRecords() {
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-confirmed-fact-output.json"),
+            "confirmedFactsAppend"
+        );
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-constraint-output.json"),
+            "constraintsAppend"
+        );
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-decision-output.json"),
+            "decisionsAppend"
+        );
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-open-loop-output.json"),
+            "openLoopsAppend"
+        );
+        assertRejected(
+            PromptContractTestSupport.fixture("prompt-fixtures/state-delta/invalid-empty-tool-outcome-output.json"),
+            "recentToolOutcomesAppend"
+        );
+    }
+
+    @Test
+    void parserShouldRejectBlankAppendRecordContentAfterSchemaGuardPasses() {
+        assertRejected("{\"confirmedFactsAppend\":[{\"factId\":\"f1\",\"content\":\"   \"}]}", "content");
+        assertRejected("{\"constraintsAppend\":[{\"constraintId\":\"c1\",\"content\":\"   \"}]}", "content");
+        assertRejected("{\"decisionsAppend\":[{\"decisionId\":\"d1\",\"content\":\"   \"}]}", "content");
+        assertRejected("{\"openLoopsAppend\":[{\"loopId\":\"l1\",\"content\":\"   \"}]}", "content");
+        assertRejected("{\"recentToolOutcomesAppend\":[{\"digestId\":\"r1\",\"summary\":\"   \"}]}", "summary");
+    }
+
+    @Test
+    void legalSingleAppendRecordOutputsShouldParseSuccessfully() {
+        assertSuccess("{\"confirmedFactsAppend\":[{\"factId\":\"f1\",\"content\":\"fact\"}]}");
+        assertSuccess("{\"constraintsAppend\":[{\"constraintId\":\"c1\",\"content\":\"constraint\"}]}");
+        assertSuccess("{\"decisionsAppend\":[{\"decisionId\":\"d1\",\"content\":\"decision\"}]}");
+        assertSuccess("{\"openLoopsAppend\":[{\"loopId\":\"l1\",\"content\":\"loop\"}]}");
+        assertSuccess("{\"recentToolOutcomesAppend\":[{\"digestId\":\"r1\",\"summary\":\"tool outcome\"}]}");
+    }
+
+    private void assertRejected(String json, String expectedReasonPart) {
+        StateDeltaExtractionResult result = parser.parse(json);
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.isDegraded());
+        assertTrue(result.getFailureReason().contains(expectedReasonPart));
+    }
+
+    private void assertSuccess(String json) {
+        StateDeltaExtractionResult result = parser.parse(json);
+
+        assertTrue(result.isSuccess());
+        assertFalse(result.isDegraded());
+        assertFalse(result.getStateDelta().isEmpty());
+    }
 }
